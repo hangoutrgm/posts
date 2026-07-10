@@ -1,0 +1,9 @@
+body { 
+    -webkit-tap-highlight-color: transparent; 
+}
+.scrollbar-hide::-webkit-scrollbar { 
+    display: none; 
+}
+.reply-line { 
+    border-left: 2px solid rgba(156, 163, 175, 0.2); 
+}

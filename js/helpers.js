@@ -1,0 +1,303 @@
+import { db } from "./firebase-config.js";
+import { ref, update, remove, set, push, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+window.showAlert = (msg) => {
+    document.getElementById('custom-alert-msg').innerText = msg;
+    document.getElementById('custom-alert-modal').classList.remove('hidden');
+};
+
+window.showConfirm = (msg, onConfirm) => {
+    document.getElementById('custom-confirm-msg').innerText = msg;
+    const btn = document.getElementById('custom-confirm-btn');
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    
+    newBtn.addEventListener('click', () => {
+        document.getElementById('custom-confirm-modal').classList.add('hidden');
+        onConfirm();
+    });
+    document.getElementById('custom-confirm-modal').classList.remove('hidden');
+};
+
+window.debounce = function(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+};
+
+window.saveInputStates = () => {
+    const states = {};
+    document.querySelectorAll('input[type="text"], textarea').forEach(el => {
+        if(el.id && el.value !== undefined && el.value !== "") states[el.id] = el.value;
+    });
+    return states;
+};
+
+window.restoreInputStates = (states) => {
+    for(let id in states) {
+        const el = document.getElementById(id);
+        if(el) el.value = states[id];
+    }
+};
+
+window.generateAvatar = (seed) => `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
+
+window.getRole = function(uid) {
+    const user = window.globalUsersCache[uid] || {};
+    if (user.isAdmin === true) return { title: 'Admin', level: 3, badgeHtml: `<span class="bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/30 text-[9px] px-1.5 py-0 rounded uppercase font-bold ml-1">Admin</span>` };
+    if (user.isMod === true) return { title: 'Mod', level: 2, badgeHtml: `<span class="bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 text-[9px] px-1.5 py-0 rounded uppercase font-bold ml-1">Mod</span>` };
+    return { title: 'Member', level: 1, badgeHtml: `` }; 
+};
+
+window.canDelete = function(targetUid) {
+    if(!window.currentUser) return false;
+    if(window.currentUser.uid === targetUid) return true; 
+    return window.getRole(window.currentUser.uid).level > window.getRole(targetUid).level;
+};
+
+window.checkBan = function() {
+    if (window.globalUsersCache[window.currentUser?.uid]?.isBanned) {
+        window.showAlert("Your account has been banned from interacting by a Moderator.");
+        return true;
+    }
+    return false;
+};
+
+window.timeAgo = (timestamp) => {
+    if (!timestamp) return 'now';
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return "now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + "m";
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + "h";
+    const days = Math.floor(hours / 24);
+    if (days < 30) return days + "d";
+    const months = Math.floor(days / 30);
+    if (months < 12) return months + "mo";
+    return Math.floor(months / 12) + "y";
+};
+
+window.copyPostLink = function(postId) {
+    const url = window.location.origin + window.location.pathname + '?post=' + postId;
+    navigator.clipboard.writeText(url).then(() => window.showAlert("Post link copied to clipboard!"));
+};
+
+window.copyProfileLink = function(uid) {
+    const url = window.location.origin + window.location.pathname + '?profile=' + uid;
+    navigator.clipboard.writeText(url).then(() => window.showAlert("Profile link copied to clipboard!"));
+};
+
+window.viewImage = (src) => {
+    document.getElementById('viewer-img').src = src;
+    document.getElementById('image-viewer-modal').classList.remove('hidden');
+};
+
+window.closeImageViewer = () => {
+    document.getElementById('image-viewer-modal').classList.add('hidden');
+    document.getElementById('viewer-img').src = '';
+};
+
+window.compressImage = (file, heavy = false) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = heavy ? 400 : 800; 
+                let { width, height } = img;
+                if (width > height && width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } 
+                else if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', heavy ? 0.4 : 0.7)); 
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+};
+
+window.handleDeepLinks = () => {
+    if (window.initialLinkDone) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetProfile = params.get('profile');
+    const targetPost = params.get('post');
+
+    if (targetProfile && Object.keys(window.globalUsersCache).length > 0) {
+        if (window.globalUsersCache[targetProfile]) {
+            window.openProfile(targetProfile);
+            window.initialLinkDone = true;
+        }
+    } else if (targetPost && window.allPosts.length > 0) {
+        window.goToPost(targetPost);
+        window.initialLinkDone = true;
+    }
+};
+
+window.formatText = (text) => {
+    if(!text) return '';
+    let formatted = text.replace(/</g, "&lt;").replace(/>/g, "&gt;"); 
+    
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    formatted = formatted.replace(urlRegex, function(url) {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline break-all">${url}</a>`;
+    });
+
+    const sortedUsers = Object.keys(window.globalUsersCache)
+        .map(uid => ({uid, name: window.globalUsersCache[uid].name}))
+        .filter(u => u.name)
+        .sort((a,b) => b.name.length - a.name.length);
+        
+    sortedUsers.forEach(u => {
+        const safeName = u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`@${safeName}(?![\\w])`, 'gi');
+        formatted = formatted.replace(regex, `<span class="text-blue-500 font-bold cursor-pointer hover:underline" onclick="event.stopPropagation(); window.openProfile('${u.uid}')">$&</span>`);
+    });
+    return formatted;
+};
+
+window.generateEmbed = (text) => {
+    if(!text) return '';
+    let embedHtml = '';
+    
+    const ytMatch = text.match(/(?:https?:\/\/)?(?:m\.|www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i);
+    if(ytMatch) {
+        embedHtml += `<div class="mt-2 relative overflow-hidden pb-[56.25%] rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-black"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.youtube.com/embed/${ytMatch[1]}" frameborder="0" allowfullscreen loading="lazy"></iframe></div>`;
+        return embedHtml; 
+    }
+    
+    const tiktokMatch = text.match(/https?:\/\/(?:www\.)?tiktok\.com\/@[^\/]+\/video\/(\d+)/i);
+    if(tiktokMatch) {
+        embedHtml += `<div class="mt-2 relative w-full max-w-[325px] rounded-xl overflow-hidden border border-gray-100 dark:border-slate-700 shadow-sm bg-black" style="aspect-ratio: 9/16;"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.tiktok.com/embed/v2/${tiktokMatch[1]}" frameborder="0" allowfullscreen loading="lazy"></iframe></div>`;
+        return embedHtml;
+    }
+
+    const fbPostMatch = text.match(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:[a-zA-Z0-9_.-]+\/posts\/\d+|share\/p\/[a-zA-Z0-9_-]+|[a-zA-Z0-9_.-]+\/photos\/.*)/i);
+    if (fbPostMatch) {
+        const fbUrl = encodeURIComponent(fbPostMatch[0]);
+        embedHtml += `<div class="mt-2 w-full overflow-hidden rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-white"><iframe src="https://www.facebook.com/plugins/post.php?href=${fbUrl}&show_text=true&width=500" width="100%" height="400" style="border:none;overflow:hidden" scrolling="auto" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy"></iframe></div>`;
+        return embedHtml;
+    }
+
+    const fbVideoMatch = text.match(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:video\.php\?v=\d+|[a-zA-Z0-9_.-]+\/videos\/\d+|reel\/\d+|share\/r\/[a-zA-Z0-9_-]+)/i);
+    if(fbVideoMatch) {
+        const fbUrl = encodeURIComponent(fbVideoMatch[0]);
+        embedHtml += `<div class="mt-2 relative overflow-hidden pb-[56.25%] rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-black"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.facebook.com/plugins/video.php?href=${fbUrl}&show_text=false&width=auto" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy"></iframe></div>`;
+        return embedHtml;
+    }
+
+    const spotifyMatch = text.match(/https?:\/\/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/i);
+    if(spotifyMatch) {
+        embedHtml += `<div class="mt-2 h-[152px] rounded-lg overflow-hidden border border-gray-100 dark:border-slate-700 shadow-sm"><iframe src="https://open.spotify.com/embed/${spotifyMatch[1]}/${spotifyMatch[2]}" width="100%" height="152" frameborder="0" allowtransparency="true" allow="encrypted-media" loading="lazy"></iframe></div>`;
+    }
+
+    return embedHtml;
+};
+
+window.notifyMentions = (text, postId) => {
+    if(!text || !window.currentUser) return;
+    const uids = new Set();
+    const sortedUsers = Object.keys(window.globalUsersCache).map(uid => ({uid, name: window.globalUsersCache[uid].name})).filter(u => u.name);
+    
+    sortedUsers.forEach(u => {
+        if (text.toLowerCase().includes(`@${u.name.toLowerCase()}`)) {
+            if (u.uid !== window.currentUser.uid) uids.add(u.uid);
+        }
+    });
+    
+    uids.forEach(uid => {
+        push(ref(db, `users/${uid}/notifications`), { 
+            type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
+        });
+    });
+};
+
+window.isPostPinned = (post, filterContext) => {
+    if (!post.pinned) return false;
+    const roleLevel = window.getRole(post.authorId).level;
+    
+    if (roleLevel >= 2) return true; 
+    if (filterContext === 'Games' || filterContext === 'profile') return true; 
+    return false;
+};
+
+// API Interactions & Toggles
+window.deleteItem = (dbPath, targetUid) => {
+    if(!window.canDelete(targetUid)) return window.showAlert("Permission denied");
+    window.showConfirm("Are you sure you want to permanently delete this?", () => {
+        remove(ref(db, dbPath));
+    });
+}
+
+window.togglePin = (postId, currentStatus, authorId) => {
+    if (window.currentUser && (window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === authorId)) {
+        update(ref(db, `community_posts/${postId}`), { pinned: !currentStatus });
+    }
+};
+
+window.toggleLock = (postId, currentStatus) => {
+    const post = window.allPosts.find(p => p.id === postId);
+    if (window.currentUser && (window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === post.authorId)) {
+        update(ref(db, `community_posts/${postId}`), { locked: !currentStatus });
+    }
+};
+
+window.toggleMod = (targetUid) => {
+    if(!window.currentUser || window.getRole(window.currentUser.uid).level !== 3) return window.showAlert("Only Admins can do this.");
+    const isCurrentlyMod = window.globalUsersCache[targetUid]?.isMod === true;
+    update(ref(db, `users/${targetUid}`), { isMod: !isCurrentlyMod });
+};
+
+window.toggleBan = (targetUid) => {
+    if(!window.canDelete(targetUid)) return window.showAlert("Permission denied. You cannot ban this user.");
+    const isBanned = window.globalUsersCache[targetUid]?.isBanned === true;
+    window.showConfirm(isBanned ? "Unban this user? They will be able to post and interact again." : "Ban this user? They will be locked out from posting, commenting, and reacting.", () => {
+        update(ref(db, `users/${targetUid}`), { isBanned: !isBanned });
+    });
+};
+
+window.toggleFollow = (targetUid) => {
+    if(!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+    if (window.checkBan()) return;
+    const isFollowing = window.globalUsersCache[window.currentUser.uid]?.following?.[targetUid];
+    
+    if(isFollowing) {
+        remove(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`));
+        remove(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`));
+        update(ref(db, `users/${targetUid}`), { points: increment(-5) });
+    } else {
+        set(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`), true);
+        set(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`), true);
+        update(ref(db, `users/${targetUid}`), { points: increment(5) });
+        
+        if(targetUid !== window.currentUser.uid) {
+            push(ref(db, `users/${targetUid}/notifications`), { 
+                type: 'follow', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false 
+            });
+        }
+    }
+};
+
+window.markNotifRead = (notifId) => {
+    if (!window.currentUser) return;
+    update(ref(db, `users/${window.currentUser.uid}/notifications/${notifId}`), { read: true });
+};
+
+window.clearNotifications = () => {
+    const myNotifs = window.globalUsersCache[window.currentUser.uid]?.notifications || {};
+    let updates = {};
+    for(let key in myNotifs) {
+        if(!myNotifs[key].read) updates[`${key}/read`] = true;
+    }
+    if(Object.keys(updates).length > 0) {
+        update(ref(db, `users/${window.currentUser.uid}/notifications`), updates);
+    }
+    document.getElementById('notif-modal').classList.add('hidden');
+};

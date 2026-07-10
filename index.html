@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hangout Posts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: {} } }
+        if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
+        else document.documentElement.classList.add('dark');
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-900 dark:bg-[#0b1120] dark:text-[#f8fafc] transition-colors duration-300">
+
+    <nav class="sticky top-0 z-50 px-3 py-2 flex justify-between items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-slate-800">
+        <div class="flex items-center space-x-2 truncate cursor-pointer" onclick="window.closeProfile(); window.clearIsolatedPost();">
+            <i class="fa-solid fa-gamepad text-blue-500 text-lg"></i>
+            <h1 class="text-base md:text-lg font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600 truncate">Hangout Posts</h1>
+            <div class="ml-2 flex items-center bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 dark:border-green-800/50">
+                <div class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                <span id="online-count">0</span>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+            <button onclick="document.getElementById('members-modal').classList.remove('hidden'); window.renderMembers(true);" class="p-1.5 text-gray-500 hover:text-blue-500 transition"><i class="fa-solid fa-users"></i></button>
+            <button id="theme-toggle" class="p-1.5 text-gray-500 hover:text-blue-500 transition"><i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:block"></i></button>
+            <div id="auth-container">
+                <button id="open-login-btn" class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-md">Login</button>
+                <div id="user-info" class="hidden flex items-center space-x-2">
+                    
+                    <button onclick="document.getElementById('notif-modal').classList.remove('hidden'); window.renderNotifications();" class="relative text-gray-400 hover:text-blue-500 transition pr-1">
+                        <i class="fa-solid fa-bell text-lg"></i>
+                        <span id="notif-badge" class="absolute -top-1 -right-0 bg-red-500 text-white text-[9px] font-bold px-1 rounded-full hidden shadow-sm border border-white dark:border-slate-800">0</span>
+                    </button>
+
+                    <button onclick="window.openEditProfile()" class="hover:opacity-80 transition">
+                        <img id="nav-avatar" class="w-7 h-7 rounded-full border border-blue-500 object-cover" src="">
+                    </button>
+                    <button id="logout-btn" class="text-gray-400 hover:text-red-500 p-1"><i class="fa-solid fa-right-from-bracket"></i></button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="w-full max-w-2xl mx-auto mt-2 px-2 pb-24 relative">
+
+        <main id="main-view" class="block">
+            
+            <div class="mb-2 flex items-center space-x-2" id="search-bar-container">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
+                    <input type="text" id="post-search" placeholder="Search posts or authors..." class="w-full bg-white dark:bg-slate-800 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none shadow-sm border border-gray-200 dark:border-slate-700">
+                </div>
+                <a href="https://hangoutrgm.github.io/chat/" target="_blank" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition" title="Open Global Chat">
+                    <i class="fa-solid fa-comments text-lg"></i>
+                </a>
+            </div>
+
+            <div class="flex space-x-1.5 overflow-x-auto scrollbar-hide py-1.5 mb-2 snap-x text-xs" id="category-filters">
+                <button class="filter-btn active snap-start bg-blue-600 text-white px-3 py-1 rounded-full font-semibold whitespace-nowrap shadow-sm" data-cat="All">All</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="My Posts">👤 My Posts</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="General">General</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Games">🎮 Games</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Announcements">📢 Announcements</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Rules">📜 Rules</button>
+            </div>
+
+            <div id="create-post-box" class="hidden bg-white dark:bg-slate-800 rounded-xl p-3 mb-4 shadow-sm border border-gray-200 dark:border-slate-700">
+                <textarea id="post-text" class="w-full bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" rows="2" placeholder="Share something or @mention someone..."></textarea>
+                
+                <div class="flex items-center space-x-2 mt-2">
+                    <label class="cursor-pointer text-gray-500 hover:text-blue-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600">
+                        <i class="fa-solid fa-image text-lg"></i>
+                        <input type="file" id="post-image-file" accept="image/*" class="hidden" onchange="document.getElementById('file-name').innerText = this.files[0] ? this.files[0].name : ''">
+                    </label>
+                    <input type="text" id="post-image-url" class="flex-1 bg-gray-50 dark:bg-slate-900 text-[11px] text-gray-700 dark:text-gray-300 rounded-lg p-2 focus:outline-none border border-gray-100 dark:border-slate-700 focus:border-blue-500" placeholder="Or paste image URL...">
+                </div>
+                <div id="file-name" class="text-[9px] text-blue-500 truncate mt-1 font-bold px-1"></div>
+
+                <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 dark:border-slate-700">
+                    <select id="post-category" class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 text-xs rounded p-1 focus:outline-none">
+                        <option value="General">General</option>
+                        <option value="Games">🎮 Games</option>
+                        <option value="Announcements" class="mod-only hidden">📢 Announcements (Mod+)</option>
+                        <option value="Rules" class="mod-only hidden">📜 Rules (Mod+)</option>
+                    </select>
+                    <button id="submit-post-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition">Post</button>
+                </div>
+            </div>
+
+            <div id="feed" class="space-y-3"></div>
+        </main>
+
+        <main id="profile-view" class="hidden">
+            <button onclick="window.closeProfile()" class="mb-3 text-xs font-bold text-gray-500 hover:text-blue-500 transition flex items-center"><i class="fa-solid fa-arrow-left mr-1"></i> Back to Feed</button>
+            <div id="profile-header"></div>
+            <div class="flex items-center space-x-2 mb-3 mt-4">
+                <i class="fa-solid fa-layer-group text-blue-500"></i><h2 class="font-bold dark:text-white text-sm">Posts</h2>
+            </div>
+            <div id="profile-feed" class="space-y-3"></div>
+        </main>
+    </div>
+
+    <div id="custom-alert-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 flex flex-col items-center text-center transform transition-all">
+            <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 text-blue-500 rounded-full flex items-center justify-center text-xl mb-3"><i class="fa-solid fa-bell"></i></div>
+            <h2 class="text-lg font-bold mb-2 dark:text-white">Notice</h2>
+            <p id="custom-alert-msg" class="text-sm text-gray-600 dark:text-gray-300 mb-5"></p>
+            <button onclick="document.getElementById('custom-alert-modal').classList.add('hidden')" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition shadow-sm">Got it</button>
+        </div>
+    </div>
+
+    <div id="custom-confirm-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 flex flex-col items-center text-center transform transition-all">
+            <div class="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full flex items-center justify-center text-xl mb-3"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h2 class="text-lg font-bold mb-2 dark:text-white">Are you sure?</h2>
+            <p id="custom-confirm-msg" class="text-sm text-gray-600 dark:text-gray-300 mb-5"></p>
+            <div class="flex space-x-3 w-full">
+                <button onclick="document.getElementById('custom-confirm-modal').classList.add('hidden')" class="flex-1 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold py-2 rounded-lg transition hover:bg-gray-200 dark:hover:bg-slate-600 border border-gray-200 dark:border-slate-600">Cancel</button>
+                <button id="custom-confirm-btn" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded-lg transition shadow-sm">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="image-viewer-modal" class="hidden fixed inset-0 z-[120] flex items-center justify-center p-2 bg-black/95 backdrop-blur-sm" onclick="window.closeImageViewer()">
+        <button onclick="window.closeImageViewer()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10 transition p-2"><i class="fa-solid fa-xmark text-2xl"></i></button>
+        <img id="viewer-img" src="" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl transition-transform" onclick="event.stopPropagation()">
+    </div>
+    
+    <div id="edit-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-4 shadow-2xl relative border border-gray-200 dark:border-slate-700 flex flex-col">
+            <button onclick="document.getElementById('edit-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200 z-10"><i class="fa-solid fa-xmark"></i></button>
+            <h2 class="text-lg font-bold mb-3 dark:text-white flex items-center"><i class="fa-solid fa-pen text-blue-500 mr-2"></i> Edit Content</h2>
+            
+            <textarea id="edit-content-input" class="w-full bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none h-32 border border-gray-100 dark:border-slate-700 shadow-inner" placeholder="Edit your text here..."></textarea>
+            
+            <div class="flex justify-end mt-3 space-x-2">
+                <button onclick="document.getElementById('edit-modal').classList.add('hidden')" class="px-4 py-1.5 text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-gray-100 dark:bg-slate-700 rounded-lg transition">Cancel</button>
+                <button id="save-edit-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm transition">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notif-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-4 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[80vh] flex flex-col">
+            <button onclick="document.getElementById('notif-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200 z-10"><i class="fa-solid fa-xmark"></i></button>
+            <h2 class="text-lg font-bold mb-3 text-center dark:text-white border-b border-gray-100 dark:border-slate-700 pb-2"><i class="fa-solid fa-bell text-blue-500 mr-1"></i> Notifications</h2>
+            
+            <div id="notif-content" class="overflow-y-auto flex-1 space-y-1 mb-3 scrollbar-hide text-left"></div>
+            <button onclick="window.clearNotifications()" class="w-full bg-blue-600 text-white font-bold p-2.5 rounded-lg text-sm shadow-md transition hover:bg-blue-500 shrink-0"><i class="fa-solid fa-check-double mr-1"></i> Mark All as Read</button>
+        </div>
+    </div>
+    
+    <div id="reactors-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-4 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[80vh] flex flex-col">
+            <button onclick="document.getElementById('reactors-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200 z-10"><i class="fa-solid fa-xmark"></i></button>
+            <h2 class="text-lg font-bold mb-3 text-center dark:text-white border-b border-gray-100 dark:border-slate-700 pb-2"><i class="fa-solid fa-users text-blue-500 mr-1"></i> Reactors (<span id="reactors-total-count">0</span>)</h2>
+            
+            <div id="reactors-content" class="overflow-y-auto flex-1 space-y-1 scrollbar-hide text-left min-h-[100px]"></div>
+        </div>
+    </div>
+
+    <div id="members-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-md p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[85vh] flex flex-col">
+            <button onclick="document.getElementById('members-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
+            
+            <div class="flex items-center justify-between mb-3 shrink-0">
+                <h2 class="text-lg font-bold dark:text-white flex items-center"><i class="fa-solid fa-users mr-2 text-blue-500"></i> Members <span id="members-total-count" class="text-[10px] bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 font-bold px-2 py-0.5 rounded-full ml-2 border border-gray-200 dark:border-slate-600 shadow-sm">0 Total</span></h2>
+            </div>
+
+            <div class="flex space-x-1.5 overflow-x-auto scrollbar-hide pb-2 mb-2 snap-x text-[11px] shrink-0">
+                <button class="member-filter-btn active snap-start bg-blue-600 text-white px-3 py-1 rounded-full whitespace-nowrap shadow-sm font-bold border border-transparent" data-filter="All">All</button>
+                <button class="member-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap flex items-center font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Online">
+                    <div class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></div> Online <span id="members-online-count" class="ml-1 text-[9px] bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white px-1.5 rounded-full border border-gray-300 dark:border-slate-600">0</span>
+                </button>
+                <button class="member-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Mods">Mods</button>
+                <button class="member-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Admins">Admins</button>
+            </div>
+
+            <div class="mb-3 relative shrink-0">
+                <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
+                <input type="text" id="member-search" placeholder="Search members..." class="w-full bg-gray-100 dark:bg-slate-900 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+            </div>
+            <div id="members-list" class="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-hide relative"></div>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-xs p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700">
+            <button onclick="document.getElementById('profile-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400"><i class="fa-solid fa-xmark"></i></button>
+            <h2 class="text-lg font-bold mb-3 dark:text-white text-center">Edit Profile</h2>
+            
+            <div class="flex justify-center mb-1">
+                <img id="profile-preview" loading="lazy" class="w-16 h-16 rounded-full border-2 border-blue-500 object-cover bg-gray-100 dark:bg-slate-700">
+            </div>
+            
+            <label class="block text-center mb-3 cursor-pointer text-blue-500 text-xs font-bold hover:underline">
+                <i class="fa-solid fa-camera mr-1"></i> Upload Picture
+                <input type="file" id="profile-pic-file" accept="image/*" class="hidden" onchange="
+                    const file = this.files[0];
+                    if(file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) { document.getElementById('profile-preview').src = e.target.result; }
+                        reader.readAsDataURL(file);
+                    }
+                ">
+            </label>
+
+            <input type="text" id="profile-name" placeholder="Display Name" class="w-full bg-gray-100 dark:bg-slate-900 text-sm p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+            
+            <div class="flex space-x-2 mb-2">
+                <select id="profile-gender" class="w-1/2 bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                    <option value="">Gender (Hidden)</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Non-binary">Non-binary</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+                <select id="profile-relationship" class="w-1/2 bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                    <option value="">Status (Hidden)</option>
+                    <option value="Single">Single</option>
+                    <option value="In a relationship">In a relationship</option>
+                    <option value="Engaged">Engaged</option>
+                    <option value="Married">Married</option>
+                    <option value="Complicated">It's complicated</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+            </div>
+            
+            <input type="text" id="profile-partner" placeholder="Partner Name (e.g. @Gemini)" class="hidden w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-pink-200 dark:border-pink-900/50">
+            <input type="text" id="profile-pic-url" placeholder="Profile Pic URL (Optional)" class="w-full bg-gray-100 dark:bg-slate-900 text-[10px] p-2.5 rounded-lg mb-4 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+            
+            <button id="view-profile-btn" class="w-full bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 rounded-lg text-sm mb-2 shadow-sm border border-gray-300 dark:border-slate-600 transition hover:bg-gray-300 dark:hover:bg-slate-600"><i class="fa-regular fa-user mr-1"></i> View My Profile</button>
+            <button id="save-profile-btn" class="w-full bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500">Save Changes</button>
+        </div>
+    </div>
+
+    <div id="auth-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700">
+            <button onclick="document.getElementById('auth-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400"><i class="fa-solid fa-xmark"></i></button>
+            <h2 class="text-lg font-bold mb-4 text-center dark:text-white" id="auth-title">Join Hangout</h2>
+            <div id="email-form" class="space-y-2">
+                <input type="email" id="auth-email" placeholder="Email" class="w-full bg-gray-100 dark:bg-slate-900 text-sm p-2.5 rounded-lg dark:text-white focus:outline-none">
+                <input type="password" id="auth-password" placeholder="Password" class="w-full bg-gray-100 dark:bg-slate-900 text-sm p-2.5 rounded-lg dark:text-white focus:outline-none">
+                <button id="auth-action-btn" class="w-full bg-blue-600 text-white font-bold p-2.5 rounded-lg text-sm shadow-md mt-1">Sign In</button>
+                
+                <div class="text-center mt-2">
+                    <button id="forgot-pass-btn" class="text-blue-500 text-xs font-semibold hover:underline">Forgot Password?</button>
+                </div>
+                
+                <div class="text-center text-xs text-gray-500 mt-1"><span id="auth-toggle-text">Need an account?</span> <button id="auth-toggle-btn" class="text-blue-500 font-bold ml-1">Sign Up</button></div>
+            </div>
+            <div class="my-3 flex items-center"><div class="flex-grow border-t border-gray-200 dark:border-slate-600"></div><span class="mx-2 text-[10px] text-gray-400">OR</span><div class="flex-grow border-t border-gray-200 dark:border-slate-600"></div></div>
+            <button id="guest-login-btn" class="w-full bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-gray-200 font-bold p-2.5 rounded-lg text-sm hover:bg-gray-300 transition"><i class="fa-solid fa-user-secret mr-1"></i> Login as Guest</button>
+            <p id="auth-error" class="text-red-500 text-xs text-center mt-2 hidden"></p>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
