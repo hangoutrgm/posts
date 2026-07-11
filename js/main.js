@@ -92,29 +92,26 @@ const setupVisibilityToggle = () => {
         if (submitBtn && !document.getElementById('visibility-toggle-btn')) {
             const eyeBtn = document.createElement('button');
             eyeBtn.id = 'visibility-toggle-btn';
-            eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 text-lg mr-1.5"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
-            // V6.2 UI FIX: Added mr-3 margin and inserting BEFORE the submit button
-            eyeBtn.className = 'mr-2 px-3 py-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-slate-700 transition flex items-center justify-center shrink-0 cursor-pointer';
+            eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 mr-1 text-xs"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
+            eyeBtn.className = 'px-2.5 py-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 transition flex items-center shrink-0 cursor-pointer border border-gray-200 dark:border-slate-600 text-xs';
             eyeBtn.title = "Public Post";
             
             eyeBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 if (window.postVisibility === 'public') {
                     window.postVisibility = 'private';
-                    // Update this line:
-                    eyeBtn.innerHTML = '<i class="fas fa-eye-slash text-gray-500 text-lg mr-1.5"></i><span class="text-xs font-bold text-gray-500">Private</span>';
+                    eyeBtn.innerHTML = '<i class="fas fa-eye-slash text-gray-400 mr-1 text-xs"></i><span class="text-xs font-bold text-gray-500">Private</span>';
                     eyeBtn.title = "Private Post (Only you and mentioned users)";
                     if(window.showAlert) window.showAlert("Post set to Private");
                 } else {
                     window.postVisibility = 'public';
-                    // Update this line:
-                    eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 text-lg mr-1.5"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
+                    eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 mr-1 text-xs"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
                     eyeBtn.title = "Public Post";
                     if(window.showAlert) window.showAlert("Post set to Public");
                 }
             });
             
-            // Insert exactly before the submit button
+            // Insert inside the flex group div, before the Post button
             submitBtn.parentNode.insertBefore(eyeBtn, submitBtn);
         }
     };
@@ -684,9 +681,18 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     
     if(!finalPic) finalPic = cache.pic || window.currentUser.photoURL || window.generateAvatar(window.currentUser.uid);
 
+    // Collect gallery images (up to 4 slots)
+    const galleryImages = [];
+    for (let i = 0; i < 4; i++) {
+        const urlInput = document.querySelector(`.gallery-url-input[data-slot="${i}"]`);
+        const fileInput2 = document.querySelector(`.gallery-file-input[data-slot="${i}"]`);
+        const url = urlInput ? urlInput.value.trim() : '';
+        if (url) galleryImages.push(url);
+    }
+
     if(window.currentUser) {
         try {
-            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, gender, relationship, partner });
+            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, gender, relationship, partner, galleryImages });
             try { await updateProfile(window.currentUser, { displayName: finalName, photoURL: finalPic }); } catch (e) { }
             
             document.getElementById('profile-modal').classList.add('hidden');

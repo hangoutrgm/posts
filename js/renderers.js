@@ -102,6 +102,54 @@ window.openEditProfile = () => {
     document.getElementById('profile-partner').value = cache.partner || '';
     document.getElementById('profile-relationship').dispatchEvent(new Event('change'));
 
+    // Build gallery slots
+    const gallery = cache.galleryImages || [];
+    const slotsContainer = document.getElementById('gallery-slots');
+    slotsContainer.className = 'flex gap-2';
+    slotsContainer.innerHTML = '';
+    for (let i = 0; i < 4; i++) {
+        const existingUrl = gallery[i] || '';
+        const slot = document.createElement('div');
+        slot.className = 'relative flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden bg-gray-100 dark:bg-slate-900';
+        slot.style.height = '90px';
+        slot.innerHTML = `
+            <div class="w-full h-full flex items-center justify-center">
+                ${existingUrl ? `<img src="${existingUrl}" class="w-full h-full object-cover gallery-slot-preview" data-slot="${i}">` : `<i class="fa-solid fa-image text-gray-300 dark:text-slate-600 text-2xl gallery-slot-empty" data-slot="${i}"></i>`}
+            </div>
+            <label class="absolute inset-0 cursor-pointer flex flex-col items-center justify-end pb-1 bg-black/0 hover:bg-black/30 transition group">
+                <span class="text-[9px] text-white font-bold opacity-0 group-hover:opacity-100 transition drop-shadow">Upload / URL</span>
+                <input type="file" accept="image/*" class="hidden gallery-file-input" data-slot="${i}">
+            </label>
+            <input type="text" placeholder="or paste URL..." value="${existingUrl}" class="gallery-url-input absolute bottom-0 left-0 right-0 text-[9px] p-1 bg-black/60 text-white placeholder-gray-400 focus:outline-none hidden" data-slot="${i}">
+        `;
+        // Click the empty area = open file picker OR show URL input on double-click
+        slot.querySelector('.gallery-file-input').addEventListener('change', async function() {
+            const file = this.files[0]; if(!file) return;
+            try {
+                const compressed = await window.compressImage(file);
+                slot.querySelector('.gallery-url-input').value = compressed;
+                // Update preview
+                let prev = slot.querySelector('.gallery-slot-preview');
+                if (!prev) {
+                    prev = document.createElement('img');
+                    prev.className = 'w-full h-full object-cover gallery-slot-preview';
+                    prev.dataset.slot = i;
+                    slot.querySelector('.gallery-slot-empty')?.remove();
+                    slot.querySelector('.w-full.h-full').appendChild(prev);
+                }
+                prev.src = compressed;
+            } catch(e) {}
+        });
+        slotsContainer.appendChild(slot);
+        // Show URL input on label click if no file chosen
+        slot.querySelector('label').addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            const urlInput = slot.querySelector('.gallery-url-input');
+            urlInput.classList.toggle('hidden');
+            if (!urlInput.classList.contains('hidden')) urlInput.focus();
+        });
+    }
+
     document.getElementById('profile-modal').classList.remove('hidden');
 };
 
@@ -339,6 +387,17 @@ window.renderProfileData = (resetLimit = true) => {
             <h3 class="text-xs font-bold text-gray-500 uppercase mb-1">Followers (${followerCount})</h3>
             ${followersHtml}
         </div>
+        ${(uData.galleryImages && uData.galleryImages.filter(u => u).length > 0) ? `
+        <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+            <h3 class="text-xs font-bold text-gray-500 uppercase mb-2"><i class="fa-solid fa-images text-blue-500 mr-1"></i> Photos</h3>
+            <div class="flex gap-2">
+                ${uData.galleryImages.filter(u => u).slice(0,4).map(imgUrl => `
+                    <div class="flex-1 min-w-0 rounded-lg overflow-hidden border border-gray-100 dark:border-slate-700 cursor-pointer hover:opacity-90 transition" style="height:120px" onclick="window.viewImage('${imgUrl}')">
+                        <img src="${imgUrl}" loading="lazy" class="w-full h-full object-cover">
+                    </div>
+                `).join('')}
+            </div>
+        </div>` : ''}
     `;
 
     const pFeed = document.getElementById('profile-feed');
@@ -881,7 +940,7 @@ window.showReactors = (postId, commentId = null) => {
                     <img src="${u.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600">
                     <span class="font-bold text-[13px] text-gray-900 dark:text-white">${u.name}</span>
                 </div>
-                <div class="text-lg bg-white dark:bg-slate-800 w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-gray-100 dark:border-slate-700">${icons[r.type] || `<span>${r.type}</span>`}</div>
+                <div class="text-base bg-white dark:bg-slate-800 min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center shadow-sm border border-gray-100 dark:border-slate-700 shrink-0">${icons[r.type] || `<span class="text-sm">${r.type}</span>`}</div>
             </div>
             `;
         }).join('');

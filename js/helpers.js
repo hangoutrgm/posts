@@ -93,11 +93,31 @@ window.copyProfileLink = function(uid) {
 window.viewImage = (src) => {
     document.getElementById('viewer-img').src = src;
     document.getElementById('image-viewer-modal').classList.remove('hidden');
+    
+    // Attempt to fetch image as blob to allow download for cross-origin images
+    const downloadBtn = document.getElementById('viewer-download-btn');
+    downloadBtn.href = '#';
+    fetch(src)
+        .then(res => res.blob())
+        .then(blob => {
+            const blobUrl = URL.createObjectURL(blob);
+            downloadBtn.href = blobUrl;
+        })
+        .catch(() => {
+            // Fallback: just link directly (may open new tab for cross-origin)
+            downloadBtn.href = src;
+        });
 };
 
 window.closeImageViewer = () => {
+    const downloadBtn = document.getElementById('viewer-download-btn');
+    // Revoke any blob URL to free memory
+    if (downloadBtn.href && downloadBtn.href.startsWith('blob:')) {
+        URL.revokeObjectURL(downloadBtn.href);
+    }
     document.getElementById('image-viewer-modal').classList.add('hidden');
     document.getElementById('viewer-img').src = '';
+    downloadBtn.href = '#';
 };
 
 window.compressImage = (file, heavy = false) => {
