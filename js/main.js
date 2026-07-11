@@ -380,13 +380,13 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     if (file && !window.checkUploadLimit()) return;
     
     const btn = document.getElementById('submit-post-btn');
-    btn.innerText = "Processing...";
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
     btn.disabled = true;
 
     try {
         let finalImage = imgUrl; 
         if (file) {
-            btn.innerText = "Compressing...";
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             finalImage = await window.compressImage(file); 
             window.incrementUploadLimit();
         }
@@ -411,8 +411,7 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         window.postVisibility = 'public';
         const eyeBtn = document.getElementById('visibility-toggle-btn');
         if(eyeBtn) {
-            // Update this line to include the span!
-            eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 text-lg mr-1.5"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
+            eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 mr-1 text-xs"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
             eyeBtn.title = "Public Post";
         }
         
@@ -436,7 +435,7 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     if (fileInput) { fileInput.value = ''; document.getElementById(`comment-img-name-${prefix}-${postId}`).innerText = ''; }
     
     const btn = document.getElementById(`comment-submit-btn-${prefix}-${postId}`);
-    if(btn) { btn.innerText = "..."; btn.disabled = true; }
+    if(btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; btn.disabled = true; }
     
     if (file && !window.checkUploadLimit()) {
         if(btn) { btn.innerText = "Send"; btn.disabled = false; }
