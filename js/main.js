@@ -54,21 +54,38 @@ document.querySelectorAll('.member-filter-btn').forEach(btn => {
 window.postVisibility = 'public';
 window.currentMentionMatch = null;
 
-// V6.2 OVERRIDE: Upgraded notification system with @everyone capability
+// V6.2 & V6.9 OVERRIDE: Upgraded notification system with @everyone and @mods capability
 window.notifyMentions = (text, postId) => {
     if(!window.currentUser) return;
     const myRole = window.getRole(window.currentUser.uid).level;
+    const notifiedUids = new Set();
+    const textLower = text.toLowerCase();
     
     // Check if user is Mod/Admin and triggered @everyone
-    if (myRole >= 2 && text.toLowerCase().includes('@everyone')) {
+    if (myRole >= 2 && textLower.includes('@everyone')) {
         Object.keys(window.globalUsersCache).forEach(uid => {
-            if (uid !== window.currentUser.uid) {
+            const u = window.globalUsersCache[uid];
+            // Skip self and guests
+            if (uid !== window.currentUser.uid && !u.isGuest && !(u.name && u.name.startsWith("Guest_"))) {
                 push(ref(db, `users/${uid}/notifications`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
+                notifiedUids.add(uid);
             }
         });
-        return; // Prevent duplicate individual notifications
+    }
+    
+    // Check for @mods
+    if (textLower.includes('@mods')) {
+        Object.keys(window.globalUsersCache).forEach(uid => {
+            // Notify if user is Mod/Admin, not self, and not already notified
+            if (uid !== window.currentUser.uid && !notifiedUids.has(uid) && window.getRole(uid).level >= 2) {
+                push(ref(db, `users/${uid}/notifications`), {
+                    type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
+                });
+                notifiedUids.add(uid);
+            }
+        });
     }
     
     // Standard Individual Mentions
@@ -77,10 +94,11 @@ window.notifyMentions = (text, postId) => {
         matches.forEach(match => {
             const name = match.substring(1).toLowerCase();
             const targetUser = Object.values(window.globalUsersCache).find(u => u.name && u.name.toLowerCase() === name);
-            if(targetUser && targetUser.uid !== window.currentUser.uid) {
+            if(targetUser && targetUser.uid !== window.currentUser.uid && !notifiedUids.has(targetUser.uid)) {
                 push(ref(db, `users/${targetUser.uid}/notifications`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
+                notifiedUids.add(targetUser.uid);
             }
         });
     }
@@ -154,6 +172,11 @@ const setupMentionSystem = () => {
                 const allUsers = Object.values(window.globalUsersCache || {});
                 let matchedUsers = allUsers.filter(u => u.name && u.name.toLowerCase().includes(query)).slice(0, 5);
                 
+                // V6.9 FEATURE: @mods suggestion
+                if ("mods".includes(query)) {
+                    matchedUsers.unshift({ name: "mods", isMods: true });
+                }
+                
                 // V6.2 FEATURE: @everyone suggestion for Mods and Admins
                 if (myRole >= 2 && "everyone".includes(query)) {
                     matchedUsers.unshift({ name: "everyone", isEveryone: true });
@@ -165,11 +188,15 @@ const setupMentionSystem = () => {
                         const item = document.createElement('div');
                         item.className = 'p-2 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 transition';
                         
-                        const iconHtml = u.isEveryone 
-                            ? `<div class="w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] shadow-sm"><i class="fa-solid fa-bullhorn"></i></div>` 
-                            : `<img src="${u.pic || window.generateAvatar(u.uid || 'guest')}" class="w-6 h-6 rounded-full object-cover">`;
+                        let iconHtml = `<img src="${u.pic || window.generateAvatar(u.uid || 'guest')}" class="w-6 h-6 rounded-full object-cover">`;
+                        if (u.isEveryone) iconHtml = `<div class="w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] shadow-sm"><i class="fa-solid fa-bullhorn"></i></div>`;
+                        else if (u.isMods) iconHtml = `<div class="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-[10px] shadow-sm"><i class="fa-solid fa-shield"></i></div>`;
 
-                        item.innerHTML = `${iconHtml} <span class="${u.isEveryone ? 'font-bold text-red-500' : ''}">${u.name}</span>`;
+                        let textClass = '';
+                        if (u.isEveryone) textClass = 'font-bold text-red-500';
+                        else if (u.isMods) textClass = 'font-bold text-green-500';
+
+                        item.innerHTML = `${iconHtml} <span class="${textClass}">${u.name}</span>`;
                         
                         item.addEventListener('mousedown', (ev) => {
                             ev.preventDefault(); 
@@ -317,8 +344,28 @@ window.handleDeepLinks();
 });
 
 // ==========================================
+// ==========================================
 // ACTIONS (POST/COMMENT/EDIT)
 // ==========================================
+
+window.checkUploadLimit = () => {
+    if (!window.currentUser) return false;
+    const today = new Date().toLocaleDateString('en-CA');
+    const userData = window.globalUsersCache[window.currentUser.uid] || {};
+    const uploadsToday = userData.uploadStats?.date === today ? userData.uploadStats.count : 0;
+    if (uploadsToday >= 5) {
+        window.showAlert("You have reached your daily limit of 5 image uploads.");
+        return false;
+    }
+    return true;
+};
+
+window.incrementUploadLimit = () => {
+    if (!window.currentUser) return;
+    const today = new Date().toLocaleDateString('en-CA');
+    update(ref(db, `users/${window.currentUser.uid}/uploadStats`), { date: today, count: increment(1) });
+};
+
 document.getElementById('submit-post-btn').addEventListener('click', async () => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return; 
@@ -330,6 +377,8 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     
     if (!text && !imgUrl && !file) return;
     
+    if (file && !window.checkUploadLimit()) return;
+    
     const btn = document.getElementById('submit-post-btn');
     btn.innerText = "Processing...";
     btn.disabled = true;
@@ -337,18 +386,9 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     try {
         let finalImage = imgUrl; 
         if (file) {
-            const today = new Date().toLocaleDateString('en-CA');
-            const userData = window.globalUsersCache[window.currentUser.uid] || {};
-            const uploadsToday = userData.uploadStats?.date === today ? userData.uploadStats.count : 0;
-            
-            if (uploadsToday >= 5) {
-                window.showAlert("You have reached your daily limit of 5 image uploads.");
-                btn.innerText = "Post"; btn.disabled = false; return;
-            }
-            
             btn.innerText = "Compressing...";
             finalImage = await window.compressImage(file); 
-            update(ref(db, `users/${window.currentUser.uid}/uploadStats`), { date: today, count: increment(1) });
+            window.incrementUploadLimit();
         }
 
         const postRef = push(ref(db, 'community_posts'));
@@ -397,11 +437,17 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     
     const btn = document.getElementById(`comment-submit-btn-${prefix}-${postId}`);
     if(btn) { btn.innerText = "..."; btn.disabled = true; }
+    
+    if (file && !window.checkUploadLimit()) {
+        if(btn) { btn.innerText = "Send"; btn.disabled = false; }
+        return;
+    }
 
     let finalImage = null;
     if (file) {
         try { 
             finalImage = await window.compressImage(file, true);
+            window.incrementUploadLimit();
         } catch(e) { 
             console.error("Compression failed", e); 
             if(btn) { btn.innerText = "Send"; btn.disabled = false; }
@@ -764,7 +810,7 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
             const newPic = window.generateAvatar(cred.user.uid);
             await updateProfile(cred.user, { displayName: newName, photoURL: newPic });
             
-            update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic });
+            update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic, isGuest: true });
             document.getElementById('nav-avatar').src = newPic;
             document.getElementById('auth-modal').classList.add('hidden');
         } catch(e) { showError("Failed to create guest account."); }
