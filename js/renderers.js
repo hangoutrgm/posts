@@ -726,7 +726,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     let adminControls = '';
     if(window.currentUser) {
         if(window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === post.authorId) {
-            adminControls += `<button onclick="window.togglePin('${post.id}', ${post.pinned}, '${post.authorId}')" class="text-gray-400 hover:text-green-500 mr-2 text-xs" title="${post.pinned ? 'Unpin' : 'Pin Post'}"><i class="fa-solid fa-thumbtack ${post.pinned ? 'text-green-500' : ''}"></i></button>`;
+            const isProfilePinned = !!post.profilePinned || !!post.pinned;
+            const isFeedPinned = !!post.feedPinned || (!!post.pinned && window.getRole(post.authorId).level >= 2);
+            const isAnyPinned = isProfilePinned || isFeedPinned;
+            adminControls += `<button onclick="window.openPinModal('${post.id}', ${isProfilePinned}, ${isFeedPinned}, '${post.authorId}')" class="text-gray-400 hover:text-green-500 mr-2 text-xs" title="Pin Post Options"><i class="fa-solid fa-thumbtack ${isAnyPinned ? 'text-green-500' : ''}"></i></button>`;
         }
         
         if(window.currentUser.uid === post.authorId || window.getRole(window.currentUser.uid).level >= 2) {

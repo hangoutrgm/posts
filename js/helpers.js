@@ -240,12 +240,10 @@ window.notifyMentions = (text, postId) => {
 };
 
 window.isPostPinned = (post, filterContext) => {
-    if (!post.pinned) return false;
-    const roleLevel = window.getRole(post.authorId).level;
-    
-    if (roleLevel >= 2) return true; 
-    if (filterContext === 'Games' || filterContext === 'profile') return true; 
-    return false;
+    if (filterContext === 'profile') {
+        return !!post.profilePinned || !!post.pinned;
+    }
+    return !!post.feedPinned || (!!post.pinned && window.getRole(post.authorId).level >= 2);
 };
 
 // API Interactions & Toggles
@@ -256,10 +254,46 @@ window.deleteItem = (dbPath, targetUid) => {
     });
 }
 
-window.togglePin = (postId, currentStatus, authorId) => {
-    if (window.currentUser && (window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === authorId)) {
-        update(ref(db, `community_posts/${postId}`), { pinned: !currentStatus });
+window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
+    if (!window.currentUser) return;
+    
+    const roleLevel = window.getRole(window.currentUser.uid).level;
+    const isAuthor = window.currentUser.uid === authorId;
+    
+    if (!isAuthor && roleLevel < 2) return; 
+    
+    const btnProfile = document.getElementById('btn-pin-profile');
+    const textProfile = document.getElementById('text-pin-profile');
+    const btnFeed = document.getElementById('btn-pin-feed');
+    const textFeed = document.getElementById('text-pin-feed');
+    
+    if (isAuthor) {
+        btnProfile.classList.remove('hidden');
+        textProfile.innerText = isProfilePinned ? "Unpin from Profile" : "Pin to Profile";
+        btnProfile.onclick = () => {
+            document.getElementById('pin-options-modal').classList.add('hidden');
+            window.executePin(postId, 'profilePinned', !isProfilePinned);
+        };
+    } else {
+        btnProfile.classList.add('hidden');
     }
+    
+    if (roleLevel >= 2) {
+        btnFeed.classList.remove('hidden');
+        textFeed.innerText = isFeedPinned ? "Unpin from Global Feed" : "Pin to Global Feed";
+        btnFeed.onclick = () => {
+            document.getElementById('pin-options-modal').classList.add('hidden');
+            window.executePin(postId, 'feedPinned', !isFeedPinned);
+        };
+    } else {
+        btnFeed.classList.add('hidden');
+    }
+    
+    document.getElementById('pin-options-modal').classList.remove('hidden');
+};
+
+window.executePin = (postId, pinType, targetStatus) => {
+    update(ref(db, `community_posts/${postId}`), { [pinType]: targetStatus });
 };
 
 window.toggleLock = (postId, currentStatus) => {
