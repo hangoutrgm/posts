@@ -595,6 +595,39 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
     }
 };
 
+window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
+    if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+    if (window.checkBan()) return;
+    let post = window.allPosts.find(p => p.id === postId); if(!post) return;
+    let comment = post.comments && post.comments[commentId]; if(!comment) return;
+    let reply = comment.replies && comment.replies[replyId]; if(!reply) return;
+    
+    let userReactCount = 0;
+    if (reply.reactions) {
+        for (let t in reply.reactions) {
+            if (reply.reactions[t][window.currentUser.uid]) userReactCount++;
+        }
+    }
+    
+    const hasReacted = reply.reactions && reply.reactions[type] && reply.reactions[type][window.currentUser.uid];
+    if(hasReacted) {
+        remove(ref(db, `community_posts/${postId}/comments/${commentId}/replies/${replyId}/reactions/${type}/${window.currentUser.uid}`));
+        if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") update(ref(db, `users/${replyAuthorId}`), { points: increment(-1) });
+    } else {
+        if (userReactCount >= 3) {
+            window.showAlert("You can only have up to 3 simultaneous reactions on a reply.");
+            return;
+        }
+        set(ref(db, `community_posts/${postId}/comments/${commentId}/replies/${replyId}/reactions/${type}/${window.currentUser.uid}`), true);
+        if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
+            update(ref(db, `users/${replyAuthorId}`), { points: increment(1) });
+            push(ref(db, `users/${replyAuthorId}/notifications`), { 
+                type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
+            });
+        }
+    }
+};
+
 // ==========================================
 // COMMENT & REPLY UI TOGGLES
 // ==========================================

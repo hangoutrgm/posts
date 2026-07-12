@@ -37,6 +37,7 @@ window.renderNotifications = () => {
             
             if(n.type === 'react_post') { text = 'reacted to your post.'; icon = '❤️'; }
             else if(n.type === 'react_comment') { text = 'reacted to your comment.'; icon = '❤️'; }
+            else if(n.type === 'react_reply') { text = 'reacted to your reply.'; icon = '❤️'; }
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
@@ -580,6 +581,39 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         return { triggerHtml, activeHtml };
     };
 
+    const generateReplyReactionsUI = (r, cId, rId) => {
+        const rRx = r.reactions || {};
+        const activeReactions = Object.keys(rRx).map(type => ({
+            type,
+            count: Object.keys(rRx[type]).length,
+            hasReacted: window.currentUser && rRx[type][window.currentUser.uid]
+        })).filter(rx => rx.count > 0).sort((a, b) => b.count - a.count);
+        
+        let activeHtml = '';
+        activeReactions.forEach(rx => {
+            const baseClass = "flex items-center space-x-1 transition shrink-0 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-600/50 text-[9px]";
+            activeHtml += `<button onclick="window.reactReply('${post.id}', '${cId}', '${rId}', '${r.uid}', '${rx.type}')" class="${baseClass} ${rx.hasReacted ? getRxColor(rx.type) : `text-gray-400 bg-white dark:bg-slate-800 ${getRxHover(rx.type)}`}">
+                ${getRxIcon(rx.type)} <span>${rx.count}</span>
+            </button>`;
+        });
+
+        const triggerHtml = `
+            <div class="relative group/rx flex shrink-0">
+                <button class="flex items-center space-x-1 transition shrink-0 px-1 py-0.5 rounded border border-gray-200 dark:border-slate-600/50 text-[9px] text-gray-400 bg-white dark:bg-slate-800 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-bold cursor-pointer">
+                    <i class="fa-regular fa-thumbs-up"></i>
+                </button>
+                <div class="absolute bottom-full left-0 mb-1 invisible opacity-0 flex group-hover/rx:visible group-hover/rx:opacity-100 transition-all duration-300 delay-300 group-hover/rx:delay-0 items-center space-x-1 bg-white dark:bg-slate-800 p-1 rounded-full shadow-lg border border-gray-100 dark:border-slate-700 z-50">
+                    ${['like', 'heart', 'haha', 'wow', 'sad', 'angry'].map(t => `
+                        <button onclick="window.reactReply('${post.id}', '${cId}', '${rId}', '${r.uid}', '${t}')" class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${getRxHover(t)} hover:scale-110 transition-transform ${rxColors[t] && (rRx[t] && rRx[t][window.currentUser?.uid]) ? getRxColor(t) : 'text-gray-500'}">
+                            ${getRxIcon(t)}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        return { triggerHtml, activeHtml };
+    };
+
     const commentsObj = post.comments || {};
     let commentsArray = Object.keys(commentsObj).map(key => ({ id: key, ...commentsObj[key] }));
     let commentCount = 0;
@@ -631,8 +665,14 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             </div>
                             <p class="text-gray-800 dark:text-gray-200 mt-0.5 break-words text-[11px] leading-tight">${safeReplyText} ${r.edited ? '<span class="text-[9px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>
                             ${window.generateEmbed(r.text)}
-                            <div class="flex mt-1">
-                                ${canComment ? `<button onclick="window.prepareReplyToReply('${cId}', '${prefix}', '${r.uid}')" class="text-[9px] text-gray-400 hover:text-blue-500 font-bold transition">Reply</button>` : ''}
+                            <div class="flex items-center mt-1 space-x-2">
+                                <div class="flex items-center space-x-1 shrink-0">
+                                    ${(() => { const ui = generateReplyReactionsUI(r, cId, rId); return ui.triggerHtml; })()}
+                                </div>
+                                <div class="flex-1 flex items-center space-x-1 overflow-x-auto scrollbar-hide">
+                                    ${(() => { const ui = generateReplyReactionsUI(r, cId, rId); return ui.activeHtml; })()}
+                                </div>
+                                ${canComment ? `<button onclick="window.prepareReplyToReply('${cId}', '${prefix}', '${r.uid}')" class="text-[9px] text-gray-400 hover:text-blue-500 font-bold transition ml-auto">Reply</button>` : ''}
                             </div>
                         </div>
                     </div>
