@@ -449,7 +449,7 @@ function setTyping(active) {
 }
 function noteTyping() { setTyping(true); clearTimeout(state.typingTimer); state.typingTimer = setTimeout(() => setTyping(false), 1600); }
 function closeActiveChat() {
-  setTyping(false); clearTimeout(state.typingTimer); if (state.stopMessages) state.stopMessages(); if (state.stopTyping) state.stopTyping(); if (state.stopSeen) state.stopSeen();
+  setTyping(false); clearTimeout(state.typingTimer); if (state.stopMessages) state.stopMessages(); if (state.stopTyping) state.stopTyping();
   state.stopMessages = null; state.stopTyping = null;
   if (state.stopSeen) {
     if (typeof state.stopSeen === 'function') state.stopSeen();
