@@ -554,7 +554,7 @@ $('message-input').addEventListener('keydown', (event) => { if (event.key === 'E
   event.preventDefault(); $('message-form').requestSubmit(); 
 } });
 $('send-button').addEventListener('mousedown', e => e.preventDefault());
-$('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+$('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
 $('image-input').addEventListener('change', (event) => { const file = event.target.files[0]; state.pendingImageFile = file || null; if (file) showToast(`Photo ready: ${file.name}. Limit: 3 uploads daily.`); });
 $('cancel-reply-button').addEventListener('click', clearReply);
 $('mobile-back-button').addEventListener('click', closeActiveChat);
