@@ -17,6 +17,8 @@ window.updateNotifBadge = () => {
 };
 
 window.renderNotifications = () => {
+    if (window.requestNotificationPermission) window.requestNotificationPermission();
+    
     const myNotifs = window.globalUsersCache[window.currentUser.uid]?.notifications || {};
     const content = document.getElementById('notif-content');
     
