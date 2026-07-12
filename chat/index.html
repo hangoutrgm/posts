@@ -64,9 +64,10 @@
   </div>
 
   <dialog id="people-dialog" class="dialog">
-    <form method="dialog" class="dialog-card">
+    <form method="dialog" class="dialog-card" id="people-form">
       <header class="dialog-header">
-        <h2>New message</h2>
+        <h2 id="people-dialog-title">New message</h2>
+        <button type="button" id="toggle-group-mode" class="group-toggle-btn">Create Group</button>
         <button class="icon-button" value="cancel" aria-label="Close">×</button>
       </header>
       <label class="search-box dialog-search">
@@ -74,6 +75,9 @@
         <input id="people-search" type="search" autocomplete="off" placeholder="Search members">
       </label>
       <div id="people-list" class="people-list"></div>
+      <div id="group-action-bar" class="hidden" style="padding-top: 10px;">
+        <button id="start-group-btn" class="button primary-button" type="button" style="width:100%">Start Group Chat</button>
+      </div>
     </form>
   </dialog>
 
@@ -98,9 +102,31 @@
         <h2>Conversation options</h2>
         <button id="close-conversation-dialog" type="button" class="icon-button" aria-label="Close">×</button>
       </header>
-      <button id="clear-chat-button" class="conversation-action" type="button"><span>Clear messages for me</span><small>Hides this chat’s existing messages only on this account.</small></button>
-      <button id="remove-conversation-button" class="conversation-action danger" type="button"><span>Remove conversation</span><small>Removes it from your inbox. The other member keeps their copy.</small></button>
+      <!-- DM-only -->
+      <button id="set-nickname-button" class="conversation-action" type="button"><span>Set Nicknames</span><small>Change how members appear in this chat.</small></button>
+      <!-- Group-only -->
+      <button id="rename-group-button" class="conversation-action hidden" type="button"><span>Rename Group</span><small>Change the group chat title.</small></button>
+      <button id="add-member-button" class="conversation-action hidden" type="button"><span>Add Member</span><small>Add new members to this group.</small></button>
+      <button id="kick-member-button" class="conversation-action hidden" type="button"><span>Show/Kick Member</span><small>See all members or remove them.</small></button>
+      <button id="leave-group-button" class="conversation-action danger hidden" type="button"><span>Leave Group</span><small>Leave this group chat. You can rejoin if re-added.</small></button>
+      <!-- Common -->
+      <button id="clear-chat-button" class="conversation-action" type="button"><span>Clear messages for me</span><small>Hides this chat's existing messages only on this account.</small></button>
+      <button id="remove-conversation-button" class="conversation-action danger" type="button"><span>Remove conversation</span><small>Removes it from your inbox. Other members keep their copy.</small></button>
     </section>
+  </dialog>
+
+  <dialog id="app-modal" class="dialog">
+    <div class="dialog-card">
+      <header class="dialog-header">
+        <h2 id="app-modal-title">Confirm</h2>
+        <button id="app-modal-close" type="button" class="icon-button" aria-label="Close">×</button>
+      </header>
+      <div id="app-modal-body" class="app-modal-body"></div>
+      <footer class="app-modal-footer">
+        <button id="app-modal-cancel" class="app-modal-btn cancel" type="button">Cancel</button>
+        <button id="app-modal-confirm" class="app-modal-btn primary" type="button">Confirm</button>
+      </footer>
+    </div>
   </dialog>
 
   <div id="message-action-menu" class="message-action-menu hidden" role="menu" aria-label="Message actions"></div>

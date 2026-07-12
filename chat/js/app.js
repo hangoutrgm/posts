@@ -4,9 +4,10 @@ import { get, limitToLast, onDisconnect, onValue, push, query, ref, remove, runT
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  user: null, users: {}, inbox: {}, online: {}, clears: {}, typing: {}, messages: {}, activeThreadId: null,
+  user: null, users: {}, inbox: {}, online: {}, clears: {}, typing: {}, messages: {}, activeThreadId: null, activeInboxItem: null,
   activePeerId: null, stopMessages: null, stopInbox: null, stopTyping: null, stopClears: null, stopSeen: null, stopThreadSummaries: {}, signUp: false,
-  replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, connected: false
+  replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
+  groupMode: false, groupSelection: []
 };
 const reactions = { like: '👍', love: '❤️', laugh: '😂', wow: '😮', sad: '😢' };
 reactions.angry = '😡';
@@ -26,12 +27,88 @@ function showToast(message) { const toast = $('toast'); toast.textContent = mess
 function isOnline(uid) { const presence = state.online[uid]; return presence === true || Boolean(presence && typeof presence === 'object' && Object.keys(presence).length); }
 function threadIdFor(peerId) { return `dm_${[state.user.uid, peerId].sort().join('_')}`; }
 function normalStatus(uid) { return `<i class="online-dot${isOnline(uid) ? ' online' : ''}"></i>${isOnline(uid) ? 'Online' : 'Offline'}`; }
+
+function getNickname(uid) {
+  if (state.activeThreadId && state.inbox[state.activeThreadId]?.nicknames?.[uid]) return state.inbox[state.activeThreadId].nicknames[uid];
+  return state.users[uid]?.name || 'Hangout member';
+}
+function getThreadPeers(item) {
+  if (item.isGroup) return Object.keys(item.members || {}).filter(uid => uid !== state.user?.uid);
+  return item.peerId ? [item.peerId] : [];
+}
+function getThreadName(item, peerIds) {
+  if (item.isGroup && item.name) return item.name;
+  if (!peerIds.length) return 'Empty Group';
+  return peerIds.map(uid => (item.nicknames && item.nicknames[uid]) || state.users[uid]?.name || 'Member').join(', ');
+}
+function renderAvatarHtml(peerIds) {
+  if (!peerIds || peerIds.length === 0) return `<img class="avatar" src="${escapeHtml(fallbackAvatar('group'))}" alt="">`;
+  if (peerIds.length === 1) return `<img class="avatar" src="${escapeHtml(avatarUrl(state.users[peerIds[0]]))}" alt="">`;
+  const count = Math.min(peerIds.length, 4);
+  const imgs = peerIds.slice(0, 4).map(uid => `<img src="${escapeHtml(avatarUrl(state.users[uid]))}" alt="">`).join('');
+  return `<div class="avatar-collage count-${count}">${imgs}</div>`;
+}
 function applyTheme(theme) {
   const dark = theme === 'dark'; document.documentElement.classList.toggle('dark', dark); localStorage.setItem('hangout-chat-theme', dark ? 'dark' : 'light');
   const toggle = $('theme-toggle'); if (toggle) { toggle.textContent = dark ? '☀' : '☾'; toggle.title = dark ? 'Switch to light theme' : 'Switch to dark theme'; toggle.setAttribute('aria-label', toggle.title); }
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b1320' : '#1877f2');
 }
 applyTheme(localStorage.getItem('hangout-chat-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+function showAppModal(options = {}) {
+  return new Promise((resolve) => {
+    const modal = $('app-modal');
+    if (modal.open) modal.close();
+    $('app-modal-title').textContent = options.title || 'Confirm';
+    const confirmBtn = $('app-modal-confirm');
+    const cancelBtn = $('app-modal-cancel');
+    confirmBtn.textContent = options.confirmText || 'Confirm';
+    cancelBtn.textContent = options.cancelText || 'Cancel';
+    confirmBtn.className = `app-modal-btn ${options.danger ? 'danger' : 'primary'}`;
+    let html = '';
+    if (options.message) html += `<p class="app-modal-message">${escapeHtml(options.message)}</p>`;
+    if (options.input) html += `<input id="app-modal-input" class="app-modal-input" type="text" value="${escapeHtml(options.inputValue || '')}" placeholder="${escapeHtml(options.placeholder || '')}">`;
+    if (options.memberList) {
+      html += `<label class="search-box app-modal-search"><span>⌕</span><input id="app-modal-search-input" type="search" autocomplete="off" placeholder="Search members"></label>`;
+      html += `<div id="app-modal-member-list" class="member-select-list"></div>`;
+    }
+    $('app-modal-body').innerHTML = html;
+    let selected = [];
+    if (options.memberList) {
+      const render = (term = '') => {
+        const el = $('app-modal-member-list');
+        const list = options.memberList.filter(m => !term || m.name.toLowerCase().includes(term));
+        el.innerHTML = list.length ? list.map(m => {
+          const on = selected.includes(m.uid);
+          const badge = m.isCreator ? `<span class="creator-badge" style="margin-left:auto; font-size:10px; background:var(--primary); color:#fff; padding:2px 6px; border-radius:8px;">Creator</span>` : '';
+          const disableCheck = m.uid === options.disabledUid ? ' disabled' : '';
+          return `<button class="member-select-item${on ? ' selected' : ''}" data-uid="${escapeHtml(m.uid)}" type="button" ${disableCheck}><img class="avatar" src="${escapeHtml(m.avatar)}" alt=""><span class="member-select-name">${escapeHtml(m.name)}</span>${badge}${options.multiSelect ? `<span class="member-select-check">${on ? '✓' : ''}</span>` : ''}</button>`;
+        }).join('') : '<p class="list-empty">No members found.</p>';
+        el.querySelectorAll('.member-select-item').forEach(b => b.addEventListener('click', () => {
+          const uid = b.dataset.uid;
+          if (options.multiSelect) { selected = selected.includes(uid) ? selected.filter(i => i !== uid) : [...selected, uid]; }
+          else { selected = selected[0] === uid ? [] : [uid]; }
+          render(term);
+        }));
+      };
+      render();
+      $('app-modal-search-input')?.addEventListener('input', e => render(e.target.value.trim().toLowerCase()));
+    }
+    let done = false;
+    const finish = (val) => { if (done) return; done = true; modal.close(); resolve(val); };
+    confirmBtn.onclick = () => finish(options.input ? ($('app-modal-input')?.value ?? '') : options.memberList ? selected : true);
+    cancelBtn.onclick = () => finish(null);
+    $('app-modal-close').onclick = () => finish(null);
+    modal.onclose = () => { if (modal.open) return; finish(null); };
+    if (options.input) {
+      const inp = $('app-modal-input');
+      if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); confirmBtn.click(); } });
+    }
+    modal.showModal();
+    if (options.input) $('app-modal-input')?.focus();
+    else if (options.memberList) $('app-modal-search-input')?.focus();
+  });
+}
 
 function updateUnreadTitle() {
   const unread = Object.values(state.inbox).reduce((total, item) => total + Number(item.unreadCount || 0), 0);
@@ -42,18 +119,24 @@ function renderConversations() {
   const list = $('conversation-list');
   const term = $('conversation-search').value.trim().toLowerCase();
   const items = Object.entries(state.inbox).map(([id, item]) => ({ id, ...item })).filter((item) => {
-    const person = state.users[item.peerId] || {};
-    return !term || `${person.name || ''} ${item.lastMessage || ''}`.toLowerCase().includes(term);
+    const peerIds = getThreadPeers(item);
+    const name = getThreadName(item, peerIds).toLowerCase();
+    return !term || `${name} ${item.lastMessage || ''}`.toLowerCase().includes(term);
   }).sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
   if (!state.user) { list.innerHTML = ''; return; }
   if (!items.length) { list.innerHTML = '<p class="list-empty">No conversations yet. Tap the compose button to say hello.</p>'; return; }
   list.innerHTML = items.map((item) => {
-    const peer = state.users[item.peerId] || { uid: item.peerId, name: 'Hangout member' };
+    const peerIds = getThreadPeers(item);
+    const name = getThreadName(item, peerIds);
     const unread = Number(item.unreadCount || 0);
     const preview = item.lastSenderId === state.user.uid ? `You: ${item.lastMessage || ''}` : (item.lastMessage || 'Start chatting');
-    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}" data-peer="${escapeHtml(item.peerId)}"><span class="conversation-avatar"><img class="avatar" src="${escapeHtml(avatarUrl(peer))}" alt=""><i class="conversation-presence${isOnline(item.peerId) ? ' online' : ''}" aria-label="${isOnline(item.peerId) ? 'Online' : 'Offline'}"></i></span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(peer.name || 'Hangout member')}</span><span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
+    const presenceHtml = !item.isGroup && peerIds.length === 1 ? `<i class="conversation-presence${isOnline(peerIds[0]) ? ' online' : ''}" aria-label="${isOnline(peerIds[0]) ? 'Online' : 'Offline'}"></i>` : '';
+    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(name)}</span><span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
   }).join('');
-  list.querySelectorAll('.conversation').forEach((button) => button.addEventListener('click', () => openThread(button.dataset.thread, button.dataset.peer)));
+  list.querySelectorAll('.conversation').forEach((button) => button.addEventListener('click', () => {
+    const threadId = button.dataset.thread;
+    openThread(threadId, state.inbox[threadId]);
+  }));
 }
 
 function renderPeople() {
@@ -61,18 +144,57 @@ function renderPeople() {
   const term = $('people-search').value.trim().toLowerCase();
   const people = Object.values(state.users).filter((person) => person.uid && person.uid !== state.user?.uid && (!term || `${person.name || ''}`.toLowerCase().includes(term))).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   if (!people.length) { list.innerHTML = '<p class="list-empty">No matching members found.</p>'; return; }
-  list.innerHTML = people.map((person) => `<button class="person" data-user="${escapeHtml(person.uid)}"><img class="avatar" src="${escapeHtml(avatarUrl(person))}" alt=""><span class="person-copy"><span class="person-name">${escapeHtml(person.name || 'Hangout member')}</span><span class="person-status"><i class="online-dot${isOnline(person.uid) ? ' online' : ''}"></i>${person.isBanned ? 'Unavailable' : isOnline(person.uid) ? 'Online' : 'Offline'}</span></span></button>`).join('');
-  list.querySelectorAll('.person').forEach((button) => button.addEventListener('click', () => startConversation(button.dataset.user)));
+  list.innerHTML = people.map((person) => {
+    const isSelected = state.groupSelection?.includes(person.uid);
+    return `<button class="person${isSelected ? ' selected' : ''}" data-user="${escapeHtml(person.uid)}"><img class="avatar" src="${escapeHtml(avatarUrl(person))}" alt=""><span class="person-copy"><span class="person-name">${escapeHtml(person.name || 'Hangout member')}</span><span class="person-status"><i class="online-dot${isOnline(person.uid) ? ' online' : ''}"></i>${person.isBanned ? 'Unavailable' : isOnline(person.uid) ? 'Online' : 'Offline'}</span></span>${state.groupMode ? `<input type="checkbox" style="pointer-events:none; margin-left:auto;" ${isSelected ? 'checked' : ''}>` : ''}</button>`;
+  }).join('');
+  list.querySelectorAll('.person').forEach((button) => button.addEventListener('click', () => {
+    if (state.groupMode) {
+      const uid = button.dataset.user;
+      if (state.groupSelection.includes(uid)) state.groupSelection = state.groupSelection.filter(id => id !== uid);
+      else state.groupSelection.push(uid);
+      renderPeople();
+    } else {
+      startConversation(button.dataset.user);
+    }
+  }));
 }
 
-function peerIsTyping() { return Boolean(state.activePeerId && Number(state.typing[state.activePeerId] || 0) > Date.now() - 7000); }
+function peerIsTyping() { 
+  if (state.activeInboxItem?.isGroup) return Object.keys(state.typing || {}).filter(uid => uid !== state.user?.uid && Number(state.typing[uid]) > Date.now() - 7000);
+  return Boolean(state.activePeerId && Number(state.typing[state.activePeerId] || 0) > Date.now() - 7000); 
+}
 function updateChatHeader() {
-  if (!state.activePeerId) return;
-  const peer = state.users[state.activePeerId] || { uid: state.activePeerId, name: 'Hangout member' };
-  $('chat-avatar').src = avatarUrl(peer); $('chat-avatar').alt = peer.name || 'Member'; $('chat-name').textContent = peer.name || 'Hangout member';
-  $('chat-status').innerHTML = peer.isBanned ? 'Unavailable' : peerIsTyping() ? '<span class="typing-status">Typing…</span>' : normalStatus(state.activePeerId);
-  clearTimeout(state.typingExpiryTimer);
-  if (peerIsTyping()) state.typingExpiryTimer = setTimeout(updateChatHeader, 7100);
+  if (!state.activeThreadId || !state.activeInboxItem) return;
+  const item = state.activeInboxItem;
+  const peerIds = getThreadPeers(item);
+  const name = getThreadName(item, peerIds);
+  
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = renderAvatarHtml(peerIds);
+  const newAvatar = tempDiv.firstChild;
+  if (newAvatar.tagName === 'IMG') newAvatar.classList.add('avatar', 'large');
+  else if (newAvatar.classList.contains('avatar-collage')) newAvatar.classList.add('large');
+  
+  const avatarContainer = $('chat-avatar');
+  if (avatarContainer) { newAvatar.id = 'chat-avatar'; avatarContainer.replaceWith(newAvatar); }
+
+  $('chat-name').textContent = name;
+  
+  const typingPeers = item.isGroup ? peerIsTyping() : (peerIsTyping() ? [state.activePeerId] : []);
+  if (typingPeers.length > 0) {
+    const typistName = typingPeers.length === 1 ? getNickname(typingPeers[0]) : `${typingPeers.length} people`;
+    $('chat-status').innerHTML = `<span class="typing-status">${escapeHtml(typistName)} is typing…</span>`;
+    clearTimeout(state.typingExpiryTimer);
+    state.typingExpiryTimer = setTimeout(updateChatHeader, 7100);
+  } else {
+    if (item.isGroup) {
+      $('chat-status').textContent = `${peerIds.length + 1} members`;
+    } else {
+      const peer = state.users[peerIds[0]] || {};
+      $('chat-status').innerHTML = peer.isBanned ? 'Unavailable' : normalStatus(peerIds[0]);
+    }
+  }
 }
 
 function replyPreview(replyTo = {}) { return replyTo.text || (replyTo.hasImage ? 'Photo' : 'Message'); }
@@ -88,13 +210,37 @@ function renderMessages(rawMessages, jumpToLatest = false) {
   const rows = visibleMessages();
   if (!rows.length) { list.innerHTML = '<p class="list-empty messages-empty">No messages yet. Say hello!</p>'; return; }
   const latestSeenMessageId = [...rows].reverse().find((message) => message.senderId === state.user?.uid && Number(message.timestamp || 0) <= state.peerSeenAt)?.id;
+  const groupLatestSeen = {};
+  if (state.activeInboxItem?.isGroup) {
+    Object.entries(state.groupSeenAt || {}).forEach(([uid, time]) => {
+      if (uid === state.user?.uid) return;
+      const msg = [...rows].reverse().find(m => Number(m.timestamp || 0) <= time);
+      if (msg) {
+        if (!groupLatestSeen[msg.id]) groupLatestSeen[msg.id] = [];
+        groupLatestSeen[msg.id].push(uid);
+      }
+    });
+  }
   list.innerHTML = rows.map((message) => {
+    if (message.isSystem) return `<div class="message-row system" style="text-align:center; font-size:12px; color:var(--muted); margin: 8px 0; width: 100%; justify-content: center;">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
-    const quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(state.users[message.replyTo.senderId]?.name || 'member')}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
+    const quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
     const image = message.image ? `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">` : '';
-    const seen = mine && message.id === latestSeenMessageId ? '<span class="seen-label">Seen</span>' : '';
-    return `<div class="message-row${mine ? ' me' : ''}"><div><div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${linkifyText(message.text || '')}${image}</div><div class="message-meta"><div class="message-time">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
+    
+    let seen = '';
+    if (state.activeInboxItem?.isGroup) {
+      const viewers = groupLatestSeen[message.id];
+      if (viewers && viewers.length) {
+        const avatars = viewers.map(uid => `<img class="avatar micro" src="${escapeHtml(avatarUrl(state.users[uid]))}" title="${escapeHtml(getNickname(uid))}" style="width:14px; height:14px; border-radius:50%; margin-right:2px; object-fit:cover;">`).join('');
+        seen = `<span class="seen-label group-seen" style="display:flex; align-items:center; margin-left:4px;" title="Seen by ${escapeHtml(viewers.map(uid => getNickname(uid)).join(', '))}">${avatars}</span>`;
+      }
+    } else {
+      seen = mine && message.id === latestSeenMessageId ? '<span class="seen-label">Seen</span>' : '';
+    }
+    
+    const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10px; color:var(--muted); margin-bottom:2px; margin-left:4px;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
+    return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${linkifyText(message.text || '')}${image}</div><div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
   }).join('');
   wireMessageGestures(rows);
   if (jumpToLatest || wasNearLatest) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
@@ -124,9 +270,15 @@ function wireMessageGestures(rows) {
     const cancel = () => { clearTimeout(pressTimer); pressTimer = null; };
     bubble.addEventListener('pointerdown', (event) => {
       if (event.target.closest('.message-link')) return;
-      if (event.button !== undefined && event.button !== 0) return;
-      pressed = false;
-      pressTimer = setTimeout(() => { pressed = true; navigator.vibrate?.(12); showMessageMenu(message, event.clientX, event.clientY); }, 520);
+      pressed = true; pressTimer = setTimeout(() => { if (pressed) showMessageMenu(message, event.clientX, event.clientY); }, 500);
+    });
+    bubble.addEventListener('click', (event) => {
+      if (event.target.closest('.message-link')) return;
+      const meta = bubble.nextElementSibling;
+      if (meta && meta.classList.contains('message-meta')) {
+        const time = meta.querySelector('.message-time');
+        if (time) time.classList.toggle('hidden');
+      }
     });
     bubble.addEventListener('pointerup', cancel); bubble.addEventListener('pointercancel', cancel); bubble.addEventListener('pointerleave', cancel);
     bubble.addEventListener('contextmenu', (event) => { event.preventDefault(); cancel(); showMessageMenu(message, event.clientX, event.clientY); });
@@ -146,7 +298,21 @@ function markThreadSeen(threadId = state.activeThreadId) {
   set(ref(db, `chatReads/${state.user.uid}/${threadId}`), Date.now()).catch(() => {});
 }
 function watchSeen(threadId) {
-  if (state.stopSeen) state.stopSeen(); state.peerSeenAt = 0;
+  if (state.stopSeen) {
+    if (typeof state.stopSeen === 'function') state.stopSeen();
+    else if (Array.isArray(state.stopSeen)) state.stopSeen.forEach(fn => fn());
+  }
+  state.stopSeen = null; state.peerSeenAt = 0; state.groupSeenAt = {};
+  if (state.activeInboxItem?.isGroup) {
+    const peerIds = getThreadPeers(state.activeInboxItem);
+    state.stopSeen = peerIds.map(uid => 
+      onValue(ref(db, `chatReads/${uid}/${threadId}`), (snapshot) => {
+        state.groupSeenAt[uid] = Number(snapshot.val() || 0);
+        renderMessages(state.messages);
+      }, (error) => reportRealtimeError('seen receipts', error))
+    );
+    return;
+  }
   state.stopSeen = onValue(ref(db, `chatReads/${state.activePeerId}/${threadId}`), (snapshot) => { state.peerSeenAt = Number(snapshot.val() || 0); renderMessages(state.messages); }, (error) => reportRealtimeError('seen receipts', error));
 }
 
@@ -154,9 +320,12 @@ function watchTyping(threadId) {
   if (state.stopTyping) state.stopTyping(); state.typing = {};
   state.stopTyping = onValue(ref(db, `chatTyping/${threadId}`), (snapshot) => { state.typing = snapshot.val() || {}; updateChatHeader(); });
 }
-function openThread(threadId, peerId) {
+function openThread(threadId, inboxItem) {
   if (!state.user) return showAuth();
-  state.activeThreadId = threadId; state.activePeerId = peerId; $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
+  state.activeThreadId = threadId; 
+  state.activeInboxItem = inboxItem || state.inbox[threadId] || {};
+  state.activePeerId = state.activeInboxItem.isGroup ? null : state.activeInboxItem.peerId;
+  $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
   if (state.stopMessages) state.stopMessages();
   state.messages = {}; state.messagesLoaded = false; $('message-list').innerHTML = '<p class="list-empty messages-empty">Loading recent messages…</p>';
   state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(60)), (snapshot) => { const firstLoad = !state.messagesLoaded; state.messagesLoaded = true; renderMessages(snapshot.val(), firstLoad); markThreadSeen(threadId); });
@@ -172,8 +341,29 @@ async function startConversation(peerId) {
     const thread = snapshot.val() || {}; const summary = { peerId, lastMessage: thread.lastMessage || 'Start a conversation', lastTimestamp: thread.lastTimestamp || now, lastSenderId: thread.lastSenderId || state.user.uid, unreadCount: 0 };
     await set(ref(db, `chatInboxes/${state.user.uid}/${threadId}`), summary);
     try { await runTransaction(ref(db, `chatInboxes/${peerId}/${threadId}`), (current) => current || { ...summary, peerId: state.user.uid }); } catch (error) { console.warn('Conversation was created, but the recipient inbox entry could not be created yet:', error); }
-    $('people-dialog').close(); openThread(threadId, peerId);
+    $('people-dialog').close(); openThread(threadId, summary);
   } catch (error) { console.error('Could not start conversation:', error); showToast(`Could not start chat: ${error.message.replace('Firebase: ', '')}`); }
+}
+
+async function startGroupConversation(peerIds) {
+  if (!state.user) return showAuth();
+  const threadId = `group_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+  try {
+    const members = { [state.user.uid]: true };
+    peerIds.forEach(id => members[id] = true);
+    const now = Date.now();
+    await set(ref(db, `chatThreads/${threadId}`), { members, isGroup: true, creatorId: state.user.uid, createdAt: now, lastMessage: 'Group created', lastTimestamp: now, lastSenderId: state.user.uid });
+    const summary = { isGroup: true, members, lastMessage: 'Group created', lastTimestamp: now, lastSenderId: state.user.uid, unreadCount: 0, creatorId: state.user.uid };
+    await set(ref(db, `chatInboxes/${state.user.uid}/${threadId}`), summary);
+    peerIds.forEach(id => runTransaction(ref(db, `chatInboxes/${id}/${threadId}`), (current) => current || summary).catch(()=>{}));
+    
+    $('people-dialog').close();
+    state.groupMode = false;
+    state.groupSelection = [];
+    $('group-action-bar').classList.add('hidden');
+    $('toggle-group-mode').textContent = 'Create Group';
+    openThread(threadId, summary);
+  } catch (error) { showToast(`Could not start group chat: ${error.message}`); }
 }
 
 function compressImage(file) {
@@ -198,18 +388,28 @@ async function useUploadQuota() {
 function clearAttachment() { $('image-input').value = ''; state.pendingImageFile = null; }
 function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); }
 async function updateConversationSummaries(preview, timestamp) {
-  const own = { ...(state.inbox[state.activeThreadId] || {}), peerId: state.activePeerId, lastMessage: preview, lastTimestamp: timestamp, lastSenderId: state.user.uid, unreadCount: 0 };
+  const own = { ...(state.inbox[state.activeThreadId] || {}), lastMessage: preview, lastTimestamp: timestamp, lastSenderId: state.user.uid, unreadCount: 0 };
+  if (!state.activeInboxItem?.isGroup) own.peerId = state.activePeerId;
+  delete own.name; delete own.nicknames; delete own.creatorId;
   await update(ref(db), {
     [`chatThreads/${state.activeThreadId}/lastMessage`]: preview, [`chatThreads/${state.activeThreadId}/lastTimestamp`]: timestamp, [`chatThreads/${state.activeThreadId}/lastSenderId`]: state.user.uid,
     [`chatInboxes/${state.user.uid}/${state.activeThreadId}`]: own
   });
-  await runTransaction(ref(db, `chatInboxes/${state.activePeerId}/${state.activeThreadId}`), (current) => ({
-    ...(current || { peerId: state.user.uid }), peerId: state.user.uid, lastMessage: preview, lastTimestamp: timestamp, lastSenderId: state.user.uid,
-    unreadCount: Math.min(Number(current?.unreadCount || 0) + 1, 99)
-  }));
+  const peerIds = getThreadPeers(state.activeInboxItem);
+  const isGroup = state.activeInboxItem?.isGroup;
+  peerIds.forEach(id => {
+    runTransaction(ref(db, `chatInboxes/${id}/${state.activeThreadId}`), (current) => {
+      const base = { ...(current || own) };
+      if (isGroup) { base.isGroup = true; base.members = state.activeInboxItem.members || own.members || {}; delete base.peerId; }
+      else { base.peerId = state.user.uid; }
+      base.lastMessage = preview; base.lastTimestamp = timestamp; base.lastSenderId = state.user.uid;
+      base.unreadCount = Math.min(Number(base.unreadCount || 0) + 1, 99);
+      return base;
+    }).catch(()=>{});
+  });
 }
 async function sendMessage(event) {
-  event.preventDefault(); if (!state.user || !state.activeThreadId || !state.activePeerId) return;
+  event.preventDefault(); if (!state.user || !state.activeThreadId) return;
   const input = $('message-input'); const text = input.value.trim(); const file = state.pendingImageFile; if (!text && !file) return;
   const button = $('send-button'); button.disabled = true;
   try {
@@ -233,10 +433,12 @@ async function toggleReaction(messageId, reaction) {
   const updates = Object.fromEntries(Object.keys(reactions).map((type) => [`${type}/${state.user.uid}`, current || type !== reaction ? null : true]));
   try { await update(ref(db, `chatMessages/${state.activeThreadId}/${messageId}/reactions`), updates); } catch (error) { showToast(`Could not react: ${error.message.replace('Firebase: ', '')}`); }
 }
-function setReply(message) { if (!message) return; state.replyTo = message; $('reply-banner-text').textContent = `Replying to ${state.users[message.senderId]?.name || 'member'}: ${replyPreview(message)}`; $('reply-banner').classList.remove('hidden'); $('message-input').focus(); }
+function setReply(message) { if (!message) return; state.replyTo = message; $('reply-banner-text').textContent = `Replying to ${getNickname(message.senderId)}: ${replyPreview(message)}`; $('reply-banner').classList.remove('hidden'); $('message-input').focus(); }
 function clearReply() { state.replyTo = null; $('reply-banner').classList.add('hidden'); }
 async function editMessage(message) {
-  if (!message || message.senderId !== state.user?.uid) return; const text = window.prompt('Edit your message:', message.text || ''); if (text === null) return; const nextText = text.trim(); if (!nextText && !message.image) return showToast('A message cannot be empty.');
+  if (!message || message.senderId !== state.user?.uid) return;
+  const text = await showAppModal({ title: 'Edit Message', input: true, inputValue: message.text || '', placeholder: 'Edit your message', confirmText: 'Save' });
+  if (text === null) return; const nextText = text.trim(); if (!nextText && !message.image) return showToast('A message cannot be empty.');
   try { await update(ref(db), { [`chatMessages/${state.activeThreadId}/${message.id}/text`]: nextText, [`chatMessages/${state.activeThreadId}/${message.id}/editedAt`]: Date.now() }); } catch (error) { showToast(`Could not edit: ${error.message.replace('Firebase: ', '')}`); }
 }
 
@@ -248,7 +450,12 @@ function setTyping(active) {
 function noteTyping() { setTyping(true); clearTimeout(state.typingTimer); state.typingTimer = setTimeout(() => setTyping(false), 1600); }
 function closeActiveChat() {
   setTyping(false); clearTimeout(state.typingTimer); if (state.stopMessages) state.stopMessages(); if (state.stopTyping) state.stopTyping(); if (state.stopSeen) state.stopSeen();
-  state.stopMessages = null; state.stopTyping = null; state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.messages = {}; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; clearReply(); closeMessageMenu();
+  state.stopMessages = null; state.stopTyping = null;
+  if (state.stopSeen) {
+    if (typeof state.stopSeen === 'function') state.stopSeen();
+    else if (Array.isArray(state.stopSeen)) state.stopSeen.forEach(fn => fn());
+  }
+  state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.activeInboxItem = null; state.messages = {}; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; state.groupSeenAt = {}; clearReply(); closeMessageMenu();
   $('active-chat').classList.add('hidden'); $('empty-state').classList.remove('hidden'); renderConversations();
 }
 async function clearChatForMe() {
@@ -256,8 +463,11 @@ async function clearChatForMe() {
   try { await set(ref(db, `chatClears/${state.user.uid}/${state.activeThreadId}`), Date.now()); $('conversation-dialog').close(); renderMessages(state.messages); showToast('Messages cleared for you.'); } catch (error) { showToast(`Could not clear messages: ${error.message.replace('Firebase: ', '')}`); }
 }
 async function removeConversation() {
-  if (!state.user || !state.activeThreadId || !window.confirm('Remove this conversation from your inbox? Your messages will remain for the other member.')) return;
-  try { const threadId = state.activeThreadId; await set(ref(db, `chatClears/${state.user.uid}/${threadId}`), Date.now()); await remove(ref(db, `chatInboxes/${state.user.uid}/${threadId}`)); $('conversation-dialog').close(); closeActiveChat(); showToast('Conversation removed. Its old messages will stay cleared if you chat again.'); } catch (error) { showToast(`Could not remove conversation: ${error.message.replace('Firebase: ', '')}`); }
+  if (!state.user || !state.activeThreadId) return;
+  $('conversation-dialog').close();
+  const confirmed = await showAppModal({ title: 'Remove Conversation', message: 'Remove this conversation from your inbox? Your messages will remain for the other member.', confirmText: 'Remove', danger: true });
+  if (!confirmed) return;
+  try { const threadId = state.activeThreadId; await set(ref(db, `chatClears/${state.user.uid}/${threadId}`), Date.now()); await remove(ref(db, `chatInboxes/${state.user.uid}/${threadId}`)); closeActiveChat(); showToast('Conversation removed. Its old messages will stay cleared if you chat again.'); } catch (error) { showToast(`Could not remove conversation: ${error.message.replace('Firebase: ', '')}`); }
 }
 
 function showAuth() { $('auth-dialog').showModal(); }
@@ -289,15 +499,25 @@ function syncThreadSummaryWatchers() {
     state.stopThreadSummaries[threadId] = onValue(ref(db, `chatThreads/${threadId}`), (snapshot) => {
       const thread = snapshot.val(); const current = state.inbox[threadId];
       if (!thread || !current || Number(thread.lastTimestamp || 0) < Number(current.lastTimestamp || 0)) return;
-      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '' };
-      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId) return;
+      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '' };
+      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || {})) return;
       state.inbox = { ...state.inbox, [threadId]: next };
+      if (state.activeThreadId === threadId) { state.activeInboxItem = next; updateChatHeader(); renderMessages(state.messages); }
       renderConversations();
     }, (error) => reportRealtimeError('conversation summary', error));
   });
 }
 function handleInbox(snapshot) {
-  const previous = state.inbox; const next = snapshot.val() || {}; state.inbox = next;
+  const previous = state.inbox; const next = snapshot.val() || {};
+  Object.keys(next).forEach(id => {
+    if (previous[id]) {
+      if (previous[id].name !== undefined) next[id].name = previous[id].name;
+      if (previous[id].creatorId !== undefined) next[id].creatorId = previous[id].creatorId;
+      if (previous[id].members !== undefined) next[id].members = previous[id].members;
+      if (previous[id].nicknames !== undefined) next[id].nicknames = previous[id].nicknames;
+    }
+  });
+  state.inbox = next;
   if (state.inboxReady && state.user) Object.entries(next).forEach(([threadId, item]) => {
     const before = previous[threadId];
     if (item.lastSenderId !== state.user.uid && Number(item.lastTimestamp || 0) > Number(before?.lastTimestamp || 0)) showToast(`New message from ${state.users[item.peerId]?.name || 'a member'}`);
@@ -325,8 +545,124 @@ $('conversation-search').addEventListener('input', renderConversations); $('peop
 $('message-input').addEventListener('input', (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`; if (event.target.value.trim()) noteTyping(); else setTyping(false); });
 $('message-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('message-form').requestSubmit(); } });
 $('image-input').addEventListener('change', (event) => { const file = event.target.files[0]; state.pendingImageFile = file || null; if (file) showToast(`Photo ready: ${file.name}. Limit: 3 uploads daily.`); });
-$('cancel-reply-button').addEventListener('click', clearReply); $('mobile-back-button').addEventListener('click', closeActiveChat); $('conversation-options-button').addEventListener('click', () => $('conversation-dialog').showModal()); $('close-conversation-dialog').addEventListener('click', () => $('conversation-dialog').close()); $('clear-chat-button').addEventListener('click', clearChatForMe); $('remove-conversation-button').addEventListener('click', removeConversation);
+$('cancel-reply-button').addEventListener('click', clearReply);
+$('mobile-back-button').addEventListener('click', closeActiveChat);
+$('conversation-options-button').addEventListener('click', () => {
+  const isGroup = state.activeInboxItem?.isGroup;
+  const isCreator = isGroup && state.activeInboxItem?.creatorId === state.user?.uid;
+  $('set-nickname-button').classList.toggle('hidden', !!isGroup);
+  $('rename-group-button').classList.toggle('hidden', !isCreator);
+  $('add-member-button').classList.toggle('hidden', !isCreator);
+  $('kick-member-button').classList.toggle('hidden', !isCreator);
+  $('leave-group-button').classList.toggle('hidden', !isGroup);
+  $('conversation-dialog').showModal();
+});
+$('close-conversation-dialog').addEventListener('click', () => $('conversation-dialog').close());
+$('clear-chat-button').addEventListener('click', clearChatForMe);
+$('remove-conversation-button').addEventListener('click', removeConversation);
+$('rename-group-button')?.addEventListener('click', renameGroup);
+$('add-member-button')?.addEventListener('click', addMember);
+$('kick-member-button')?.addEventListener('click', kickMember);
+$('leave-group-button')?.addEventListener('click', leaveGroup);
 $('close-auth-button').addEventListener('click', () => $('auth-dialog').close());
+
+$('toggle-group-mode')?.addEventListener('click', () => {
+  state.groupMode = !state.groupMode;
+  state.groupSelection = [];
+  $('group-action-bar').classList.toggle('hidden', !state.groupMode);
+  $('toggle-group-mode').textContent = state.groupMode ? 'Cancel' : 'Create Group';
+  renderPeople();
+});
+$('start-group-btn')?.addEventListener('click', () => {
+  if (state.groupSelection.length > 0) startGroupConversation(state.groupSelection);
+});
+$('set-nickname-button')?.addEventListener('click', async () => {
+  if (!state.user || !state.activeThreadId || state.activeInboxItem?.isGroup) return;
+  const peerIds = getThreadPeers(state.activeInboxItem);
+  if (!peerIds.length) return;
+  const targetUid = peerIds[0]; const targetUser = state.users[targetUid];
+  if (!targetUser) return;
+  const newNickname = await showAppModal({ title: 'Set Nickname', message: `Set a nickname for ${targetUser.name}. Leave blank to reset.`, input: true, inputValue: state.activeInboxItem.nicknames?.[targetUid] || '' });
+  if (newNickname === null) return;
+  try {
+    await update(ref(db, `chatThreads/${state.activeThreadId}/nicknames`), { [targetUid]: newNickname.trim() || null });
+    showToast('Nickname updated.');
+  } catch (err) { showToast('Could not update nickname.'); }
+});
+
+async function renameGroup() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can rename the group.');
+  const current = state.activeInboxItem.name || getThreadName(state.activeInboxItem, getThreadPeers(state.activeInboxItem));
+  $('conversation-dialog').close();
+  const newName = await showAppModal({ title: 'Rename Group', message: 'Enter a new name for this group chat.', input: true, inputValue: current, placeholder: 'Group name', confirmText: 'Rename' });
+  if (newName === null || !newName.trim()) return;
+  try {
+    await update(ref(db, `chatThreads/${state.activeThreadId}`), { name: newName.trim() });
+    showToast('Group renamed.');
+  } catch (err) { showToast(`Could not rename group: ${err.message}`); }
+}
+
+async function kickMember() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can view/kick members here.');
+  const allIds = Object.keys(state.activeInboxItem.members || {});
+  if (allIds.length <= 1) return showToast('No other members to kick.');
+  const memberList = allIds.map(id => ({ uid: id, name: state.users[id]?.name || 'Member', avatar: avatarUrl(state.users[id]), isCreator: id === state.activeInboxItem.creatorId }));
+  $('conversation-dialog').close();
+  const selected = await showAppModal({ title: 'Show / Kick Member', message: 'Select a member to remove from this group.', memberList, disabledUid: state.user.uid, multiSelect: false, confirmText: 'Kick', danger: true });
+  if (!selected || !selected.length) return;
+  const targetUid = selected[0]; const targetName = state.users[targetUid]?.name || 'this member';
+  const confirmed = await showAppModal({ title: 'Confirm Kick', message: `Are you sure you want to kick ${targetName} from the group?`, confirmText: 'Kick', danger: true });
+  if (!confirmed) return;
+  try {
+    await remove(ref(db, `chatThreads/${state.activeThreadId}/members/${targetUid}`));
+  } catch (err) { return showToast(`Failed to remove member: ${err.message}`); }
+  
+  remove(ref(db, `chatInboxes/${targetUid}/${state.activeThreadId}`)).catch(e => console.warn('Ignored inbox remove error:', e));
+  
+  try {
+    await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `kicked ${targetName}.`, timestamp: Date.now(), isSystem: true });
+  } catch (err) { console.warn('Failed to send kick system message:', err); }
+  
+  showToast(`${targetName} was kicked.`);
+}
+
+async function addMember() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can add members.');
+  const currentMembers = Object.keys(state.activeInboxItem.members || {});
+  const nonMembers = Object.values(state.users).filter(u => u.uid && !currentMembers.includes(u.uid) && !u.isBanned);
+  if (!nonMembers.length) return showToast('No available members to add.');
+  const memberList = nonMembers.map(u => ({ uid: u.uid, name: u.name || 'Member', avatar: avatarUrl(u) }));
+  $('conversation-dialog').close();
+  const selected = await showAppModal({ title: 'Add Members', message: 'Select members to add to this group.', memberList, multiSelect: true, confirmText: 'Add' });
+  if (!selected || !selected.length) return;
+  try {
+    await Promise.all(selected.map(uid => set(ref(db, `chatThreads/${state.activeThreadId}/members/${uid}`), true)));
+    const updatedMembers = { ...(state.activeInboxItem.members || {}) };
+    selected.forEach(uid => updatedMembers[uid] = true);
+    const summary = { isGroup: true, members: updatedMembers, lastMessage: state.activeInboxItem.lastMessage || 'Added to group', lastTimestamp: state.activeInboxItem.lastTimestamp || Date.now(), lastSenderId: state.activeInboxItem.lastSenderId || state.user.uid, unreadCount: 1, name: state.activeInboxItem.name || '', creatorId: state.activeInboxItem.creatorId || state.user.uid };
+    for (const uid of selected) { await runTransaction(ref(db, `chatInboxes/${uid}/${state.activeThreadId}`), (current) => current || summary).catch(() => {}); }
+    const addedNames = selected.map(uid => state.users[uid]?.name || 'a member').join(', ');
+    await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `added ${addedNames}.`, timestamp: Date.now(), isSystem: true });
+    showToast(`${selected.length} member${selected.length > 1 ? 's' : ''} added.`);
+  } catch (err) { showToast(`Could not add members: ${err.message}`); }
+}
+
+async function leaveGroup() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  $('conversation-dialog').close();
+  const confirmed = await showAppModal({ title: 'Leave Group', message: 'Are you sure you want to leave this group chat?', confirmText: 'Leave', danger: true });
+  if (!confirmed) return;
+  try {
+    await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `left the group.`, timestamp: Date.now(), isSystem: true });
+    await update(ref(db), { [`chatThreads/${state.activeThreadId}/members/${state.user.uid}`]: null });
+    await remove(ref(db, `chatInboxes/${state.user.uid}/${state.activeThreadId}`));
+    closeActiveChat();
+    showToast('You have left the group.');
+  } catch (err) { showToast(`Could not leave group: ${err.message}`); }
+}
 $('auth-toggle').addEventListener('click', () => { state.signUp = !state.signUp; $('auth-title').textContent = state.signUp ? 'Create account' : 'Sign in'; $('auth-submit').textContent = state.signUp ? 'Create account' : 'Sign in'; $('auth-toggle').textContent = state.signUp ? 'Already have an account? Sign in' : 'Need an account? Create one'; $('auth-password').autocomplete = state.signUp ? 'new-password' : 'current-password'; });
 $('auth-form').addEventListener('submit', async (event) => { event.preventDefault(); const email = $('auth-email').value.trim(); const password = $('auth-password').value; const error = $('auth-error'); error.classList.add('hidden'); try { const result = state.signUp ? await createUserWithEmailAndPassword(auth, email, password) : await signInWithEmailAndPassword(auth, email, password); if (state.signUp) { const name = `User_${Math.floor(Math.random() * 999)}`; const pic = fallbackAvatar(result.user.uid); await updateProfile(result.user, { displayName: name, photoURL: pic }); await update(ref(db, `users/${result.user.uid}`), { uid: result.user.uid, name, pic }); } $('auth-dialog').close(); } catch (err) { error.textContent = err.message.replace('Firebase: ', ''); error.classList.remove('hidden'); } });
 document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); });
