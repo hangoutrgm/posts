@@ -11,9 +11,8 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
     <link rel="stylesheet" href="css/styles.css">
-</head>
+    <link rel="manifest" href="./manifest.json">
 <body class="min-h-screen bg-gray-100 text-gray-900 dark:bg-[#0b1120] dark:text-[#f8fafc] transition-colors duration-300">
 
     <nav class="sticky top-0 z-50 px-3 py-2 flex justify-between items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-slate-800">
@@ -249,7 +248,8 @@
             </div>
 
             <button id="view-profile-btn" class="w-full bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 rounded-lg text-sm mb-2 shadow-sm border border-gray-300 dark:border-slate-600 transition hover:bg-gray-300 dark:hover:bg-slate-600"><i class="fa-regular fa-user mr-1"></i> View My Profile</button>
-            <button id="save-profile-btn" class="w-full bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500">Save Changes</button>
+            <button id="save-profile-btn" class="w-full bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500 mb-2">Save Changes</button>
+            <button id="install-pwa-btn" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:opacity-90"><i class="fa-solid fa-download mr-1"></i> Install Hangout</button>
         </div>
     </div>
 
@@ -275,5 +275,14 @@
     </div>
 
     <script type="module" src="js/main.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    console.log('SW registered!', reg);
+                }).catch(err => console.log('SW registration failed', err));
+            });
+        }
+    </script>
 </body>
 </html>
