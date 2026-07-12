@@ -67,7 +67,8 @@ function showAppModal(options = {}) {
     confirmBtn.className = `app-modal-btn ${options.danger ? 'danger' : 'primary'}`;
     let html = '';
     if (options.message) html += `<p class="app-modal-message">${escapeHtml(options.message)}</p>`;
-    if (options.input) html += `<input id="app-modal-input" class="app-modal-input" type="text" value="${escapeHtml(options.inputValue || '')}" placeholder="${escapeHtml(options.placeholder || '')}">`;
+    if (options.textarea) html += `<textarea id="app-modal-input" class="app-modal-input" rows="6" style="resize:vertical;">${escapeHtml(options.inputValue || '')}</textarea>`;
+    else if (options.input) html += `<input id="app-modal-input" class="app-modal-input" type="text" value="${escapeHtml(options.inputValue || '')}" placeholder="${escapeHtml(options.placeholder || '')}">`;
     if (options.memberList) {
       html += `<label class="search-box app-modal-search"><span>⌕</span><input id="app-modal-search-input" type="search" autocomplete="off" placeholder="Search members"></label>`;
       html += `<div id="app-modal-member-list" class="member-select-list"></div>`;
@@ -96,16 +97,16 @@ function showAppModal(options = {}) {
     }
     let done = false;
     const finish = (val) => { if (done) return; done = true; modal.close(); resolve(val); };
-    confirmBtn.onclick = () => finish(options.input ? ($('app-modal-input')?.value ?? '') : options.memberList ? selected : true);
+    confirmBtn.onclick = () => finish((options.input || options.textarea) ? ($('app-modal-input')?.value ?? '') : options.memberList ? selected : true);
     cancelBtn.onclick = () => finish(null);
     $('app-modal-close').onclick = () => finish(null);
     modal.onclose = () => { if (modal.open) return; finish(null); };
-    if (options.input) {
+    if (options.input || options.textarea) {
       const inp = $('app-modal-input');
-      if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); confirmBtn.click(); } });
+      if (inp && options.input) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); confirmBtn.click(); } });
     }
     modal.showModal();
-    if (options.input) $('app-modal-input')?.focus();
+    if (options.input || options.textarea) $('app-modal-input')?.focus();
     else if (options.memberList) $('app-modal-search-input')?.focus();
   });
 }
@@ -386,7 +387,7 @@ async function useUploadQuota() {
 }
 
 function clearAttachment() { $('image-input').value = ''; state.pendingImageFile = null; }
-function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); }
+function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); $('message-input').focus(); }
 async function updateConversationSummaries(preview, timestamp) {
   const own = { ...(state.inbox[state.activeThreadId] || {}), lastMessage: preview, lastTimestamp: timestamp, lastSenderId: state.user.uid, unreadCount: 0 };
   if (!state.activeInboxItem?.isGroup) own.peerId = state.activePeerId;
@@ -436,10 +437,15 @@ async function toggleReaction(messageId, reaction) {
 function setReply(message) { if (!message) return; state.replyTo = message; $('reply-banner-text').textContent = `Replying to ${getNickname(message.senderId)}: ${replyPreview(message)}`; $('reply-banner').classList.remove('hidden'); $('message-input').focus(); }
 function clearReply() { state.replyTo = null; $('reply-banner').classList.add('hidden'); }
 async function editMessage(message) {
-  if (!message || message.senderId !== state.user?.uid) return;
-  const text = await showAppModal({ title: 'Edit Message', input: true, inputValue: message.text || '', placeholder: 'Edit your message', confirmText: 'Save' });
-  if (text === null) return; const nextText = text.trim(); if (!nextText && !message.image) return showToast('A message cannot be empty.');
-  try { await update(ref(db), { [`chatMessages/${state.activeThreadId}/${message.id}/text`]: nextText, [`chatMessages/${state.activeThreadId}/${message.id}/editedAt`]: Date.now() }); } catch (error) { showToast(`Could not edit: ${error.message.replace('Firebase: ', '')}`); }
+  if (!state.user || !state.activeThreadId || message.senderId !== state.user.uid) return;
+  const newText = await showAppModal({ title: 'Edit Message', textarea: true, inputValue: message.text, confirmText: 'Save' });
+  if (newText === null || newText.trim() === message.text) return;
+  if (!newText.trim()) return showToast('Message cannot be empty.');
+  try {
+    await update(ref(db, `chatMessages/${state.activeThreadId}/${message.id}`), { text: newText.trim(), editedAt: Date.now() });
+    updateConversationSummaries(newText.trim(), Date.now());
+    showToast('Message edited.');
+  } catch (err) { showToast('Could not edit message.'); }
 }
 
 function setTyping(active) {
@@ -543,7 +549,12 @@ $('new-chat-button').addEventListener('click', () => state.user ? $('people-dial
 $('theme-toggle').addEventListener('click', () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'));
 $('conversation-search').addEventListener('input', renderConversations); $('people-search').addEventListener('input', renderPeople); $('message-form').addEventListener('submit', sendMessage);
 $('message-input').addEventListener('input', (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`; if (event.target.value.trim()) noteTyping(); else setTyping(false); });
-$('message-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('message-form').requestSubmit(); } });
+$('message-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { 
+  if (window.innerWidth < 768 || matchMedia('(pointer: coarse)').matches) return;
+  event.preventDefault(); $('message-form').requestSubmit(); 
+} });
+$('send-button').addEventListener('mousedown', e => e.preventDefault());
+$('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 $('image-input').addEventListener('change', (event) => { const file = event.target.files[0]; state.pendingImageFile = file || null; if (file) showToast(`Photo ready: ${file.name}. Limit: 3 uploads daily.`); });
 $('cancel-reply-button').addEventListener('click', clearReply);
 $('mobile-back-button').addEventListener('click', closeActiveChat);
@@ -667,3 +678,7 @@ $('auth-toggle').addEventListener('click', () => { state.signUp = !state.signUp;
 $('auth-form').addEventListener('submit', async (event) => { event.preventDefault(); const email = $('auth-email').value.trim(); const password = $('auth-password').value; const error = $('auth-error'); error.classList.add('hidden'); try { const result = state.signUp ? await createUserWithEmailAndPassword(auth, email, password) : await signInWithEmailAndPassword(auth, email, password); if (state.signUp) { const name = `User_${Math.floor(Math.random() * 999)}`; const pic = fallbackAvatar(result.user.uid); await updateProfile(result.user, { displayName: name, photoURL: pic }); await update(ref(db, `users/${result.user.uid}`), { uid: result.user.uid, name, pic }); } $('auth-dialog').close(); } catch (err) { error.textContent = err.message.replace('Firebase: ', ''); error.classList.remove('hidden'); } });
 document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); });
 window.addEventListener('pagehide', () => setTyping(false));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => { document.body.style.height = `${window.visualViewport.height}px`; });
+  document.body.style.height = `${window.visualViewport.height}px`;
+}
