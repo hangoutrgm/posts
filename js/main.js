@@ -388,7 +388,7 @@ window.checkUploadLimit = () => {
     if (!window.currentUser) return false;
     const today = new Date().toLocaleDateString('en-CA');
     const userData = window.globalUsersCache[window.currentUser.uid] || {};
-    const uploadsToday = userData.uploadStats?.date === today ? userData.uploadStats.count : 0;
+    const uploadsToday = userData.dailyUploads?.date === today ? userData.dailyUploads.count : 0;
     if (uploadsToday >= 5) {
         window.showAlert("You have reached your daily limit of 5 image uploads.");
         return false;
@@ -399,7 +399,9 @@ window.checkUploadLimit = () => {
 window.incrementUploadLimit = () => {
     if (!window.currentUser) return;
     const today = new Date().toLocaleDateString('en-CA');
-    update(ref(db, `users/${window.currentUser.uid}/uploadStats`), { date: today, count: increment(1) });
+    const userData = window.globalUsersCache[window.currentUser.uid] || {};
+    const currentCount = userData.dailyUploads?.date === today ? (userData.dailyUploads.count || 0) : 0;
+    update(ref(db, `users/${window.currentUser.uid}/dailyUploads`), { date: today, count: currentCount + 1 });
 };
 
 document.getElementById('submit-post-btn').addEventListener('click', async () => {
