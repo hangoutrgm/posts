@@ -423,8 +423,8 @@ window.checkUploadLimit = () => {
     const today = new Date().toLocaleDateString('en-CA');
     const userData = window.globalUsersCache[window.currentUser.uid] || {};
     const uploadsToday = userData.dailyUploads?.date === today ? userData.dailyUploads.count : 0;
-    if (uploadsToday >= 5) {
-        window.showAlert("You have reached your daily limit of 5 image uploads.");
+    if (uploadsToday >= 10) {
+        window.showAlert("You have reached your daily limit of 10 image uploads.");
         return false;
     }
     return true;
