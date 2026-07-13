@@ -41,7 +41,8 @@ function getThreadName(item, peerIds) {
   if (!peerIds.length) return 'Empty Group';
   return peerIds.map(uid => (item.nicknames && item.nicknames[uid]) || state.users[uid]?.name || 'Member').join(', ');
 }
-function renderAvatarHtml(peerIds) {
+function renderAvatarHtml(peerIds, item = null) {
+  if (item && item.isGroup && item.pic) return `<img class="avatar" src="${escapeHtml(item.pic)}" alt="">`;
   if (!peerIds || peerIds.length === 0) return `<img class="avatar" src="${escapeHtml(fallbackAvatar('group'))}" alt="">`;
   if (peerIds.length === 1) return `<img class="avatar" src="${escapeHtml(avatarUrl(state.users[peerIds[0]]))}" alt="">`;
   const count = Math.min(peerIds.length, 4);
@@ -132,7 +133,7 @@ function renderConversations() {
     const unread = Number(item.unreadCount || 0);
     const preview = item.lastSenderId === state.user.uid ? `You: ${item.lastMessage || ''}` : (item.lastMessage || 'Start chatting');
     const presenceHtml = !item.isGroup && peerIds.length === 1 ? `<i class="conversation-presence${isOnline(peerIds[0]) ? ' online' : ''}" aria-label="${isOnline(peerIds[0]) ? 'Online' : 'Offline'}"></i>` : '';
-    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(name)}</span><span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
+    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds, item)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(name)}</span><span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
   }).join('');
   list.querySelectorAll('.conversation').forEach((button) => button.addEventListener('click', () => {
     const threadId = button.dataset.thread;
@@ -171,15 +172,13 @@ function updateChatHeader() {
   const peerIds = getThreadPeers(item);
   const name = getThreadName(item, peerIds);
   
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = renderAvatarHtml(peerIds);
-  const newAvatar = tempDiv.firstChild;
-  if (newAvatar.tagName === 'IMG') newAvatar.classList.add('avatar', 'large');
-  else if (newAvatar.classList.contains('avatar-collage')) newAvatar.classList.add('large');
-  
-  const avatarContainer = $('chat-avatar');
-  if (avatarContainer) { newAvatar.id = 'chat-avatar'; avatarContainer.replaceWith(newAvatar); }
-
+  const avatarHtml = renderAvatarHtml(peerIds, item);
+  const wrap = $('chat-avatar-wrap');
+  if (wrap) {
+    wrap.innerHTML = avatarHtml;
+    const el = wrap.firstElementChild;
+    if (el) { el.classList.add('large'); if (el.tagName === 'IMG') el.classList.add('avatar'); }
+  }
   $('chat-name').textContent = name;
   
   const typingPeers = item.isGroup ? peerIsTyping() : (peerIsTyping() ? [state.activePeerId] : []);
@@ -223,7 +222,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     });
   }
   list.innerHTML = rows.map((message) => {
-    if (message.isSystem) return `<div class="message-row system" style="text-align:center; font-size:12px; color:var(--muted); margin: 8px 0; width: 100%; justify-content: center;">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</div>`;
+    if (message.isSystem) return `<div class="message-row system" style="text-align:center; font-size:12px; color:var(--muted); margin: 8px 0; width: 100%; max-width: 100%; justify-content: center;">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
     const quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
@@ -505,8 +504,8 @@ function syncThreadSummaryWatchers() {
     state.stopThreadSummaries[threadId] = onValue(ref(db, `chatThreads/${threadId}`), (snapshot) => {
       const thread = snapshot.val(); const current = state.inbox[threadId];
       if (!thread || !current || Number(thread.lastTimestamp || 0) < Number(current.lastTimestamp || 0)) return;
-      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '' };
-      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || {})) return;
+      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '', pic: thread.pic || current.pic || '' };
+      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '')) return;
       state.inbox = { ...state.inbox, [threadId]: next };
       if (state.activeThreadId === threadId) { state.activeInboxItem = next; updateChatHeader(); renderMessages(state.messages); }
       renderConversations();
@@ -518,6 +517,7 @@ function handleInbox(snapshot) {
   Object.keys(next).forEach(id => {
     if (previous[id]) {
       if (previous[id].name !== undefined) next[id].name = previous[id].name;
+      if (previous[id].pic !== undefined) next[id].pic = previous[id].pic;
       if (previous[id].creatorId !== undefined) next[id].creatorId = previous[id].creatorId;
       if (previous[id].members !== undefined) next[id].members = previous[id].members;
       if (previous[id].nicknames !== undefined) next[id].nicknames = previous[id].nicknames;
@@ -556,6 +556,18 @@ $('message-input').addEventListener('keydown', (event) => { if (event.key === 'E
 $('send-button').addEventListener('mousedown', e => e.preventDefault());
 $('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
 $('image-input').addEventListener('change', (event) => { const file = event.target.files[0]; state.pendingImageFile = file || null; if (file) showToast(`Photo ready: ${file.name}. Limit: 3 uploads daily.`); });
+$('group-photo-input')?.addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the creator can set the group photo.');
+  try {
+    const b64 = await compressImage(file);
+    await update(ref(db, `chatThreads/${state.activeThreadId}`), { pic: b64 });
+    showToast('Group photo updated.');
+    $('conversation-dialog').close();
+  } catch (err) { showToast('Could not update photo.'); }
+  event.target.value = '';
+});
 $('cancel-reply-button').addEventListener('click', clearReply);
 $('mobile-back-button').addEventListener('click', closeActiveChat);
 $('conversation-options-button').addEventListener('click', () => {
@@ -564,6 +576,7 @@ $('conversation-options-button').addEventListener('click', () => {
   $('set-nickname-button').classList.toggle('hidden', !!isGroup);
   $('set-my-nickname-button').classList.toggle('hidden', !isGroup);
   $('rename-group-button').classList.toggle('hidden', !isCreator);
+  $('set-group-photo-button').classList.toggle('hidden', !isCreator);
   $('add-member-button').classList.toggle('hidden', !isCreator);
   $('show-members-button').classList.toggle('hidden', !isGroup);
   $('kick-member-button').classList.toggle('hidden', !isCreator);

@@ -45,7 +45,7 @@
       <section id="active-chat" class="active-chat hidden" aria-label="Active conversation">
         <header class="chat-header">
           <button id="mobile-back-button" class="icon-button mobile-only" aria-label="Back to conversations">‹</button>
-          <img id="chat-avatar" class="avatar large" alt="">
+          <span id="chat-avatar-wrap"><img id="chat-avatar" class="avatar large" alt=""></span>
           <div class="chat-heading">
             <h2 id="chat-name">Conversation</h2>
             <p id="chat-status">Offline</p>
@@ -107,6 +107,10 @@
       <!-- Group-only -->
       <button id="set-my-nickname-button" class="conversation-action hidden" type="button"><span>Set My Nickname</span><small>Change how you appear in this group.</small></button>
       <button id="rename-group-button" class="conversation-action hidden" type="button"><span>Rename Group</span><small>Change the group chat title.</small></button>
+      <label id="set-group-photo-button" class="conversation-action hidden" type="button">
+        <span>Set Group Photo</span><small>Choose a custom image for the group.</small>
+        <input type="file" id="group-photo-input" accept="image/*" style="display:none;">
+      </label>
       <button id="add-member-button" class="conversation-action hidden" type="button"><span>Add Member</span><small>Add new members to this group.</small></button>
       <button id="show-members-button" class="conversation-action hidden" type="button"><span>Show Members</span><small>See everyone in this group.</small></button>
       <button id="kick-member-button" class="conversation-action hidden" type="button"><span>Kick Member</span><small>Remove someone from the group.</small></button>
