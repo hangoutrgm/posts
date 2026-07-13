@@ -98,3 +98,20 @@ button { cursor:pointer; }
 :root.dark .group-toggle-btn { border-color:var(--line); color:var(--blue); }
 :root.dark .group-toggle-btn:hover { background:#193a61; }
 
+/* v4.4 — clickable message images */
+.message-image { cursor:pointer; }
+
+/* v4.4 — image viewer modal */
+.image-viewer { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; }
+.image-viewer.hidden { display:none; }
+.image-viewer-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.88); backdrop-filter:blur(6px); }
+.image-viewer-content { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:18px; max-width:min(96vw,900px); padding:16px; }
+.image-viewer-content img { max-width:100%; max-height:78dvh; object-fit:contain; border-radius:12px; box-shadow:0 12px 48px rgba(0,0,0,0.6); user-select:none; }
+.image-viewer-close { position:absolute; top:-8px; right:-8px; width:38px; height:38px; border:0; border-radius:50%; background:rgba(255,255,255,0.18); color:#fff; font-size:22px; line-height:1; cursor:pointer; backdrop-filter:blur(4px); transition:background .15s; }
+.image-viewer-close:hover { background:rgba(255,255,255,0.30); }
+.image-viewer-actions { display:flex; gap:12px; }
+.image-viewer-save-btn { display:inline-flex; align-items:center; gap:6px; padding:10px 24px; border-radius:22px; background:var(--blue); color:#fff; font-size:14px; font-weight:600; text-decoration:none; transition:background .15s, opacity .15s; }
+.image-viewer-save-btn:hover { background:#0f5ec9; }
+:root.dark .image-viewer-close { background:rgba(255,255,255,0.12); }
+:root.dark .image-viewer-close:hover { background:rgba(255,255,255,0.25); }
+

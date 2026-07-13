@@ -135,6 +135,18 @@
     </div>
   </dialog>
 
+  <!-- Image viewer modal (v4.4) -->
+  <div id="image-viewer" class="image-viewer hidden" role="dialog" aria-label="Image viewer" aria-modal="true">
+    <div class="image-viewer-backdrop" id="image-viewer-backdrop"></div>
+    <div class="image-viewer-content">
+      <button id="image-viewer-close" class="image-viewer-close" type="button" aria-label="Close">×</button>
+      <img id="image-viewer-img" src="" alt="Full size photo">
+      <div class="image-viewer-actions">
+        <a id="image-viewer-save" class="image-viewer-save-btn" download="chat-photo.jpg" href="#">⬇ Save Image</a>
+      </div>
+    </div>
+  </div>
+
   <div id="message-action-menu" class="message-action-menu hidden" role="menu" aria-label="Message actions"></div>
   <div id="toast" class="toast hidden" role="status"></div>
   <script type="module" src="js/app.js"></script>
