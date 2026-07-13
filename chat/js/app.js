@@ -1,4 +1,4 @@
-import { auth, db } from '../../js/firebase-config.js';
+import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { get, limitToLast, onDisconnect, onValue, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
@@ -395,6 +395,17 @@ function compressImage(file) {
   });
 }
 
+async function uploadToCloudinary(base64Data) {
+  const url = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/upload`;
+  const formData = new FormData();
+  formData.append('file', base64Data);
+  formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+  const response = await fetch(url, { method: 'POST', body: formData });
+  if (!response.ok) throw new Error('Failed to upload image to Cloudinary');
+  const data = await response.json();
+  return data.secure_url;
+}
+
 async function useUploadQuota() {
   const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= 3 ? undefined : Number(count || 0) + 1));
   if (!result.committed) throw new Error('Daily photo limit reached (3 uploads). Try again tomorrow.');
@@ -428,7 +439,12 @@ async function sendMessage(event) {
   const input = $('message-input'); const text = input.value.trim(); const file = state.pendingImageFile; if (!text && !file) return;
   const button = $('send-button'); button.disabled = true;
   try {
-    const image = file ? await compressImage(file) : null; if (image) await useUploadQuota();
+    let image = null;
+    if (file) {
+      const base64Img = await compressImage(file);
+      image = await uploadToCloudinary(base64Img);
+      await useUploadQuota();
+    }
     const timestamp = Date.now(); const payload = { senderId: state.user.uid, text, timestamp };
     if (image) payload.image = image;
     if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image) };
@@ -614,7 +630,8 @@ $('group-photo-input')?.addEventListener('change', async (event) => {
   if (!file || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
   if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the creator can set the group photo.');
   try {
-    const b64 = await compressImage(file);
+    const base64Img = await compressImage(file);
+    const b64 = await uploadToCloudinary(base64Img);
     await update(ref(db, `chatThreads/${state.activeThreadId}`), { pic: b64 });
     showToast('Group photo updated.');
     $('conversation-dialog').close();

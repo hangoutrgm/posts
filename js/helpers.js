@@ -144,6 +144,28 @@ window.compressImage = (file, heavy = false) => {
     });
 };
 
+window.uploadToCloudinary = async (base64Data) => {
+    const cloudName = "rlnbst7h";
+    const uploadPreset = "hangout-images";
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/upload`;
+    
+    const formData = new FormData();
+    formData.append('file', base64Data);
+    formData.append('upload_preset', uploadPreset);
+    
+    const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+    });
+    
+    if (!response.ok) {
+        throw new Error('Failed to upload image to Cloudinary');
+    }
+    
+    const data = await response.json();
+    return data.secure_url;
+};
+
 window.handleDeepLinks = () => {
     if (window.initialLinkDone) return;
     const params = new URLSearchParams(window.location.search);

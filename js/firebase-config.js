@@ -16,3 +16,8 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getDatabase(app);
+
+export const cloudinaryConfig = {
+    cloudName: "rlnbst7h",
+    uploadPreset: "hangout-images"
+};
