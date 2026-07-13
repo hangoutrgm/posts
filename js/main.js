@@ -1,7 +1,7 @@
 // main.js
 import { app, auth, db } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, push, onValue, set, update, remove, serverTimestamp, increment, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, push, onValue, get, set, update, remove, serverTimestamp, increment, onDisconnect, query, limitToLast, orderByKey, endBefore } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import "./globals.js";
 import "./helpers.js";
 import "./renderers.js";
@@ -345,38 +345,72 @@ onValue(ref(db, 'users'), (snap) => {
     window.handleDeepLinks();
 });
 
-onValue(ref(db, 'community_posts'), (snapshot) => {
+window.livePosts = [];
+window.historicalPosts = [];
+window.isLoadingHistory = false;
+window.hasMorePosts = true;
 
+window.loadMorePosts = async () => {
+    if (window.isLoadingHistory || !window.hasMorePosts) return;
+    
+    // Find the oldest post ID we currently have
+    const allKnown = [...window.historicalPosts, ...window.livePosts].sort((a, b) => a.id < b.id ? -1 : (a.id > b.id ? 1 : 0));
+    if (allKnown.length === 0) return;
+    
+    const oldestId = allKnown[0].id;
+    window.isLoadingHistory = true;
+    
+    // Show a small loader at the bottom
+    const sentinel = document.querySelector('.sentinel-loader');
+    if (sentinel) sentinel.innerHTML = '<span>Loading older posts...</span>';
+    
+    try {
+        const snap = await get(query(ref(db, 'community_posts'), orderByKey(), endBefore(oldestId), limitToLast(15)));
+        const oldPosts = [];
+        snap.forEach(child => { oldPosts.push({ id: child.key, ...child.val() }); });
+        
+        if (oldPosts.length === 0) {
+            window.hasMorePosts = false;
+            if (sentinel) sentinel.innerHTML = '<span>No more posts to show.</span>';
+        } else {
+            // Prepend old posts to historicalPosts (so they stay at the bottom of the feed)
+            window.historicalPosts = [...oldPosts, ...window.historicalPosts];
+            window.allPosts = [...window.historicalPosts, ...window.livePosts];
+            if (!window.isUserTyping) {
+                if (window.activeProfileUid) window.renderProfileData(false);
+                else window.renderFeed(false);
+                window.handleDeepLinks();
+            }
+        }
+    } catch (err) {
+        console.error("Error loading historical posts:", err);
+    }
+    window.isLoadingHistory = false;
+};
+
+onValue(query(ref(db, 'community_posts'), limitToLast(15)), (snapshot) => {
     const newPosts = [];
-
     snapshot.forEach(child => {
-        newPosts.push({
-            id: child.key,
-            ...child.val()
-        });
+        newPosts.push({ id: child.key, ...child.val() });
     });
 
-    // Don't redraw if nothing actually changed
-    const oldData = JSON.stringify(window.allPosts);
+    const oldData = JSON.stringify(window.livePosts);
     const newData = JSON.stringify(newPosts);
+    if (oldData === newData) return;
 
-    if (oldData === newData) {
-        return;
+    window.livePosts = newPosts;
+    
+    // Merge history and live posts. Ensure we don't duplicate if history caught up to live.
+    const liveIds = new Set(window.livePosts.map(p => p.id));
+    const dedupedHistory = window.historicalPosts.filter(p => !liveIds.has(p.id));
+    
+    window.allPosts = [...dedupedHistory, ...window.livePosts];
+
+    if (!window.isUserTyping) {
+        if (window.activeProfileUid) window.renderProfileData(false);
+        else window.renderFeed(false);
     }
-
-    window.allPosts = newPosts;
-
-// Don't redraw while the user is typing.
-if (!window.isUserTyping) {
-
-    if (window.activeProfileUid)
-        window.renderProfileData(false);
-    else
-        window.renderFeed(false);
-
-}
-
-window.handleDeepLinks();
+    window.handleDeepLinks();
 });
 
 // ==========================================

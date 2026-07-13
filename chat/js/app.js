@@ -344,7 +344,7 @@ function openThread(threadId, inboxItem) {
   if (state.stopMessages) state.stopMessages();
   state.messages = {}; state.messagesLoaded = false; $('message-list').innerHTML = '<p class="list-empty messages-empty">Loading recent messages…</p>';
   state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(60)), (snapshot) => { const firstLoad = !state.messagesLoaded; state.messagesLoaded = true; renderMessages(snapshot.val(), firstLoad); markThreadSeen(threadId); });
-  watchTyping(threadId); watchSeen(threadId); $('message-input').focus();
+  watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); $('message-input').focus();
 }
 
 async function startConversation(peerId) {
@@ -476,6 +476,7 @@ function closeActiveChat() {
     else if (Array.isArray(state.stopSeen)) state.stopSeen.forEach(fn => fn());
   }
   state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.activeInboxItem = null; state.messages = {}; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; state.groupSeenAt = {}; clearReply(); closeMessageMenu();
+  syncThreadSummaryWatchers();
   $('active-chat').classList.add('hidden'); $('empty-state').classList.remove('hidden'); renderConversations();
 }
 async function clearChatForMe() {
@@ -510,7 +511,7 @@ function stopThreadSummaryWatchers() {
   state.stopThreadSummaries = {};
 }
 function syncThreadSummaryWatchers() {
-  const threadIds = new Set(Object.keys(state.inbox));
+  const threadIds = new Set(state.activeThreadId ? [state.activeThreadId] : []);
   Object.entries(state.stopThreadSummaries).forEach(([threadId, stop]) => {
     if (!threadIds.has(threadId)) { stop(); delete state.stopThreadSummaries[threadId]; }
   });

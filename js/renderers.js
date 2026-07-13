@@ -292,10 +292,12 @@ window.renderFeed = (resetLimit = true) => {
     const inputStates = window.saveInputStates();
     feed.style.minHeight = feed.clientHeight + 'px'; 
     
-    if(displayPosts.length === 0) {
+    if(displayPosts.length === 0 && !window.hasMorePosts) {
         feed.innerHTML = `<p class="text-center text-gray-400 text-xs py-10">No posts found.</p>`;
         feed.style.minHeight = '';
         return;
+    } else if (displayPosts.length === 0 && window.hasMorePosts) {
+        feed.innerHTML = '';
     }
 
     window.filteredPostsLength = displayPosts.length;
@@ -303,7 +305,7 @@ window.renderFeed = (resetLimit = true) => {
     
     window.renderPostList(feed, postsToRender, 'main', window.currentFilter);
 
-    if (window.feedRenderLimit < window.filteredPostsLength) {
+    if (window.feedRenderLimit < window.filteredPostsLength || window.hasMorePosts) {
         const sentinel = document.createElement('div');
         sentinel.className = 'sentinel-loader h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
         sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
@@ -312,8 +314,12 @@ window.renderFeed = (resetLimit = true) => {
         if(window.feedObserver) window.feedObserver.disconnect();
         window.feedObserver = new IntersectionObserver((entries) => {
             if(entries[0].isIntersecting) {
-                window.feedRenderLimit += 15;
-                window.renderFeed(false);
+                if (window.feedRenderLimit < window.filteredPostsLength) {
+                    window.feedRenderLimit += 15;
+                    window.renderFeed(false);
+                } else if (window.hasMorePosts) {
+                    window.loadMorePosts();
+                }
             }
         }, { rootMargin: "300px" });
         window.feedObserver.observe(sentinel);
@@ -443,16 +449,18 @@ window.renderProfileData = (resetLimit = true) => {
     const inputStates = window.saveInputStates();
     pFeed.style.minHeight = pFeed.clientHeight + 'px';
 
-    if(pPosts.length === 0) {
+    if(pPosts.length === 0 && !window.hasMorePosts) {
         pFeed.innerHTML = `<p class="text-center text-gray-500 text-xs py-5">No posts yet.</p>`;
         pFeed.style.minHeight = '';
         return;
+    } else if (pPosts.length === 0 && window.hasMorePosts) {
+        pFeed.innerHTML = '';
     }
 
     const postsToRender = pPosts.slice(0, window.profileRenderLimit);
     window.renderPostList(pFeed, postsToRender, 'profile', 'profile');
 
-    if (window.profileRenderLimit < pPosts.length) {
+    if (window.profileRenderLimit < pPosts.length || window.hasMorePosts) {
         const sentinel = document.createElement('div');
         sentinel.className = 'sentinel-loader h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
         sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
@@ -461,8 +469,12 @@ window.renderProfileData = (resetLimit = true) => {
         if(window.profileObserver) window.profileObserver.disconnect();
         window.profileObserver = new IntersectionObserver((entries) => {
             if(entries[0].isIntersecting) {
-                window.profileRenderLimit += 15;
-                window.renderProfileData(false);
+                if (window.profileRenderLimit < pPosts.length) {
+                    window.profileRenderLimit += 15;
+                    window.renderProfileData(false);
+                } else if (window.hasMorePosts) {
+                    window.loadMorePosts();
+                }
             }
         }, { rootMargin: "300px" });
         window.profileObserver.observe(sentinel);
