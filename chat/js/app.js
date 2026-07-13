@@ -126,6 +126,12 @@ function renderConversations() {
     return !term || `${name} ${item.lastMessage || ''}`.toLowerCase().includes(term);
   }).sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
   if (!state.user) { list.innerHTML = ''; return; }
+  if (!Object.keys(state.inbox).length && !state.inboxReady) {
+    list.innerHTML = `<div class="conv-skeleton-list">${Array.from({length:6}, () =>
+      `<div class="conv-skeleton-row"><div class="conv-skeleton-avatar skeleton"></div><div class="conv-skeleton-body"><div class="conv-skeleton-name skeleton"></div><div class="conv-skeleton-preview skeleton"></div></div></div>`
+    ).join('')}</div>`;
+    return;
+  }
   if (!items.length) { list.innerHTML = '<p class="list-empty">No conversations yet. Tap the compose button to say hello.</p>'; return; }
   list.innerHTML = items.map((item) => {
     const peerIds = getThreadPeers(item);
@@ -342,7 +348,14 @@ function openThread(threadId, inboxItem) {
   state.activePeerId = state.activeInboxItem.isGroup ? null : state.activeInboxItem.peerId;
   $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
   if (state.stopMessages) state.stopMessages();
-  state.messages = {}; state.messagesLoaded = false; $('message-list').innerHTML = '<p class="list-empty messages-empty">Loading recent messages…</p>';
+  state.messages = {}; state.messagesLoaded = false;
+  $('message-list').innerHTML = `<div class="msg-skeleton-list">
+    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+  </div>`;
   state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(60)), (snapshot) => { const firstLoad = !state.messagesLoaded; state.messagesLoaded = true; renderMessages(snapshot.val(), firstLoad); markThreadSeen(threadId); });
   watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); $('message-input').focus();
 }
@@ -527,7 +540,9 @@ function stopThreadSummaryWatchers() {
   state.stopThreadSummaries = {};
 }
 function syncThreadSummaryWatchers() {
-  const threadIds = new Set(state.activeThreadId ? [state.activeThreadId] : []);
+  // Watch ALL inbox threads so names/nicknames are live for the full conversation list
+  const threadIds = new Set(Object.keys(state.inbox));
+  if (state.activeThreadId) threadIds.add(state.activeThreadId);
   Object.entries(state.stopThreadSummaries).forEach(([threadId, stop]) => {
     if (!threadIds.has(threadId)) { stop(); delete state.stopThreadSummaries[threadId]; }
   });
@@ -535,7 +550,7 @@ function syncThreadSummaryWatchers() {
     if (state.stopThreadSummaries[threadId]) return;
     state.stopThreadSummaries[threadId] = onValue(ref(db, `chatThreads/${threadId}`), (snapshot) => {
       const thread = snapshot.val(); const current = state.inbox[threadId];
-      if (!thread || !current || Number(thread.lastTimestamp || 0) < Number(current.lastTimestamp || 0)) return;
+      if (!thread || !current) return;
       const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '', pic: thread.pic || current.pic || '' };
       if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '')) return;
       state.inbox = { ...state.inbox, [threadId]: next };
@@ -591,13 +606,6 @@ function handleInbox(snapshot) {
   renderConversations(); 
   updateUnreadTitle(); 
   markThreadRead();
-  
-  // Fetch metadata once for any threads that need it
-  Object.keys(next).forEach(threadId => {
-    if (!next[threadId].metadataLoaded) {
-      loadThreadMetadata(threadId);
-    }
-  });
 }
 
 onValue(ref(db, 'users'), (snapshot) => { const raw = snapshot.val() || {}; state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }])); renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('member list', error));
