@@ -528,6 +528,31 @@ function syncThreadSummaryWatchers() {
     }, (error) => reportRealtimeError('conversation summary', error));
   });
 }
+async function loadThreadMetadata(threadId) {
+  if (state.inbox[threadId]?.metadataLoaded) return;
+  try {
+    const snapshot = await get(ref(db, `chatThreads/${threadId}`));
+    if (snapshot.exists()) {
+      const thread = snapshot.val();
+      const current = state.inbox[threadId];
+      if (!current) return;
+      current.name = thread.name || '';
+      current.pic = thread.pic || '';
+      current.creatorId = thread.creatorId || '';
+      current.members = thread.members || {};
+      current.nicknames = thread.nicknames || {};
+      current.metadataLoaded = true;
+      renderConversations();
+      if (state.activeThreadId === threadId) {
+        state.activeInboxItem = current;
+        updateChatHeader();
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load thread metadata:", err);
+  }
+}
+
 function handleInbox(snapshot) {
   const previous = state.inbox; const next = snapshot.val() || {};
   Object.keys(next).forEach(id => {
@@ -537,6 +562,7 @@ function handleInbox(snapshot) {
       if (previous[id].creatorId !== undefined) next[id].creatorId = previous[id].creatorId;
       if (previous[id].members !== undefined) next[id].members = previous[id].members;
       if (previous[id].nicknames !== undefined) next[id].nicknames = previous[id].nicknames;
+      if (previous[id].metadataLoaded !== undefined) next[id].metadataLoaded = previous[id].metadataLoaded;
     }
   });
   state.inbox = next;
@@ -544,7 +570,18 @@ function handleInbox(snapshot) {
     const before = previous[threadId];
     if (item.lastSenderId !== state.user.uid && Number(item.lastTimestamp || 0) > Number(before?.lastTimestamp || 0)) showToast(`New message from ${state.users[item.peerId]?.name || 'a member'}`);
   });
-  state.inboxReady = true; syncThreadSummaryWatchers(); renderConversations(); updateUnreadTitle(); markThreadRead();
+  state.inboxReady = true; 
+  syncThreadSummaryWatchers(); 
+  renderConversations(); 
+  updateUnreadTitle(); 
+  markThreadRead();
+  
+  // Fetch metadata once for any threads that need it
+  Object.keys(next).forEach(threadId => {
+    if (!next[threadId].metadataLoaded) {
+      loadThreadMetadata(threadId);
+    }
+  });
 }
 
 onValue(ref(db, 'users'), (snapshot) => { const raw = snapshot.val() || {}; state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }])); renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('member list', error));
