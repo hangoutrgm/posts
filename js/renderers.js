@@ -1,5 +1,5 @@
 import { db } from "./firebase-config.js";
-import { ref, update, set, push, remove, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, update, set, push, remove, increment, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 // Notifications
 window.updateNotifBadge = () => {
@@ -218,8 +218,25 @@ window.renderFeed = (resetLimit = true) => {
         catFilters.classList.add('hidden');
 
         if (!singlePost) {
-            feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
-            <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+            feed.innerHTML = `<div class="text-center text-gray-500 py-10">
+                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-blue-600"></i>
+                <p>Loading spotlight post...</p>
+            </div>`;
+            get(ref(db, `community_posts/${window.isolatedPostId}`)).then((snapshot) => {
+                if (snapshot.exists()) {
+                    const post = { id: snapshot.key, ...snapshot.val() };
+                    window.historicalPosts.push(post);
+                    window.allPosts = [...window.historicalPosts, ...window.livePosts];
+                    window.renderFeed(false);
+                } else {
+                    feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                    <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+                }
+            }).catch((err) => {
+                console.error("Error fetching isolated post:", err);
+                feed.innerHTML = `<p class="text-center text-gray-500 py-10">Failed to load post.</p>
+                <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+            });
             return;
         }
 
