@@ -562,8 +562,10 @@ $('conversation-options-button').addEventListener('click', () => {
   const isGroup = state.activeInboxItem?.isGroup;
   const isCreator = isGroup && state.activeInboxItem?.creatorId === state.user?.uid;
   $('set-nickname-button').classList.toggle('hidden', !!isGroup);
+  $('set-my-nickname-button').classList.toggle('hidden', !isGroup);
   $('rename-group-button').classList.toggle('hidden', !isCreator);
   $('add-member-button').classList.toggle('hidden', !isCreator);
+  $('show-members-button').classList.toggle('hidden', !isGroup);
   $('kick-member-button').classList.toggle('hidden', !isCreator);
   $('leave-group-button').classList.toggle('hidden', !isGroup);
   $('conversation-dialog').showModal();
@@ -573,6 +575,7 @@ $('clear-chat-button').addEventListener('click', clearChatForMe);
 $('remove-conversation-button').addEventListener('click', removeConversation);
 $('rename-group-button')?.addEventListener('click', renameGroup);
 $('add-member-button')?.addEventListener('click', addMember);
+$('show-members-button')?.addEventListener('click', showMembers);
 $('kick-member-button')?.addEventListener('click', kickMember);
 $('leave-group-button')?.addEventListener('click', leaveGroup);
 $('close-auth-button').addEventListener('click', () => $('auth-dialog').close());
@@ -601,6 +604,18 @@ $('set-nickname-button')?.addEventListener('click', async () => {
   } catch (err) { showToast('Could not update nickname.'); }
 });
 
+$('set-my-nickname-button')?.addEventListener('click', async () => {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  $('conversation-dialog').close();
+  const currentNick = state.activeInboxItem.nicknames?.[state.user.uid] || '';
+  const newNickname = await showAppModal({ title: 'Set My Nickname', message: `Set how you appear in this group. Leave blank to reset.`, input: true, inputValue: currentNick });
+  if (newNickname === null) return;
+  try {
+    await update(ref(db, `chatThreads/${state.activeThreadId}/nicknames`), { [state.user.uid]: newNickname.trim() || null });
+    showToast('Nickname updated.');
+  } catch (err) { showToast('Could not update nickname.'); }
+});
+
 async function renameGroup() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
   if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can rename the group.');
@@ -614,14 +629,22 @@ async function renameGroup() {
   } catch (err) { showToast(`Could not rename group: ${err.message}`); }
 }
 
+async function showMembers() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  $('conversation-dialog').close();
+  const peerIds = Object.keys(state.activeInboxItem.members || {});
+  const list = peerIds.map(uid => ({ uid, name: getNickname(uid), avatar: avatarUrl(state.users[uid]), isCreator: uid === state.activeInboxItem.creatorId })).sort((a, b) => b.isCreator - a.isCreator || a.name.localeCompare(b.name));
+  await showAppModal({ title: 'Group Members', memberList: list, cancelText: 'Close', confirmText: 'OK' });
+}
+
 async function kickMember() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
-  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can view/kick members here.');
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can kick members.');
   const allIds = Object.keys(state.activeInboxItem.members || {});
   if (allIds.length <= 1) return showToast('No other members to kick.');
   const memberList = allIds.map(id => ({ uid: id, name: state.users[id]?.name || 'Member', avatar: avatarUrl(state.users[id]), isCreator: id === state.activeInboxItem.creatorId }));
   $('conversation-dialog').close();
-  const selected = await showAppModal({ title: 'Show / Kick Member', message: 'Select a member to remove from this group.', memberList, disabledUid: state.user.uid, multiSelect: false, confirmText: 'Kick', danger: true });
+  const selected = await showAppModal({ title: 'Kick Member', message: 'Select a member to remove from this group.', memberList, disabledUid: state.user.uid, multiSelect: false, confirmText: 'Kick', danger: true });
   if (!selected || !selected.length) return;
   const targetUid = selected[0]; const targetName = state.users[targetUid]?.name || 'this member';
   const confirmed = await showAppModal({ title: 'Confirm Kick', message: `Are you sure you want to kick ${targetName} from the group?`, confirmText: 'Kick', danger: true });
