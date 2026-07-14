@@ -75,8 +75,8 @@ window.notifyMentions = (text, postId) => {
         });
     }
     
-    // Check for @mods
-    if (textLower.includes('@mods')) {
+    // Check for @mods — only mods/admins can use this
+    if (myRole >= 2 && textLower.includes('@mods')) {
         Object.keys(window.globalUsersCache).forEach(uid => {
             // Notify if user is Mod/Admin, not self, and not already notified
             if (uid !== window.currentUser.uid && !notifiedUids.has(uid) && window.getRole(uid).level >= 2) {
@@ -172,8 +172,8 @@ const setupMentionSystem = () => {
                 const allUsers = Object.values(window.globalUsersCache || {});
                 let matchedUsers = allUsers.filter(u => u.name && u.name.toLowerCase().includes(query)).slice(0, 5);
                 
-                // V6.9 FEATURE: @mods suggestion
-                if ("mods".includes(query)) {
+                // V6.9 FEATURE: @mods suggestion — only visible to mods/admins
+                if (myRole >= 2 && "mods".includes(query)) {
                     matchedUsers.unshift({ name: "mods", isMods: true });
                 }
                 
@@ -890,6 +890,7 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     const gender = document.getElementById('profile-gender').value;
     const relationship = document.getElementById('profile-relationship').value;
     let partner = document.getElementById('profile-partner').value.trim();
+    const bio = document.getElementById('profile-bio').value.trim();
     if(!['In a relationship', 'Engaged', 'Married', 'Complicated'].includes(relationship)) partner = '';
 
     let newPicUrl = document.getElementById('profile-pic-url').value.trim();
@@ -920,7 +921,7 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
 
     if(window.currentUser) {
         try {
-            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, gender, relationship, partner, galleryImages });
+            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, gender, relationship, partner, bio, galleryImages });
             try { await updateProfile(window.currentUser, { displayName: finalName, photoURL: finalPic }); } catch (e) { }
             
             document.getElementById('profile-modal').classList.add('hidden');

@@ -132,7 +132,7 @@
     <div id="image-viewer-modal" class="hidden fixed inset-0 z-[120] flex flex-col items-center justify-center p-2 bg-black/95 backdrop-blur-sm" onclick="window.closeImageViewer()">
         <button onclick="window.closeImageViewer()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10 transition p-2"><i class="fa-solid fa-xmark text-2xl"></i></button>
         <img id="viewer-img" src="" class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl transition-transform mb-4" onclick="event.stopPropagation()">
-        <a id="viewer-download-btn" href="#" download="hangout_image" onclick="event.stopPropagation()" class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-full font-bold text-sm transition shadow-lg flex items-center space-x-2 border border-gray-700">
+        <a id="viewer-download-btn" href="#" onclick="event.stopPropagation()" class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-full font-bold text-sm transition shadow-lg flex items-center space-x-2 border border-gray-700">
             <i class="fa-solid fa-download"></i> <span>Save Image</span>
         </a>
     </div>
@@ -257,6 +257,8 @@
             <input type="text" id="profile-partner" placeholder="Partner Name (e.g. @Gemini)" class="hidden w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-pink-200 dark:border-pink-900/50">
             <input type="text" id="profile-pic-url" placeholder="Profile Pic URL (Optional)" class="w-full bg-gray-100 dark:bg-slate-900 text-[10px] p-2.5 rounded-lg mb-3 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
             
+            <textarea id="profile-bio" placeholder="Write a short bio about yourself..." rows="2" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700 resize-none leading-snug"></textarea>
+
             <div class="mb-3">
                 <p class="text-xs font-bold text-gray-500 mb-2"><i class="fa-solid fa-images text-blue-500 mr-1"></i> Photo Gallery (max 4)</p>
                 <div class="flex gap-2" id="gallery-slots">

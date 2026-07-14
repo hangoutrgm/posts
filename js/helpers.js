@@ -94,9 +94,17 @@ window.viewImage = (src) => {
     document.getElementById('viewer-img').src = src;
     document.getElementById('image-viewer-modal').classList.remove('hidden');
     
+    // Generate unique filename based on current date/time
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    const uniqueName = `hangout_${dateStr}_${timeStr}`;
+    
     // Attempt to fetch image as blob to allow download for cross-origin images
     const downloadBtn = document.getElementById('viewer-download-btn');
     downloadBtn.href = '#';
+    downloadBtn.download = uniqueName;
     fetch(src)
         .then(res => res.blob())
         .then(blob => {

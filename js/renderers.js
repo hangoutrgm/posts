@@ -43,15 +43,26 @@ window.renderNotifications = () => {
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
             else if(n.type === 'follow') { 
                 text = 'started following you.'; icon = '👥'; 
-                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`; 
+                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+            }
+
+            // Format timestamp
+            let timeDisplay = '';
+            if (n.timestamp) {
+                const d = new Date(n.timestamp);
+                const fullDate = d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                timeDisplay = `<span class="text-gray-400 dark:text-gray-500 text-[9px] mt-0.5 block" title="${fullDate}">${window.timeAgo(n.timestamp)} ago • ${fullDate}</span>`;
             }
 
             return `
             <div class="flex items-center p-2.5 rounded-lg mb-1 border border-gray-100 dark:border-slate-700/50 ${n.read ? 'bg-gray-50 dark:bg-slate-900/50 opacity-80' : 'bg-blue-50 dark:bg-blue-900/20'} hover:opacity-100 cursor-pointer transition shadow-sm" ${linkAction}>
                 <img src="${u.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover mr-3 shrink-0 border border-gray-200 dark:border-slate-600" onclick="event.stopPropagation(); window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');">
-                <div class="flex-1 text-[11px] leading-tight">
-                    <span class="font-bold text-gray-900 dark:text-white hover:underline" onclick="event.stopPropagation(); window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');">${u.name}</span>
-                    <span class="text-gray-600 dark:text-gray-300 font-normal">${text}</span>
+                <div class="flex-1 text-[11px] leading-tight min-w-0">
+                    <div>
+                        <span class="font-bold text-gray-900 dark:text-white hover:underline" onclick="event.stopPropagation(); window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');">${u.name}</span>
+                        <span class="text-gray-600 dark:text-gray-300 font-normal"> ${text}</span>
+                    </div>
+                    ${timeDisplay}
                 </div>
                 <div class="text-lg ml-2 shrink-0">${icon}</div>
             </div>
@@ -61,6 +72,8 @@ window.renderNotifications = () => {
 };
 
 // Profile UI
+
+
 window.openProfile = (uid) => {
     document.getElementById('members-modal').classList.add('hidden');
     document.getElementById('main-view').classList.add('hidden');
@@ -103,6 +116,7 @@ window.openEditProfile = () => {
     document.getElementById('profile-gender').value = cache.gender || '';
     document.getElementById('profile-relationship').value = cache.relationship || '';
     document.getElementById('profile-partner').value = cache.partner || '';
+    document.getElementById('profile-bio').value = cache.bio || '';
     document.getElementById('profile-relationship').dispatchEvent(new Event('change'));
 
     // Build gallery slots
@@ -406,6 +420,8 @@ window.renderProfileData = (resetLimit = true) => {
             
             ${isBanned ? '<span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-1">Banned</span>' : ''}
             <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
+            
+            ${uData.bio ? `<div class="mt-2 w-fit mx-auto px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-900/60 border-l-2 border-blue-400 dark:border-blue-500 text-[0.9rem] text-gray-600 dark:text-gray-300 italic text-center shadow-inner" style="line-height: 0.9;"><i class="fa-solid fa-quote-left text-blue-300 dark:text-blue-600 mr-1 text-[9px]"></i>${uData.bio}<i class="fa-solid fa-quote-right text-blue-300 dark:text-blue-600 ml-1 text-[9px]"></i></div>` : ''}
             
             ${relStr}
             ${followBtn}
