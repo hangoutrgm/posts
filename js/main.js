@@ -1023,10 +1023,28 @@ onAuthStateChanged(auth, (user) => {
 
         window.updateNotifBadge();
 
+        if (window.chatInboxUnsubscribe) window.chatInboxUnsubscribe();
+        window.chatInboxUnsubscribe = onValue(ref(db, `chatInboxes/${user.uid}`), (snap) => {
+            const inbox = snap.val() || {};
+            let unreadCount = 0;
+            Object.values(inbox).forEach(item => {
+                if (item.unreadCount > 0) unreadCount++;
+            });
+            const badge = document.getElementById('chat-unread-badge');
+            if (badge) {
+                if (unreadCount > 0) {
+                    badge.innerText = unreadCount > 9 ? '9+' : unreadCount;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            }
+        });
     } else {
         document.getElementById('open-login-btn').classList.remove('hidden');
         document.getElementById('user-info').classList.add('hidden');
         document.getElementById('create-post-box').classList.add('hidden');
+        if (window.chatInboxUnsubscribe) { window.chatInboxUnsubscribe(); window.chatInboxUnsubscribe = null; }
     }
     if(!window.activeProfileUid) window.renderFeed(false);
 });

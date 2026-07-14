@@ -55,8 +55,9 @@
                     <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
                     <input type="text" id="post-search" placeholder="Search posts or authors..." class="w-full bg-white dark:bg-slate-800 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none shadow-sm border border-gray-200 dark:border-slate-700">
                 </div>
-                <a href="chat/" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition" title="Open Messenger">
+                <a href="chat/" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative" title="Open Messenger">
                     <i class="fa-solid fa-comments text-lg"></i>
+                    <span id="chat-unread-badge" class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow border-2 border-white dark:border-slate-800 hidden">0</span>
                 </a>
             </div>
 
