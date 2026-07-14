@@ -257,7 +257,7 @@ function showMessageMenu(message, x, y) {
   if (!message) return;
   const menu = $('message-action-menu');
   const reactionButtons = Object.entries(reactions).map(([type, emoji]) => `<button class="reaction-option" type="button" data-menu-action="react" data-reaction="${type}" aria-label="React ${type}">${emoji}</button>`).join('');
-  menu.innerHTML = `${reactionButtons}<span class="menu-separator"></span><button type="button" data-menu-action="reply">Reply</button>${message.senderId === state.user?.uid ? '<button type="button" data-menu-action="edit">Edit</button>' : ''}`;
+  menu.innerHTML = `${reactionButtons}<span class="menu-separator"></span><button type="button" data-menu-action="reply">Reply</button>${message.senderId === state.user?.uid ? '<button type="button" data-menu-action="edit">Edit</button><button type="button" data-menu-action="delete" style="color: #dc2626;">Delete</button>' : ''}`;
   menu.classList.remove('hidden');
   menu.style.left = `${Math.max(12, Math.min(x, window.innerWidth - menu.offsetWidth - 12))}px`;
   menu.style.top = `${Math.max(12, Math.min(y, window.innerHeight - menu.offsetHeight - 12))}px`;
@@ -266,6 +266,7 @@ function showMessageMenu(message, x, y) {
     if (action === 'react') await toggleReaction(message.id, button.dataset.reaction);
     if (action === 'reply') setReply(message);
     if (action === 'edit') await editMessage(message);
+    if (action === 'delete') await deleteMessage(message);
     closeMessageMenu();
   }));
 }
@@ -288,19 +289,25 @@ function openImageViewer(src) {
     img.style.display = '';
     img.src = src;
   }
+  // Generate unique filename based on current date/time
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const uniqueName = `chat_${dateStr}_${timeStr}`;
+
   // Reset save button while blob is fetched
   saveBtn.href = '#';
+  saveBtn.download = uniqueName;
   fetch(src)
     .then(res => res.blob())
     .then(blob => {
       const blobUrl = URL.createObjectURL(blob);
       saveBtn.href = blobUrl;
-      saveBtn.download = isVideo ? 'chat-video' : 'chat-photo';
     })
     .catch(() => {
       // Fallback: direct link (may open new tab for cross-origin)
       saveBtn.href = src;
-      saveBtn.download = isVideo ? 'chat-video' : 'chat-photo';
     });
   viewer.classList.remove('hidden');
 }
@@ -574,6 +581,16 @@ async function editMessage(message) {
     updateConversationSummaries(newText.trim(), Date.now());
     showToast('Message edited.');
   } catch (err) { showToast('Could not edit message.'); }
+}
+
+async function deleteMessage(message) {
+  if (!confirm('Are you sure you want to delete this message?')) return;
+  try {
+    await remove(ref(db, `chatMessages/${state.activeThreadId}/${message.id}`));
+    showToast('Message deleted.');
+  } catch (err) {
+    showToast('Could not delete message.');
+  }
 }
 
 function setTyping(active) {
