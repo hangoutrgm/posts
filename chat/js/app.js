@@ -660,8 +660,12 @@ function stopThreadSummaryWatchers() {
   Object.values(state.stopThreadSummaries).forEach((stop) => stop());
   state.stopThreadSummaries = {};
 }
+function saveInboxCache() {
+  if (state.user) localStorage.setItem(`hangout-inbox-${state.user.uid}`, JSON.stringify(state.inbox));
+}
+
 function syncThreadSummaryWatchers() {
-  const threadIds = new Set();
+  const threadIds = new Set(Object.keys(state.inbox));
   if (state.activeThreadId) threadIds.add(state.activeThreadId);
   Object.entries(state.stopThreadSummaries).forEach(([threadId, stop]) => {
     if (!threadIds.has(threadId)) { stop(); delete state.stopThreadSummaries[threadId]; }
@@ -675,34 +679,12 @@ function syncThreadSummaryWatchers() {
       if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '')) return;
       state.inbox = { ...state.inbox, [threadId]: next };
       if (state.activeThreadId === threadId) { state.activeInboxItem = next; updateChatHeader(); renderMessages(state.messages); }
+      saveInboxCache();
       renderConversations();
     }, (error) => reportRealtimeError('conversation summary', error));
   });
 }
-async function loadThreadMetadata(threadId) {
-  if (state.inbox[threadId]?.metadataLoaded) return;
-  try {
-    const snapshot = await get(ref(db, `chatThreads/${threadId}`));
-    if (snapshot.exists()) {
-      const thread = snapshot.val();
-      const current = state.inbox[threadId];
-      if (!current) return;
-      current.name = thread.name || '';
-      current.pic = thread.pic || '';
-      current.creatorId = thread.creatorId || '';
-      current.members = thread.members || {};
-      current.nicknames = thread.nicknames || {};
-      current.metadataLoaded = true;
-      renderConversations();
-      if (state.activeThreadId === threadId) {
-        state.activeInboxItem = current;
-        updateChatHeader();
-      }
-    }
-  } catch (err) {
-    console.error("Failed to load thread metadata:", err);
-  }
-}
+
 
 function handleInbox(snapshot) {
   const previous = state.inbox; const next = snapshot.val() || {};
@@ -717,13 +699,13 @@ function handleInbox(snapshot) {
     }
   });
   state.inbox = next;
+  saveInboxCache();
   if (state.inboxReady && state.user) Object.entries(next).forEach(([threadId, item]) => {
     const before = previous[threadId];
     if (item.lastSenderId !== state.user.uid && Number(item.lastTimestamp || 0) > Number(before?.lastTimestamp || 0)) showToast(`New message from ${state.users[item.peerId]?.name || 'a member'}`);
   });
   state.inboxReady = true; 
   syncThreadSummaryWatchers(); 
-  Object.keys(state.inbox).forEach(loadThreadMetadata);
   renderConversations(); 
   updateUnreadTitle(); 
   markThreadRead();
@@ -736,6 +718,10 @@ onAuthStateChanged(auth, (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
   state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
   if (user) {
+    try {
+      const cached = localStorage.getItem(`hangout-inbox-${user.uid}`);
+      if (cached) { state.inbox = JSON.parse(cached); renderConversations(); }
+    } catch(e){}
     startOwnPresence();
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(state.messages); }, (error) => reportRealtimeError('message clears', error));
