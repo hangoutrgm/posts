@@ -438,6 +438,59 @@ window.incrementUploadLimit = () => {
     update(ref(db, `users/${window.currentUser.uid}/dailyUploads`), { date: today, count: currentCount + 1 });
 };
 
+window.checkVideoUploadLimit = () => {
+    if (!window.currentUser) return false;
+    const today = new Date().toLocaleDateString('en-CA');
+    const userData = window.globalUsersCache[window.currentUser.uid] || {};
+    const uploadsToday = userData.dailyVideoUploads?.date === today ? userData.dailyVideoUploads.count : 0;
+    if (uploadsToday >= 3) {
+        window.showAlert("You have reached your daily limit of 3 video uploads.");
+        return false;
+    }
+    return true;
+};
+
+window.incrementVideoUploadLimit = () => {
+    if (!window.currentUser) return;
+    const today = new Date().toLocaleDateString('en-CA');
+    const userData = window.globalUsersCache[window.currentUser.uid] || {};
+    const currentCount = userData.dailyVideoUploads?.date === today ? (userData.dailyVideoUploads.count || 0) : 0;
+    update(ref(db, `users/${window.currentUser.uid}/dailyVideoUploads`), { date: today, count: currentCount + 1 });
+};
+
+document.getElementById('post-image-file').addEventListener('change', function() {
+    const file = this.files[0];
+    document.getElementById('file-name').innerText = file ? file.name : '';
+    const previewContainer = document.getElementById('media-preview-container');
+    previewContainer.innerHTML = '';
+    
+    if (file) {
+        if (file.type.startsWith('video/')) {
+            if (file.size > 20 * 1024 * 1024) {
+                window.showAlert("Video is too large. Max size is 20MB.");
+                this.value = '';
+                document.getElementById('file-name').innerText = '';
+                previewContainer.classList.add('hidden');
+                return;
+            }
+            previewContainer.classList.remove('hidden');
+            const video = document.createElement('video');
+            video.src = URL.createObjectURL(file);
+            video.controls = true;
+            video.className = "w-full max-h-48 object-contain rounded bg-black";
+            previewContainer.appendChild(video);
+        } else if (file.type.startsWith('image/')) {
+            previewContainer.classList.remove('hidden');
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = "w-full max-h-48 object-contain rounded bg-gray-100 dark:bg-slate-800";
+            previewContainer.appendChild(img);
+        }
+    } else {
+        previewContainer.classList.add('hidden');
+    }
+});
+
 document.getElementById('submit-post-btn').addEventListener('click', async () => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return; 
@@ -449,7 +502,17 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     
     if (!text && !imgUrl && !file) return;
     
-    if (file && !window.checkUploadLimit()) return;
+    let isVideo = false;
+    if (file) {
+        isVideo = file.type.startsWith('video/');
+        if (isVideo && !window.checkVideoUploadLimit()) return;
+        if (!isVideo && !window.checkUploadLimit()) return;
+        
+        if (isVideo && file.size > 20 * 1024 * 1024) {
+            window.showAlert("Video is too large. Max size is 20MB.");
+            return;
+        }
+    }
     
     const btn = document.getElementById('submit-post-btn');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -459,9 +522,14 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         let finalImage = imgUrl; 
         if (file) {
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-            const base64Img = await window.compressImage(file); 
-            finalImage = await window.uploadToCloudinary(base64Img);
-            window.incrementUploadLimit();
+            if (isVideo) {
+                finalImage = await window.uploadToCloudinary(file);
+                window.incrementVideoUploadLimit();
+            } else {
+                const base64Img = await window.compressImage(file); 
+                finalImage = await window.uploadToCloudinary(base64Img);
+                window.incrementUploadLimit();
+            }
         }
 
         const postRef = push(ref(db, 'community_posts'));
@@ -479,6 +547,11 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         document.getElementById('post-image-url').value = '';
         fileInput.value = '';
         document.getElementById('file-name').innerText = '';
+        const previewContainer = document.getElementById('media-preview-container');
+        if (previewContainer) {
+            previewContainer.innerHTML = '';
+            previewContainer.classList.add('hidden');
+        }
         window.clearIsolatedPost();
 
         window.postVisibility = 'public';

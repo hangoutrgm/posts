@@ -75,11 +75,12 @@
                 <div class="flex items-center space-x-2 mt-2">
                     <label class="cursor-pointer text-gray-500 hover:text-blue-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600">
                         <i class="fa-solid fa-image text-lg"></i>
-                        <input type="file" id="post-image-file" accept="image/*" class="hidden" onchange="document.getElementById('file-name').innerText = this.files[0] ? this.files[0].name : ''">
+                        <input type="file" id="post-image-file" accept="image/*,video/*" class="hidden">
                     </label>
-                    <input type="text" id="post-image-url" class="flex-1 bg-gray-50 dark:bg-slate-900 text-[11px] text-gray-700 dark:text-gray-300 rounded-lg p-2 focus:outline-none border border-gray-100 dark:border-slate-700 focus:border-blue-500" placeholder="Or paste image URL...">
+                    <input type="text" id="post-image-url" class="flex-1 bg-gray-50 dark:bg-slate-900 text-[11px] text-gray-700 dark:text-gray-300 rounded-lg p-2 focus:outline-none border border-gray-100 dark:border-slate-700 focus:border-blue-500" placeholder="Or paste image/video URL...">
                 </div>
                 <div id="file-name" class="text-[9px] text-blue-500 truncate mt-1 font-bold px-1"></div>
+                <div id="media-preview-container" class="hidden mt-2"></div>
 
                 <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 dark:border-slate-700">
                     <select id="post-category" class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 text-xs rounded p-1 focus:outline-none">

@@ -232,7 +232,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
     const quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
-    const image = message.image ? `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">` : '';
+    const image = message.image ? (message.image.includes('/video/upload/') || message.image.match(/\.(mp4|webm|mov|ogg)$/i) ? `<video class="message-image" src="${escapeHtml(message.image)}" controls style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`) : '';
     
     let seen = '';
     if (state.activeInboxItem?.isGroup) {
@@ -272,12 +272,46 @@ function showMessageMenu(message, x, y) {
 
 function openImageViewer(src) {
   const viewer = $('image-viewer');
-  $('image-viewer-img').src = src;
-  $('image-viewer-save').href = src;
+  const img = $('image-viewer-img');
+  const vid = $('image-viewer-video');
+  const saveBtn = $('image-viewer-save');
+  const isVideo = src.includes('/video/upload/') || /\.(mp4|webm|mov|ogg)$/i.test(src);
+  if (isVideo) {
+    img.style.display = 'none';
+    img.src = '';
+    vid.style.display = '';
+    vid.src = src;
+  } else {
+    vid.style.display = 'none';
+    vid.src = '';
+    vid.pause();
+    img.style.display = '';
+    img.src = src;
+  }
+  // Reset save button while blob is fetched
+  saveBtn.href = '#';
+  fetch(src)
+    .then(res => res.blob())
+    .then(blob => {
+      const blobUrl = URL.createObjectURL(blob);
+      saveBtn.href = blobUrl;
+      saveBtn.download = isVideo ? 'chat-video' : 'chat-photo';
+    })
+    .catch(() => {
+      // Fallback: direct link (may open new tab for cross-origin)
+      saveBtn.href = src;
+      saveBtn.download = isVideo ? 'chat-video' : 'chat-photo';
+    });
   viewer.classList.remove('hidden');
 }
 function closeImageViewer() {
+  const saveBtn = $('image-viewer-save');
+  if (saveBtn.href && saveBtn.href.startsWith('blob:')) URL.revokeObjectURL(saveBtn.href);
+  saveBtn.href = '#';
   $('image-viewer').classList.add('hidden');
+  const vid = $('image-viewer-video');
+  vid.pause();
+  vid.src = '';
   $('image-viewer-img').src = '';
 }
 
@@ -302,8 +336,12 @@ function wireMessageGestures(rows) {
     bubble.addEventListener('click', (event) => { if (pressed) event.preventDefault(); });
   });
   // Wire image tap-to-view
-  $('message-list').querySelectorAll('.message-image').forEach((img) => {
+  $('message-list').querySelectorAll('img.message-image').forEach((img) => {
     img.addEventListener('click', (e) => { e.stopPropagation(); openImageViewer(img.src); });
+  });
+  // Wire video tap-to-fullview
+  $('message-list').querySelectorAll('video.message-image').forEach((vid) => {
+    vid.addEventListener('click', (e) => { e.stopPropagation(); openImageViewer(vid.src); });
   });
 }
 
@@ -408,23 +446,58 @@ function compressImage(file) {
   });
 }
 
-async function uploadToCloudinary(base64Data) {
-  const url = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/upload`;
-  const formData = new FormData();
-  formData.append('file', base64Data);
-  formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-  const response = await fetch(url, { method: 'POST', body: formData });
-  if (!response.ok) throw new Error('Failed to upload image to Cloudinary');
-  const data = await response.json();
-  return data.secure_url;
+function uploadToCloudinary(fileOrBase64, onProgress) {
+  return new Promise((resolve, reject) => {
+    const url = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`;
+    const formData = new FormData();
+    formData.append('file', fileOrBase64);
+    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+    
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data.secure_url);
+        } catch (err) {
+          reject(new Error('Invalid response from Cloudinary'));
+        }
+      } else {
+        reject(new Error('Failed to upload media to Cloudinary'));
+      }
+    };
+    
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(formData);
+  });
 }
 
 async function useUploadQuota() {
   const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= 10 ? undefined : Number(count || 0) + 1));
   if (!result.committed) throw new Error('Daily photo limit reached (10 uploads). Try again tomorrow.');
 }
+async function useVideoUploadQuota() {
+  const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatVideoUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= 3 ? undefined : Number(count || 0) + 1));
+  if (!result.committed) throw new Error('Daily video limit reached (3 uploads). Try again tomorrow.');
+}
 
-function clearAttachment() { $('image-input').value = ''; state.pendingImageFile = null; }
+function clearAttachment() { 
+  $('image-input').value = ''; 
+  state.pendingImageFile = null; 
+  $('media-preview-banner').classList.add('hidden');
+  $('media-preview-content').innerHTML = '';
+}
 function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); $('message-input').focus(); }
 async function updateConversationSummaries(preview, timestamp) {
   const own = { ...(state.inbox[state.activeThreadId] || {}), lastMessage: preview, lastTimestamp: timestamp, lastSenderId: state.user.uid, unreadCount: 0 };
@@ -450,22 +523,34 @@ async function updateConversationSummaries(preview, timestamp) {
 async function sendMessage(event) {
   event.preventDefault(); if (!state.user || !state.activeThreadId) return;
   const input = $('message-input'); const text = input.value.trim(); const file = state.pendingImageFile; if (!text && !file) return;
-  const button = $('send-button'); button.disabled = true;
+  const button = $('send-button'); 
+  button.disabled = true;
+  const originalButtonHtml = button.innerHTML;
+  
   try {
     let image = null;
+    const progressCallback = (percent) => { button.innerHTML = `<span style="font-size:10px">${percent}%</span>`; };
     if (file) {
-      const base64Img = await compressImage(file);
-      image = await uploadToCloudinary(base64Img);
-      await useUploadQuota();
+      button.innerHTML = '<span style="font-size:10px">0%</span>';
+      if (file.type.startsWith('video/')) {
+        image = await uploadToCloudinary(file, progressCallback);
+        await useVideoUploadQuota();
+      } else {
+        const base64Img = await compressImage(file);
+        image = await uploadToCloudinary(base64Img, progressCallback);
+        await useUploadQuota();
+      }
     }
+    button.innerHTML = originalButtonHtml;
     const timestamp = Date.now(); const payload = { senderId: state.user.uid, text, timestamp };
     if (image) payload.image = image;
     if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image) };
     await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
     resetComposer();
-    try { await updateConversationSummaries(text || '📷 Photo', timestamp); } catch (error) { console.error('Message was sent, but its inbox summary failed:', error); }
+    try { await updateConversationSummaries(text || (file?.type.startsWith('video/') ? '🎥 Video' : '📷 Photo'), timestamp); } catch (error) { console.error('Message was sent, but its inbox summary failed:', error); }
   } catch (error) {
-    if (file && /Daily photo limit reached/.test(error.message)) { clearAttachment(); showToast('Daily photo limit reached. The photo was removed—your text is ready to send.'); }
+    button.innerHTML = originalButtonHtml;
+    if (file && /limit reached/.test(error.message)) { clearAttachment(); showToast(error.message + ' The media was removed—your text is ready to send.'); }
     else showToast(`Could not send: ${error.message.replace('Firebase: ', '')}`);
   }
   button.disabled = false;
@@ -632,7 +717,39 @@ $('message-input').addEventListener('keydown', (event) => { if (event.key === 'E
 } });
 $('send-button').addEventListener('mousedown', e => e.preventDefault());
 $('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
-$('image-input').addEventListener('change', (event) => { const file = event.target.files[0]; state.pendingImageFile = file || null; if (file) showToast(`Photo ready: ${file.name}. Limit: 10 uploads daily.`); });
+$('image-input').addEventListener('change', (event) => { 
+  const file = event.target.files[0]; 
+  
+  if (file && file.type.startsWith('video/') && file.size > 20 * 1024 * 1024) {
+    showToast("Video is too large. Max size is 20MB.");
+    event.target.value = '';
+    return;
+  }
+  
+  state.pendingImageFile = file || null; 
+  
+  if (file) {
+    showToast(`Media ready: ${file.name}. Limit: 10 images or 3 videos daily.`);
+    
+    $('media-preview-content').innerHTML = '';
+    if (file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.style.maxHeight = '100px';
+        video.style.borderRadius = '8px';
+        $('media-preview-content').appendChild(video);
+    } else {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.maxHeight = '100px';
+        img.style.borderRadius = '8px';
+        $('media-preview-content').appendChild(img);
+    }
+    $('media-preview-banner').classList.remove('hidden');
+  } else {
+    clearAttachment();
+  }
+});
 $('group-photo-input')?.addEventListener('change', async (event) => {
   const file = event.target.files[0];
   if (!file || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
@@ -647,6 +764,7 @@ $('group-photo-input')?.addEventListener('change', async (event) => {
   event.target.value = '';
 });
 $('cancel-reply-button').addEventListener('click', clearReply);
+$('cancel-media-button')?.addEventListener('click', clearAttachment);
 $('mobile-back-button').addEventListener('click', closeActiveChat);
 $('conversation-options-button').addEventListener('click', () => {
   const isGroup = state.activeInboxItem?.isGroup;

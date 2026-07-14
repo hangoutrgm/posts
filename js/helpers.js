@@ -144,13 +144,13 @@ window.compressImage = (file, heavy = false) => {
     });
 };
 
-window.uploadToCloudinary = async (base64Data) => {
+window.uploadToCloudinary = async (fileOrBase64) => {
     const cloudName = "rlnbst7h";
     const uploadPreset = "hangout-images";
-    const url = `https://api.cloudinary.com/v1_1/${cloudName}/upload`;
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
     
     const formData = new FormData();
-    formData.append('file', base64Data);
+    formData.append('file', fileOrBase64);
     formData.append('upload_preset', uploadPreset);
     
     const response = await fetch(url, {
@@ -159,7 +159,7 @@ window.uploadToCloudinary = async (base64Data) => {
     });
     
     if (!response.ok) {
-        throw new Error('Failed to upload image to Cloudinary');
+        throw new Error('Failed to upload media to Cloudinary');
     }
     
     const data = await response.json();
@@ -191,6 +191,12 @@ window.formatText = (text) => {
     formatted = formatted.replace(urlRegex, function(url) {
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline break-all">${url}</a>`;
     });
+
+    // Highlight @everyone
+    formatted = formatted.replace(/@everyone(?![\w])/gi, `<span class="text-red-500 font-bold">@everyone</span>`);
+
+    // Highlight @mods
+    formatted = formatted.replace(/@mods(?![\w])/gi, `<span class="text-green-500 font-bold">@mods</span>`);
 
     const sortedUsers = Object.keys(window.globalUsersCache)
         .map(uid => ({uid, name: window.globalUsersCache[uid].name}))
