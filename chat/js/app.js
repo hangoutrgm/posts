@@ -231,8 +231,15 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     if (message.isSystem) return `<div class="message-row system" style="text-align:center; font-size:12px; color:var(--muted); margin: 8px 0; width: 100%; max-width: 100%; justify-content: center;">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
-    const quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
-    const image = message.image ? (message.image.includes('/video/upload/') || message.image.match(/\.(mp4|webm|mov|ogg)$/i) ? `<video class="message-image" src="${escapeHtml(message.image)}" controls style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`) : '';
+    let quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
+    let image = message.image ? (message.image.includes('/video/upload/') || message.image.match(/\.(mp4|webm|mov|ogg)$/i) ? `<video class="message-image" src="${escapeHtml(message.image)}" controls style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`) : '';
+    let messageText = linkifyText(message.text || '');
+    
+    if (message.isDeleted) {
+      quote = '';
+      image = '';
+      messageText = '<span style="font-style:italic; opacity:0.6;">🚫 Message deleted</span>';
+    }
     
     let seen = '';
     if (state.activeInboxItem?.isGroup) {
@@ -246,7 +253,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10px; color:var(--muted); margin-bottom:2px; margin-left:4px;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
-    return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${linkifyText(message.text || '')}${image}</div><div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
+    return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${messageText}${image}</div><div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
   }).join('');
   wireMessageGestures(rows);
   if (jumpToLatest || wasNearLatest) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
@@ -257,7 +264,7 @@ function showMessageMenu(message, x, y) {
   if (!message) return;
   const menu = $('message-action-menu');
   const reactionButtons = Object.entries(reactions).map(([type, emoji]) => `<button class="reaction-option" type="button" data-menu-action="react" data-reaction="${type}" aria-label="React ${type}">${emoji}</button>`).join('');
-  menu.innerHTML = `${reactionButtons}<span class="menu-separator"></span><button type="button" data-menu-action="reply">Reply</button>${message.senderId === state.user?.uid ? '<button type="button" data-menu-action="edit">Edit</button><button type="button" data-menu-action="delete" style="color: #dc2626;">Delete</button>' : ''}`;
+  menu.innerHTML = `${reactionButtons}<span class="menu-separator"></span><button type="button" data-menu-action="reply">Reply</button><button type="button" data-menu-action="copy">Copy</button>${message.senderId === state.user?.uid ? '<button type="button" data-menu-action="edit">Edit</button><button type="button" data-menu-action="delete" style="color: #dc2626;">Delete</button>' : ''}`;
   menu.classList.remove('hidden');
   menu.style.left = `${Math.max(12, Math.min(x, window.innerWidth - menu.offsetWidth - 12))}px`;
   menu.style.top = `${Math.max(12, Math.min(y, window.innerHeight - menu.offsetHeight - 12))}px`;
@@ -265,6 +272,12 @@ function showMessageMenu(message, x, y) {
     const action = button.dataset.menuAction;
     if (action === 'react') await toggleReaction(message.id, button.dataset.reaction);
     if (action === 'reply') setReply(message);
+    if (action === 'copy') {
+      try {
+        await navigator.clipboard.writeText(message.text || '');
+        showToast('Message copied.');
+      } catch (e) { showToast('Could not copy text.'); }
+    }
     if (action === 'edit') await editMessage(message);
     if (action === 'delete') await deleteMessage(message);
     closeMessageMenu();
@@ -584,12 +597,18 @@ async function editMessage(message) {
 }
 
 async function deleteMessage(message) {
-  if (!confirm('Are you sure you want to delete this message?')) return;
+  const confirmDelete = await showAppModal({
+    title: 'Delete Message',
+    message: 'Are you sure you want to delete this message?',
+    confirmText: 'Delete',
+    danger: true
+  });
+  if (!confirmDelete) return;
   try {
-    await remove(ref(db, `chatMessages/${state.activeThreadId}/${message.id}`));
+    await update(ref(db, `chatMessages/${state.activeThreadId}/${message.id}`), { isDeleted: true });
     showToast('Message deleted.');
   } catch (err) {
-    showToast('Could not delete message.');
+    showToast('Could not delete message. Check permissions.');
   }
 }
 
