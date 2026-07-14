@@ -540,8 +540,7 @@ function stopThreadSummaryWatchers() {
   state.stopThreadSummaries = {};
 }
 function syncThreadSummaryWatchers() {
-  // Watch ALL inbox threads so names/nicknames are live for the full conversation list
-  const threadIds = new Set(Object.keys(state.inbox));
+  const threadIds = new Set();
   if (state.activeThreadId) threadIds.add(state.activeThreadId);
   Object.entries(state.stopThreadSummaries).forEach(([threadId, stop]) => {
     if (!threadIds.has(threadId)) { stop(); delete state.stopThreadSummaries[threadId]; }
@@ -603,6 +602,7 @@ function handleInbox(snapshot) {
   });
   state.inboxReady = true; 
   syncThreadSummaryWatchers(); 
+  Object.keys(state.inbox).forEach(loadThreadMetadata);
   renderConversations(); 
   updateUnreadTitle(); 
   markThreadRead();
