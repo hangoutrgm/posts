@@ -165,4 +165,6 @@ button { cursor:pointer; }
 .streak-restore-btn:hover { background:#ff6b00; color:#fff; }
 :root.dark .streak-restore-btn { border-color:#ff9500; color:#ff9500; }
 :root.dark .streak-restore-btn:hover { background:#ff9500; color:#fff; }
+.conv-streak-badge { display:inline-flex; align-items:center; padding:1px 5px; border-radius:8px; background:#fff3e0; color:#e65100; font-size:10px; font-weight:700; white-space:nowrap; flex-shrink:0; line-height:1.4; }
+:root.dark .conv-streak-badge { background:#3d2000; color:#ff9500; }
 

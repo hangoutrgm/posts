@@ -8,7 +8,8 @@ const state = {
   activePeerId: null, stopMessages: null, stopInbox: null, stopTyping: null, stopClears: null, stopSeen: null, stopThreadSummaries: {}, signUp: false,
   replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
   groupMode: false, groupSelection: [],
-  noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null
+  noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null,
+  streaks: {}
 };
 const reactions = { like: '👍', love: '❤️', laugh: '😂', wow: '😮', sad: '😢' };
 reactions.angry = '😡';
@@ -140,7 +141,9 @@ function renderConversations() {
     const unread = Number(item.unreadCount || 0);
     const preview = item.lastSenderId === state.user.uid ? `You: ${item.lastMessage || ''}` : (item.lastMessage || 'Start chatting');
     const presenceHtml = !item.isGroup && peerIds.length === 1 ? `<i class="conversation-presence${isOnline(peerIds[0]) ? ' online' : ''}" aria-label="${isOnline(peerIds[0]) ? 'Online' : 'Offline'}"></i>` : '';
-    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds, item)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(name)}</span><span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
+    const streak = state.streaks[item.id];
+    const streakHtml = streak && streak.count >= 1 ? `<span class="conv-streak-badge">🔥${streak.count}</span>` : '';
+    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds, item)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(name)}</span>${streakHtml}<span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
   }).join('');
   list.querySelectorAll('.conversation').forEach((button) => button.addEventListener('click', () => {
     const threadId = button.dataset.thread;
@@ -616,7 +619,9 @@ async function loadStreak(threadId) {
   if (!state.user || !threadId) return;
   const snap = await get(ref(db, `chatStreaks/${threadId}/${state.user.uid}`)).catch(() => null);
   state.streakData = snap?.val() || null;
+  state.streaks[threadId] = state.streakData; // also update list cache
   renderStreakBadge();
+  renderConversations(); // refresh list to show badge
 }
 
 function renderStreakBadge() {
@@ -665,7 +670,9 @@ async function updateStreak(threadId) {
   const update_data = { count, lastDate: today };
   await set(streakRef, { ...data, ...update_data }).catch(() => {});
   state.streakData = { ...data, ...update_data };
+  state.streaks[threadId] = state.streakData; // update list cache
   renderStreakBadge();
+  renderConversations(); // refresh list badge
 }
 
 async function restoreStreak() {
@@ -836,6 +843,20 @@ function syncThreadSummaryWatchers() {
 }
 
 
+async function loadAllStreaks() {
+  if (!state.user) return;
+  const threadIds = Object.keys(state.inbox);
+  const results = await Promise.all(
+    threadIds.map(tid =>
+      get(ref(db, `chatStreaks/${tid}/${state.user.uid}`))
+        .then(snap => ({ tid, data: snap.val() }))
+        .catch(() => ({ tid, data: null }))
+    )
+  );
+  results.forEach(({ tid, data }) => { if (data) state.streaks[tid] = data; });
+  renderConversations();
+}
+
 function handleInbox(snapshot) {
   const previous = state.inbox; const next = snapshot.val() || {};
   Object.keys(next).forEach(id => {
@@ -854,7 +875,9 @@ function handleInbox(snapshot) {
     const before = previous[threadId];
     if (item.lastSenderId !== state.user.uid && Number(item.lastTimestamp || 0) > Number(before?.lastTimestamp || 0)) showToast(`New message from ${state.users[item.peerId]?.name || 'a member'}`);
   });
-  state.inboxReady = true; 
+  const firstLoad = !state.inboxReady;
+  state.inboxReady = true;
+  if (firstLoad) loadAllStreaks(); 
   syncThreadSummaryWatchers(); 
   renderConversations(); 
   updateUnreadTitle(); 
