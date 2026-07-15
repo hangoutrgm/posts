@@ -1,7 +1,7 @@
 // main.js
 import { app, auth, db } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, push, onValue, get, set, update, remove, serverTimestamp, increment, onDisconnect, query, limitToLast, orderByKey, endBefore } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, push, onValue, get, set, update, remove, serverTimestamp, increment, onDisconnect, query, limitToLast, orderByKey, endBefore, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import "./globals.js";
 import "./helpers.js";
 import "./renderers.js";
@@ -30,7 +30,10 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
         document.querySelectorAll('.filter-btn').forEach(b => { b.classList.remove('bg-blue-600', 'text-white'); b.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300'); });
         e.target.classList.add('bg-blue-600', 'text-white'); e.target.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300');
         window.currentFilter = e.target.getAttribute('data-cat');
-        window.renderFeed(true);
+        window.postLimit = 15;
+        window.hasMorePosts = true;
+        window.listenPosts();
+        // Initial render will be handled by listenPosts onValue response
     });
 });
 
@@ -345,73 +348,69 @@ onValue(ref(db, 'users'), (snap) => {
     window.handleDeepLinks();
 });
 
-window.livePosts = [];
-window.historicalPosts = [];
+window.allPosts = [];
 window.isLoadingHistory = false;
 window.hasMorePosts = true;
+window.postLimit = 15;
+window.postsUnsubscribe = null;
+
+window.listenPosts = () => {
+    if (window.postsUnsubscribe) window.postsUnsubscribe();
+    
+    let dbQuery;
+    const postsRef = ref(db, 'community_posts');
+    if (window.activeProfileUid) {
+        dbQuery = query(postsRef, orderByChild('authorId'), equalTo(window.activeProfileUid), limitToLast(window.postLimit));
+    } else if (window.currentFilter === 'My Posts' && window.currentUser) {
+        dbQuery = query(postsRef, orderByChild('authorId'), equalTo(window.currentUser.uid), limitToLast(window.postLimit));
+    } else if (window.currentFilter && window.currentFilter !== 'All') {
+        dbQuery = query(postsRef, orderByChild('category'), equalTo(window.currentFilter), limitToLast(window.postLimit));
+    } else {
+        dbQuery = query(postsRef, limitToLast(window.postLimit));
+    }
+
+    window.postsUnsubscribe = onValue(dbQuery, (snapshot) => {
+        const newPosts = [];
+        snapshot.forEach(child => {
+            newPosts.push({ id: child.key, ...child.val() });
+        });
+
+        const oldData = JSON.stringify(window.allPosts);
+        const newData = JSON.stringify(newPosts);
+        if (oldData === newData) return;
+
+        if (newPosts.length < window.postLimit && window.postLimit > 15) {
+            window.hasMorePosts = false;
+        }
+
+        window.allPosts = newPosts;
+        
+        if (!window.isUserTyping) {
+            if (window.activeProfileUid) window.renderProfileData(false);
+            else window.renderFeed(false);
+        }
+        window.handleDeepLinks();
+    });
+};
 
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     
-    // Find the oldest post ID we currently have
-    const allKnown = [...window.historicalPosts, ...window.livePosts].sort((a, b) => a.id < b.id ? -1 : (a.id > b.id ? 1 : 0));
-    if (allKnown.length === 0) return;
-    
-    const oldestId = allKnown[0].id;
     window.isLoadingHistory = true;
-    
-    // Show a small loader at the bottom
     const sentinel = document.querySelector('.sentinel-loader');
     if (sentinel) sentinel.innerHTML = '<span>Loading older posts...</span>';
     
-    try {
-        const snap = await get(query(ref(db, 'community_posts'), orderByKey(), endBefore(oldestId), limitToLast(15)));
-        const oldPosts = [];
-        snap.forEach(child => { oldPosts.push({ id: child.key, ...child.val() }); });
-        
-        if (oldPosts.length === 0) {
-            window.hasMorePosts = false;
-            if (sentinel) sentinel.innerHTML = '<span>No more posts to show.</span>';
-        } else {
-            // Prepend old posts to historicalPosts (so they stay at the bottom of the feed)
-            window.historicalPosts = [...oldPosts, ...window.historicalPosts];
-            window.allPosts = [...window.historicalPosts, ...window.livePosts];
-            if (!window.isUserTyping) {
-                if (window.activeProfileUid) window.renderProfileData(false);
-                else window.renderFeed(false);
-                window.handleDeepLinks();
-            }
-        }
-    } catch (err) {
-        console.error("Error loading historical posts:", err);
-    }
-    window.isLoadingHistory = false;
+    window.postLimit += 15;
+    window.listenPosts();
+    
+    setTimeout(() => {
+        window.isLoadingHistory = false;
+        if (sentinel && window.hasMorePosts) sentinel.innerHTML = '';
+        else if (sentinel && !window.hasMorePosts) sentinel.innerHTML = '<span>No more posts to show.</span>';
+    }, 1000);
 };
 
-onValue(query(ref(db, 'community_posts'), limitToLast(15)), (snapshot) => {
-    const newPosts = [];
-    snapshot.forEach(child => {
-        newPosts.push({ id: child.key, ...child.val() });
-    });
-
-    const oldData = JSON.stringify(window.livePosts);
-    const newData = JSON.stringify(newPosts);
-    if (oldData === newData) return;
-
-    window.livePosts = newPosts;
-    
-    // Merge history and live posts. Ensure we don't duplicate if history caught up to live.
-    const liveIds = new Set(window.livePosts.map(p => p.id));
-    const dedupedHistory = window.historicalPosts.filter(p => !liveIds.has(p.id));
-    
-    window.allPosts = [...dedupedHistory, ...window.livePosts];
-
-    if (!window.isUserTyping) {
-        if (window.activeProfileUid) window.renderProfileData(false);
-        else window.renderFeed(false);
-    }
-    window.handleDeepLinks();
-});
+window.listenPosts();
 
 // ==========================================
 // ==========================================

@@ -1,5 +1,5 @@
 import { db } from "./firebase-config.js";
-import { ref, update, set, push, remove, increment, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 // Notifications
 window.updateNotifBadge = () => {
@@ -79,6 +79,10 @@ window.openProfile = (uid) => {
     document.getElementById('main-view').classList.add('hidden');
     document.getElementById('profile-view').classList.remove('hidden');
     window.activeProfileUid = uid;
+    window.postLimit = 15;
+    window.hasMorePosts = true;
+    if (window.listenPosts) window.listenPosts();
+    // Initial render will be handled by listenPosts response, but render the skeleton/header now:
     window.renderProfileData(true);
     window.scrollTo(0,0);
 };
@@ -87,7 +91,9 @@ window.closeProfile = () => {
     document.getElementById('profile-view').classList.add('hidden');
     document.getElementById('main-view').classList.remove('hidden');
     window.activeProfileUid = null;
-    window.renderFeed(false);
+    window.postLimit = 15;
+    window.hasMorePosts = true;
+    if (window.listenPosts) window.listenPosts();
     window.history.replaceState({}, document.title, window.location.pathname);
 };
 
@@ -102,6 +108,10 @@ window.goToPost = (postId) => {
 window.clearIsolatedPost = () => {
     window.isolatedPostId = null;
     window.feedRenderLimit = 15;
+    if (window.isolatedPostUnsubscribe) {
+        window.isolatedPostUnsubscribe();
+        window.isolatedPostUnsubscribe = null;
+    }
     window.renderFeed(true);
 };
 
@@ -237,17 +247,27 @@ window.renderFeed = (resetLimit = true) => {
                 <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-blue-600"></i>
                 <p>Loading spotlight post...</p>
             </div>`;
-            get(ref(db, `community_posts/${window.isolatedPostId}`)).then((snapshot) => {
+            if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+            
+            window.isolatedPostUnsubscribe = onValue(ref(db, `community_posts/${window.isolatedPostId}`), (snapshot) => {
                 if (snapshot.exists()) {
                     const post = { id: snapshot.key, ...snapshot.val() };
-                    window.historicalPosts.push(post);
-                    window.allPosts = [...window.historicalPosts, ...window.livePosts];
-                    window.renderFeed(false);
+                    
+                    const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                    if (existingIndex >= 0) {
+                        window.allPosts[existingIndex] = post;
+                    } else {
+                        window.allPosts.push(post);
+                    }
+
+                    if (!window.isUserTyping) {
+                        window.renderFeed(false);
+                    }
                 } else {
                     feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
                     <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
                 }
-            }).catch((err) => {
+            }, (err) => {
                 console.error("Error fetching isolated post:", err);
                 feed.innerHTML = `<p class="text-center text-gray-500 py-10">Failed to load post.</p>
                 <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
