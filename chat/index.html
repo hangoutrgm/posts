@@ -16,7 +16,7 @@
       <header class="inbox-header">
         <div class="brand-row">
           <h1 class="brand-title"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.2 6.4h9.6a4.2 4.2 0 0 1 4.2 4.2v2.8a4.2 4.2 0 0 1-4.2 4.2H11l-3.8 2.5.8-2.5H7.2A4.2 4.2 0 0 1 3 13.4v-2.8a4.2 4.2 0 0 1 4.2-4.2Z"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/></svg></span><span>Hangout Chat</span></h1>
-          <a class="home-button" href="../" title="Back to Hangout Posts" aria-label="Back to Hangout Posts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6 4 12l6 6M5 12h15"/></svg></a>
+          <a class="home-button" href="../" title="Back to Hangout Posts" aria-label="Back to Hangout Posts" style="position:relative;"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6 4 12l6 6M5 12h15"/></svg><span id="back-notif-badge" class="back-notif-badge hidden"></span></a>
           <button id="theme-toggle" class="icon-button theme-toggle" type="button" title="Switch to dark theme" aria-label="Switch to dark theme">☾</button>
           <button id="new-chat-button" class="icon-button primary" title="New message" aria-label="New message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 4.3 5 5M4 20l4.2-1 10.5-10.5a1.8 1.8 0 0 0-2.5-2.5L5.7 16.5 4 20Z"/></svg></button>
         </div>
@@ -50,6 +50,8 @@
             <h2 id="chat-name">Conversation</h2>
             <p id="chat-status">Offline</p>
           </div>
+          <span id="streak-badge" class="streak-badge hidden" title="Chat streak"></span>
+          <button id="streak-restore-btn" class="streak-restore-btn hidden" type="button"></button>
           <button id="conversation-options-button" class="icon-button chat-options" type="button" aria-label="Conversation options" title="Conversation options">•••</button>
         </header>
         <div id="message-list" class="message-list" aria-live="polite"></div>

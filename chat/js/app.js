@@ -1,13 +1,14 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { get, limitToLast, onDisconnect, onValue, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 const $ = (id) => document.getElementById(id);
 const state = {
   user: null, users: {}, inbox: {}, online: {}, clears: {}, typing: {}, messages: {}, activeThreadId: null, activeInboxItem: null,
   activePeerId: null, stopMessages: null, stopInbox: null, stopTyping: null, stopClears: null, stopSeen: null, stopThreadSummaries: {}, signUp: false,
   replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
-  groupMode: false, groupSelection: []
+  groupMode: false, groupSelection: [],
+  noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null
 };
 const reactions = { like: '👍', love: '❤️', laugh: '😂', wow: '😮', sad: '😢' };
 reactions.angry = '😡';
@@ -210,7 +211,7 @@ function visibleMessages(rawMessages = state.messages) {
 }
 
 function renderMessages(rawMessages, jumpToLatest = false) {
-  state.messages = rawMessages || {};
+  if (rawMessages !== undefined) state.messages = rawMessages || {};
   const list = $('message-list');
   const wasNearLatest = list.scrollHeight - list.scrollTop - list.clientHeight < 90;
   const rows = visibleMessages();
@@ -255,6 +256,21 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10px; color:var(--muted); margin-bottom:2px; margin-left:4px;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
     return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${messageText}${image}</div><div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
   }).join('');
+  // Prepend load-more header
+  let header = list.querySelector('.load-more-header');
+  if (!header) {
+    header = document.createElement('div');
+    header.className = 'load-more-header';
+    list.insertBefore(header, list.firstChild);
+  }
+  if (state.noMoreOldMessages) {
+    header.innerHTML = '<span class="load-more-end">Beginning of conversation</span>';
+  } else if (state.loadingOldMessages) {
+    header.innerHTML = '<span class="load-more-spinner">Loading older messages…</span>';
+  } else {
+    header.innerHTML = '';
+  }
+
   wireMessageGestures(rows);
   if (jumpToLatest || wasNearLatest) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
 }
@@ -312,6 +328,11 @@ function openImageViewer(src) {
   // Reset save button while blob is fetched
   saveBtn.href = '#';
   saveBtn.download = uniqueName;
+  // Remove old save listener to avoid stacking
+  if (saveBtn._saveHandler) saveBtn.removeEventListener('click', saveBtn._saveHandler);
+  saveBtn._saveHandler = () => showToast('✓ Saved!');
+  saveBtn.addEventListener('click', saveBtn._saveHandler);
+
   fetch(src)
     .then(res => res.blob())
     .then(blob => {
@@ -387,23 +408,53 @@ function watchSeen(threadId) {
     state.stopSeen = peerIds.map(uid => 
       onValue(ref(db, `chatReads/${uid}/${threadId}`), (snapshot) => {
         state.groupSeenAt[uid] = Number(snapshot.val() || 0);
-        renderMessages(state.messages);
+        renderMessages(undefined, false);
       }, (error) => reportRealtimeError('seen receipts', error))
     );
     return;
   }
-  state.stopSeen = onValue(ref(db, `chatReads/${state.activePeerId}/${threadId}`), (snapshot) => { state.peerSeenAt = Number(snapshot.val() || 0); renderMessages(state.messages); }, (error) => reportRealtimeError('seen receipts', error));
+  state.stopSeen = onValue(ref(db, `chatReads/${state.activePeerId}/${threadId}`), (snapshot) => { state.peerSeenAt = Number(snapshot.val() || 0); renderMessages(undefined, false); }, (error) => reportRealtimeError('seen receipts', error));
 }
 
 function watchTyping(threadId) {
   if (state.stopTyping) state.stopTyping(); state.typing = {};
   state.stopTyping = onValue(ref(db, `chatTyping/${threadId}`), (snapshot) => { state.typing = snapshot.val() || {}; updateChatHeader(); });
 }
+async function loadOlderMessages() {
+  if (!state.activeThreadId || state.loadingOldMessages || state.noMoreOldMessages) return;
+  const rows = visibleMessages();
+  if (!rows.length) return;
+  const oldestKey = rows[0].id; // Firebase push keys are time-ordered, no index needed
+  state.loadingOldMessages = true;
+  renderMessages(undefined, false);
+  try {
+    const snap = await get(query(ref(db, `chatMessages/${state.activeThreadId}`), orderByKey(), endBefore(oldestKey), limitToLast(25)));
+    if (!snap.exists()) {
+      state.noMoreOldMessages = true;
+    } else {
+      const older = snap.val();
+      state.messages = { ...older, ...state.messages };
+      if (Object.keys(older).length < 25) state.noMoreOldMessages = true;
+    }
+  } catch (e) {
+    console.error('loadOlderMessages error', e);
+    state.noMoreOldMessages = true; // prevent infinite retry on error
+  }
+  state.loadingOldMessages = false;
+  const list = $('message-list');
+  const prevHeight = list.scrollHeight;
+  renderMessages(undefined, false);
+  // Preserve scroll position after prepend
+  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight - prevHeight + list.scrollTop; });
+}
+
 function openThread(threadId, inboxItem) {
   if (!state.user) return showAuth();
-  state.activeThreadId = threadId; 
+  state.activeThreadId = threadId;
   state.activeInboxItem = inboxItem || state.inbox[threadId] || {};
   state.activePeerId = state.activeInboxItem.isGroup ? null : state.activeInboxItem.peerId;
+  state.noMoreOldMessages = false;
+  state.loadingOldMessages = false;
   $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
   if (state.stopMessages) state.stopMessages();
   state.messages = {}; state.messagesLoaded = false;
@@ -414,7 +465,21 @@ function openThread(threadId, inboxItem) {
     <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
   </div>`;
-  state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(60)), (snapshot) => { const firstLoad = !state.messagesLoaded; state.messagesLoaded = true; renderMessages(snapshot.val(), firstLoad); markThreadSeen(threadId); });
+  state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(30)), (snapshot) => {
+    const firstLoad = !state.messagesLoaded;
+    state.messagesLoaded = true;
+    // Merge new real-time data with any already-loaded older messages
+    const fresh = snapshot.val() || {};
+    state.messages = { ...state.messages, ...fresh };
+    renderMessages(undefined, firstLoad);
+    markThreadSeen(threadId);
+  });
+  // Scroll-up to load older messages
+  const list = $('message-list');
+  list._scrollHandler && list.removeEventListener('scroll', list._scrollHandler);
+  list._scrollHandler = () => { if (list.scrollTop < 80) loadOlderMessages(); };
+  list.addEventListener('scroll', list._scrollHandler);
+  loadStreak(threadId);
   watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); $('message-input').focus();
 }
 
@@ -540,6 +605,85 @@ async function updateConversationSummaries(preview, timestamp) {
     }).catch(()=>{});
   });
 }
+// ==========================================
+// STREAK SYSTEM (v4.8)
+// ==========================================
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+function thisMonthStr() { return new Date().toISOString().slice(0, 7); }
+
+async function loadStreak(threadId) {
+  if (!state.user || !threadId) return;
+  const snap = await get(ref(db, `chatStreaks/${threadId}/${state.user.uid}`)).catch(() => null);
+  state.streakData = snap?.val() || null;
+  renderStreakBadge();
+}
+
+function renderStreakBadge() {
+  const badge = $('streak-badge');
+  const restoreBtn = $('streak-restore-btn');
+  if (!badge) return;
+  const data = state.streakData;
+  if (!data || !data.count || data.count < 1) {
+    badge.classList.add('hidden');
+    if (restoreBtn) restoreBtn.classList.add('hidden');
+    return;
+  }
+  badge.textContent = `🔥 ${data.count}`;
+  badge.classList.remove('hidden');
+  // Show restore button if streak was broken (lastDate is not today or yesterday)
+  const today = todayStr(); const yesterday = yesterdayStr();
+  const lastDate = data.lastDate || '';
+  const broken = lastDate !== today && lastDate !== yesterday;
+  const month = thisMonthStr();
+  const restoresLeft = (data.restoreMonth === month ? (3 - (data.restoreCount || 0)) : 3);
+  if (restoreBtn) {
+    if (broken && restoresLeft > 0) {
+      restoreBtn.classList.remove('hidden');
+      restoreBtn.title = `Restore streak (${restoresLeft} left this month)`;
+      restoreBtn.textContent = `🔥 Restore (${restoresLeft} left)`;
+    } else {
+      restoreBtn.classList.add('hidden');
+    }
+  }
+}
+
+async function updateStreak(threadId) {
+  if (!state.user || !threadId) return;
+  const streakRef = ref(db, `chatStreaks/${threadId}/${state.user.uid}`);
+  const snap = await get(streakRef).catch(() => null);
+  const data = snap?.val() || {};
+  const today = todayStr(); const yesterday = yesterdayStr();
+  const lastDate = data.lastDate || '';
+  let count = data.count || 0;
+  if (lastDate === today) return; // Already counted today
+  if (lastDate === yesterday) {
+    count += 1; // Extend streak
+  } else {
+    count = 1; // Reset streak
+  }
+  const update_data = { count, lastDate: today };
+  await set(streakRef, { ...data, ...update_data }).catch(() => {});
+  state.streakData = { ...data, ...update_data };
+  renderStreakBadge();
+}
+
+async function restoreStreak() {
+  if (!state.user || !state.activeThreadId) return;
+  const today = todayStr(); const month = thisMonthStr();
+  const data = state.streakData || {};
+  const restoreCount = (data.restoreMonth === month ? (data.restoreCount || 0) : 0);
+  if (restoreCount >= 3) return showToast('You have used all 3 streak restores for this month.');
+  const confirmed = await showAppModal({ title: 'Restore Streak 🔥', message: `Restore your streak? You have ${3 - restoreCount} restore${3 - restoreCount === 1 ? '' : 's'} left this month.`, confirmText: 'Restore', danger: false });
+  if (!confirmed) return;
+  const streakRef = ref(db, `chatStreaks/${state.activeThreadId}/${state.user.uid}`);
+  const newData = { ...data, lastDate: today, restoreCount: restoreCount + 1, restoreMonth: month };
+  await set(streakRef, newData).catch(() => {});
+  state.streakData = newData;
+  renderStreakBadge();
+  showToast('🔥 Streak restored!');
+}
+
 async function sendMessage(event) {
   event.preventDefault(); if (!state.user || !state.activeThreadId) return;
   const input = $('message-input'); const text = input.value.trim(); const file = state.pendingImageFile; if (!text && !file) return;
@@ -567,6 +711,7 @@ async function sendMessage(event) {
     if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image) };
     await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
     resetComposer();
+    updateStreak(state.activeThreadId);
     try { await updateConversationSummaries(text || (file?.type.startsWith('video/') ? '🎥 Video' : '📷 Photo'), timestamp); } catch (error) { console.error('Message was sent, but its inbox summary failed:', error); }
   } catch (error) {
     button.innerHTML = originalButtonHtml;
@@ -625,7 +770,12 @@ function closeActiveChat() {
     if (typeof state.stopSeen === 'function') state.stopSeen();
     else if (Array.isArray(state.stopSeen)) state.stopSeen.forEach(fn => fn());
   }
-  state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.activeInboxItem = null; state.messages = {}; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; state.groupSeenAt = {}; clearReply(); closeMessageMenu();
+  // Remove scroll listener
+  const list = $('message-list');
+  if (list._scrollHandler) { list.removeEventListener('scroll', list._scrollHandler); list._scrollHandler = null; }
+  state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.activeInboxItem = null; state.messages = {}; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; state.groupSeenAt = {}; state.streakData = null; state.noMoreOldMessages = false; state.loadingOldMessages = false; clearReply(); closeMessageMenu();
+  const badge = $('streak-badge'); if (badge) badge.classList.add('hidden');
+  const restoreBtn = $('streak-restore-btn'); if (restoreBtn) restoreBtn.classList.add('hidden');
   syncThreadSummaryWatchers();
   $('active-chat').classList.add('hidden'); $('empty-state').classList.remove('hidden'); renderConversations();
 }
@@ -716,11 +866,20 @@ onValue(ref(db, 'presence'), (snapshot) => { state.online = snapshot.val() || {}
 onValue(ref(db, '.info/connected'), (snapshot) => { state.connected = snapshot.val() === true; if (state.connected) startOwnPresence(); });
 onAuthStateChanged(auth, (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
-  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
+  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
   if (user) {
     startOwnPresence();
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
-    state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(state.messages); }, (error) => reportRealtimeError('message clears', error));
+    state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
+    // Feature 3: Mirror Hangout Posts notification badge on the back button
+    state.stopPostsNotif = onValue(ref(db, `users/${user.uid}/notifications`), (snapshot) => {
+      const notifs = snapshot.val() || {};
+      const unread = Object.values(notifs).filter(n => !n.read).length;
+      const badge = $('back-notif-badge');
+      if (!badge) return;
+      if (unread > 0) { badge.textContent = unread > 99 ? '99+' : unread; badge.classList.remove('hidden'); }
+      else { badge.classList.add('hidden'); }
+    });
   } else closeActiveChat();
   syncAuthUi(); updateUnreadTitle();
 });
@@ -936,3 +1095,5 @@ if (window.visualViewport) {
 $('image-viewer-close').addEventListener('click', closeImageViewer);
 $('image-viewer-backdrop').addEventListener('click', closeImageViewer);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeImageViewer(); });
+// Streak restore button (v4.8)
+$('streak-restore-btn')?.addEventListener('click', restoreStreak);
