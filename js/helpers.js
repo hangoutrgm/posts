@@ -152,7 +152,6 @@ window.pokeUser = async function(targetUid) {
             type: 'poke', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false
         });
 
-        window.showAlert("You poked them!");
         if(window.activeProfileUid === targetUid && window.renderProfileData) {
             window.renderProfileData(false); // refresh the profile UI
         }

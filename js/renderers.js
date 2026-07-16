@@ -425,13 +425,11 @@ window.renderProfileData = (resetLimit = true) => {
         pokeBtn = `<button onclick="window.pokeUser('${window.activeProfileUid}')" class="mt-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm ml-2 hover:bg-orange-200 dark:hover:bg-orange-800"><i class="fa-solid fa-hand-point-right"></i> Poke</button>`;
         pokeStats += `<p id="personal-poke-stats" class="text-[10px] text-gray-400 mt-0.5">Loading your pokes...</p>`;
         
-        import("https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js").then(({ get, ref }) => {
-            get(ref(window.db, `users/${window.activeProfileUid}/pokesFrom/${window.currentUser.uid}`)).then(snap => {
-                const pokes = snap.val()?.count || 0;
-                const el = document.getElementById('personal-poke-stats');
-                if(el) el.innerHTML = `You poked them: <span class="font-bold text-orange-400">${pokes} times</span>`;
-            });
-        });
+        get(ref(db, `users/${window.activeProfileUid}/pokesFrom/${window.currentUser.uid}`)).then(snap => {
+            const pokes = snap.val()?.count || 0;
+            const el = document.getElementById('personal-poke-stats');
+            if(el) el.innerHTML = `You poked them: <span class="font-bold text-orange-400">${pokes} times</span>`;
+        }).catch(err => console.error("Error fetching pokes:", err));
     }
 
     const genderBadge = (uData.gender && uData.gender !== "Prefer not to say") ? `<span class="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 text-[9px] px-2 py-0.5 rounded-full font-bold ml-2 shadow-sm"><i class="fa-solid fa-venus-mars mr-1"></i>${uData.gender}</span>` : '';
