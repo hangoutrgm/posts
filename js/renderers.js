@@ -455,7 +455,7 @@ window.renderProfileData = (resetLimit = true) => {
             </div>
             
             ${isBanned ? '<span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-1">Banned</span>' : ''}
-            <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
+            <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${uData.lbPoints || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
             ${pokeStats}
             
             ${uData.bio ? `<div class="mt-2 w-fit mx-auto px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-900/60 border-l-2 border-blue-400 dark:border-blue-500 text-[0.9rem] text-gray-600 dark:text-gray-300 italic text-center shadow-inner" style="line-height: 0.9;"><i class="fa-solid fa-quote-left text-blue-300 dark:text-blue-600 mr-1 text-[9px]"></i>${uData.bio}<i class="fa-solid fa-quote-right text-blue-300 dark:text-blue-600 ml-1 text-[9px]"></i></div>` : ''}
@@ -889,6 +889,57 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         ? `<i class="fa-solid fa-eye-slash text-[10px] text-gray-400 ml-2" title="Private Post"></i>`
         : `<i class="fa-solid fa-eye text-[10px] text-blue-500 ml-2" title="Public Post"></i>`;
 
+    let gameHtml = '';
+    if (post.isGame) {
+        const prizeStr = post.gamePrize ? `<div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center py-1.5 px-3 rounded-lg text-xs font-bold shadow-sm mb-2"><i class="fa-solid fa-gift mr-1"></i> PRIZE: ${post.gamePrize}</div>` : '';
+        
+        if (post.gameType === 'first_to_mine') {
+            if (post.gameStatus === 'active') {
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <button onclick="window.mineGame('${post.id}')" class="bg-purple-600 hover:bg-purple-500 text-white font-black text-xl py-3 px-10 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse"><i class="fa-solid fa-gem mr-2"></i>MINE!</button>
+                    </div>`;
+            } else {
+                const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || "Someone") : "No one";
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
+                        ${prizeStr}
+                        <div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} mined it first!</div>
+                    </div>`;
+            }
+        } else if (post.gameType === 'last_comment') {
+            let timerHtml = '';
+            if (post.gameStatus === 'active') {
+                if (post.gameEndTime) {
+                    timerHtml = `<div class="text-center font-mono text-2xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`;
+                } else {
+                    timerHtml = `<div class="text-center text-xs font-bold text-gray-500 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full w-fit mx-auto">Waiting for host to end...</div>`;
+                }
+                
+                const endGameBtn = (window.currentUser && post.authorId === window.currentUser.uid) ? `<button onclick="window.endLastCommentGame('${post.id}')" class="mt-3 bg-red-100 text-red-600 hover:bg-red-200 text-xs font-bold py-1.5 px-4 rounded-full transition w-fit mx-auto border border-red-200 shadow-sm"><i class="fa-solid fa-stop-circle mr-1"></i>End Game Now</button>` : '';
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col">
+                        ${prizeStr}
+                        ${timerHtml}
+                        ${endGameBtn}
+                    </div>`;
+            } else {
+                let winnerStr = "No one won (no comments).";
+                if (post.gameWinner && post.gameWinner !== 'none') {
+                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || "Someone";
+                    winnerStr = `<i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won the Last Comment!`;
+                }
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
+                        ${prizeStr}
+                        <div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center">${winnerStr}</div>
+                    </div>`;
+            }
+        }
+    }
+
     postEl.innerHTML = `
         <div id="post-header-${prefix}-${post.id}" class="flex flex-col mb-2">
             ${repostBanner}
@@ -899,6 +950,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <div class="flex items-center">
                             <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${displayAuthorId}')">${authorInfo.name}</h3>${roleData.badgeHtml}${visibilityIcon}
                             <span class="text-[9px] text-yellow-500 ml-1">⭐ ${authorInfo.points || 0}</span>
+                            <span class="text-[9px] text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${authorInfo.lbPoints || 0}</span>
                             <span class="text-[9px] text-blue-500 ml-1 font-bold">👥 ${followerCount}</span>
                         </div>
                         <p class="text-[10px] text-gray-500">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
@@ -911,6 +963,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         <div id="post-body-${prefix}-${post.id}">
             ${post.text ? `<p class="text-sm text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-wrap break-words leading-snug">${safePostText} ${post.edited ? '<span class="text-[10px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>${window.generateEmbed(post.text)}` : ''}
             ${post.image ? ((post.image.includes('/video/upload/') || post.image.match(/\.(mp4|webm|mov|ogg)$/i)) ? `<video src="${post.image}" controls class="w-full rounded-lg mb-2 max-h-96 bg-black mt-2"></video>` : `<img src="${post.image}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${post.image}')">`) : ''}
+            ${gameHtml}
         </div>
         
         <div id="reactions-${prefix}-${post.id}" class="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 pt-2 text-xs pb-1 mt-1">
@@ -1018,7 +1071,7 @@ window.renderMembers = (resetLimit = true) => {
                         ${window.getRole(u.uid).badgeHtml}
                         ${u.isBanned ? '<span class="bg-red-500 text-white text-[8px] font-bold px-1 ml-1 rounded">BANNED</span>' : ''}
                     </div>
-                    <p class="text-[10px] text-gray-500 mt-0.5"><span class="text-yellow-600 dark:text-yellow-500">⭐ ${u.points || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span></p>
+                    <p class="text-[10px] text-gray-500 mt-0.5"><span class="text-yellow-600 dark:text-yellow-500">⭐ ${u.points || 0}</span> • <span class="text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${u.lbPoints || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span></p>
                 </div>
             </div>
             <div class="flex items-center shrink-0">${banBtn}${modBtn}${followBtn}</div>

@@ -55,6 +55,10 @@
                     <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
                     <input type="text" id="post-search" placeholder="Search posts or authors..." class="w-full bg-white dark:bg-slate-800 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none shadow-sm border border-gray-200 dark:border-slate-700">
                 </div>
+                <button onclick="window.openPostGameModal()" class="shrink-0 bg-purple-600 hover:bg-purple-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative mr-2" title="Post a Game">
+                    <i class="fa-solid fa-gamepad text-lg"></i>
+                    <i class="fa-solid fa-plus absolute top-1 right-1 text-[8px] bg-purple-600 rounded-full font-bold"></i>
+                </button>
                 <a href="chat/" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative" title="Open Messenger">
                     <i class="fa-solid fa-comments text-lg"></i>
                     <span id="chat-unread-badge" class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow border-2 border-white dark:border-slate-800 hidden">0</span>
@@ -294,6 +298,48 @@
         </div>
     </div>
 
+    <!-- Game Modal -->
+    <div id="game-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-xl shadow-xl overflow-hidden animate-bounce-in">
+            <div class="bg-purple-600 p-3 flex justify-between items-center text-white">
+                <h2 class="font-bold text-sm"><i class="fa-solid fa-gamepad mr-2"></i>Post a Game</h2>
+                <button onclick="window.closePostGameModal()" class="hover:text-purple-200"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4">
+                <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Game Type</label>
+                <select id="game-type" onchange="window.toggleGameSettings()" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
+                    <option value="first_to_mine">First to Mine</option>
+                    <option value="last_comment">Last Comment</option>
+                </select>
+                
+                <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Prize</label>
+                <input type="text" id="game-prize" placeholder="e.g. PHP 100 or Secret Amount" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
+                
+                <div id="last-comment-settings" class="hidden mb-3 border border-gray-200 dark:border-slate-600 rounded-lg p-3 bg-gray-50 dark:bg-slate-700/50">
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Timer Setting</label>
+                    <div class="flex items-center space-x-4 mb-2">
+                        <label class="flex items-center text-sm dark:text-white cursor-pointer">
+                            <input type="radio" name="game-timer" id="game-timer-auto" value="auto" checked onchange="window.toggleTimerSettings()" class="mr-2"> Auto Timer
+                        </label>
+                        <label class="flex items-center text-sm dark:text-white cursor-pointer">
+                            <input type="radio" name="game-timer" id="game-timer-manual" value="manual" onchange="window.toggleTimerSettings()" class="mr-2"> Manual
+                        </label>
+                    </div>
+                    
+                    <div id="game-duration-container">
+                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Duration (minutes)</label>
+                        <input type="number" id="game-duration" placeholder="e.g. 5" value="5" min="1" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    </div>
+                </div>
+                
+                <button onclick="window.submitGame()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg shadow-sm transition mt-2">Post Game</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/renderers.js"></script>
+    <script src="js/helpers.js"></script>
+    <script type="module" src="js/games.js"></script>
     <script type="module" src="js/main.js"></script>
     <script>
         if ('serviceWorker' in navigator) {

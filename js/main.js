@@ -370,6 +370,7 @@ window.listenPosts = () => {
     }
 
     window.postsUnsubscribe = onValue(dbQuery, (snapshot) => {
+        if(window.checkGameTimers) window.checkGameTimers(snapshot.val());
         const newPosts = [];
         snapshot.forEach(child => {
             newPosts.push({ id: child.key, ...child.val() });
