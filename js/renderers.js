@@ -944,19 +944,21 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         <div id="post-header-${prefix}-${post.id}" class="flex flex-col mb-2">
             ${repostBanner}
             <div class="flex justify-between items-start">
-                <div class="flex items-center space-x-2">
-                    <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${displayAuthorId}')">
-                    <div class="leading-tight">
-                        <div class="flex items-center">
-                            <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${displayAuthorId}')">${authorInfo.name}</h3>${roleData.badgeHtml}${visibilityIcon}
-                            <span class="text-[9px] text-yellow-500 ml-1">⭐ ${authorInfo.points || 0}</span>
-                            <span class="text-[9px] text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${authorInfo.lbPoints || 0}</span>
-                            <span class="text-[9px] text-blue-500 ml-1 font-bold">👥 ${followerCount}</span>
+                <div class="flex items-center space-x-2 min-w-0">
+                    <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition shrink-0 ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${displayAuthorId}')">
+                    <div class="leading-tight min-w-0 flex-1 overflow-hidden">
+                        <div class="flex items-center overflow-x-auto scrollbar-hide space-x-1 pb-0.5">
+                            <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline shrink-0 whitespace-nowrap ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${displayAuthorId}')">${authorInfo.name}</h3>
+                            <div class="shrink-0 flex items-center">${roleData.badgeHtml}</div>
+                            <div class="shrink-0 flex items-center">${visibilityIcon}</div>
+                            <span class="text-[9px] text-yellow-500 shrink-0 whitespace-nowrap">⭐ ${authorInfo.points || 0}</span>
+                            <span class="text-[9px] text-yellow-600 dark:text-yellow-500 shrink-0 whitespace-nowrap">🏆 ${authorInfo.lbPoints || 0}</span>
+                            <span class="text-[9px] text-blue-500 font-bold shrink-0 whitespace-nowrap">👥 ${followerCount}</span>
                         </div>
-                        <p class="text-[10px] text-gray-500">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
+                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
                     </div>
                 </div>
-                <div>${adminControls}</div>
+                <div class="shrink-0 ml-1 flex items-start">${adminControls}</div>
             </div>
         </div>
         
