@@ -1027,6 +1027,7 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
 document.getElementById('logout-btn').addEventListener('click', () => { 
     stopOwnPresence(window.currentUser); 
     signOut(auth); 
+    window.showAlert("Logged out successfully!");
 });
 
 onAuthStateChanged(auth, (user) => {
