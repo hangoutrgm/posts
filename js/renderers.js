@@ -602,7 +602,12 @@ window.generatePostHTML = function(post, prefix, filterContext) {
 
     const isBannedAuthor = authorInfo.isBanned === true;
     const effectivelyPinned = window.isPostPinned(post, filterContext);
-    const canComment = !post.locked || (window.currentUser && (window.currentUser.uid === post.authorId || window.getRole(window.currentUser.uid).level >= 2));
+    const isGamePost = post.isGame || post.category === 'Games';
+    const myRole = window.currentUser ? window.getRole(window.currentUser.uid).level : 0;
+    const isAuthorOfPost = window.currentUser && window.currentUser.uid === post.authorId;
+    // Mods (level 2) cannot bypass the lock on Game posts; only Admin (level 3) or the author can
+    const canBypassLock = isAuthorOfPost || (isGamePost ? myRole >= 3 : myRole >= 2);
+    const canComment = !post.locked || (window.currentUser && canBypassLock);
 
     const rxColors = { like: "text-blue-500 bg-blue-50 dark:bg-blue-900/30", heart: "text-pink-500 bg-pink-50 dark:bg-pink-900/30", haha: "text-orange-500 bg-orange-50 dark:bg-orange-900/30", wow: "text-yellow-500 bg-yellow-50 dark:bg-yellow-900/30", sad: "text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30", angry: "text-red-500 bg-red-50 dark:bg-red-900/30" };
     const rxHover = { like: "hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20", heart: "hover:text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900/20", haha: "hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20", wow: "hover:text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20", sad: "hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20", angry: "hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" };
@@ -884,7 +889,11 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             adminControls += `<button onclick="window.openPinModal('${post.id}', ${isProfilePinned}, ${isFeedPinned}, '${post.authorId}')" class="text-gray-400 hover:text-green-500 mr-2 text-xs" title="Pin Post Options"><i class="fa-solid fa-thumbtack ${isAnyPinned ? 'text-green-500' : ''}"></i></button>`;
         }
         
-        if(window.currentUser.uid === post.authorId || window.getRole(window.currentUser.uid).level >= 2) {
+        const isGamePostUI = post.isGame || post.category === 'Games';
+        const myRoleLevelUI = window.getRole(window.currentUser.uid).level;
+        const canToggleLock = window.currentUser.uid === post.authorId || myRoleLevelUI >= 3 || (myRoleLevelUI >= 2 && !isGamePostUI);
+        
+        if (canToggleLock) {
             adminControls += `<button onclick="window.toggleLock('${post.id}', ${post.locked})" class="text-gray-400 hover:text-orange-500 mr-2 text-xs" title="${post.locked ? 'Unlock Comments' : 'Lock Comments'}"><i class="fa-solid ${post.locked ? 'fa-lock text-orange-500' : 'fa-lock-open'}"></i></button>`;
         }
 

@@ -366,6 +366,13 @@ window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
     
     const roleLevel = window.getRole(window.currentUser.uid).level;
     const isAuthor = window.currentUser.uid === authorId;
+    const isMod = roleLevel === 2;
+    const authorRoleLevel = window.getRole(authorId).level;
+
+    // Mods cannot pin/unpin Admin posts
+    if (isMod && !isAuthor && authorRoleLevel >= 3) {
+        return window.showAlert("Mods cannot pin or unpin Admin posts.");
+    }
     
     if (!isAuthor && roleLevel < 2) return; 
     
@@ -405,7 +412,15 @@ window.executePin = (postId, pinType, targetStatus) => {
 
 window.toggleLock = (postId, currentStatus) => {
     const post = window.allPosts.find(p => p.id === postId);
-    if (window.currentUser && (window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === post.authorId)) {
+    if (!post || !window.currentUser) return;
+    const roleLevel = window.getRole(window.currentUser.uid).level;
+    const isAuthor = window.currentUser.uid === post.authorId;
+    const isMod = roleLevel === 2;
+    // Mods cannot lock/unlock Game posts — only the author or Admin can
+    if (isMod && !isAuthor && post.category === 'Games') {
+        return window.showAlert("Mods cannot lock or unlock Game posts.");
+    }
+    if (roleLevel >= 2 || isAuthor) {
         update(ref(db, `community_posts/${postId}`), { locked: !currentStatus });
     }
 };
