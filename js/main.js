@@ -968,6 +968,10 @@ document.getElementById('forgot-pass-btn').addEventListener('click', async () =>
 document.getElementById('auth-action-btn').addEventListener('click', async () => {
     const email = document.getElementById('auth-email').value;
     const pass = document.getElementById('auth-password').value;
+    const btn = document.getElementById('auth-action-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Please wait...`;
+    btn.disabled = true;
     try {
         if (window.isSignUpMode) {
             const cred = await createUserWithEmailAndPassword(auth, email, pass);
@@ -977,14 +981,31 @@ document.getElementById('auth-action-btn').addEventListener('click', async () =>
             
             update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic });
             document.getElementById('nav-avatar').src = newPic;
-        } else await signInWithEmailAndPassword(auth, email, pass);
+            window.showAlert("Account created successfully!");
+        } else {
+            await signInWithEmailAndPassword(auth, email, pass);
+            window.showAlert("Signed in successfully!");
+        }
         document.getElementById('auth-modal').classList.add('hidden');
-    } catch (error) { showError(error.message.replace('Firebase:', '')); }
+    } catch (error) { 
+        showError(error.message.replace('Firebase:', '')); 
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 });
 
 document.getElementById('guest-login-btn').addEventListener('click', async () => {
     const guestEmail = `guest_${window.deviceId}@hangout.local`, guestPass = window.deviceId + "_secret";
-    try { await signInWithEmailAndPassword(auth, guestEmail, guestPass); document.getElementById('auth-modal').classList.add('hidden'); } 
+    const btn = document.getElementById('guest-login-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700 dark:text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Please wait...`;
+    btn.disabled = true;
+    try { 
+        await signInWithEmailAndPassword(auth, guestEmail, guestPass); 
+        document.getElementById('auth-modal').classList.add('hidden'); 
+        window.showAlert("Signed in as Guest!");
+    } 
     catch {
         try {
             const cred = await createUserWithEmailAndPassword(auth, guestEmail, guestPass);
@@ -995,7 +1016,11 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
             update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic, isGuest: true });
             document.getElementById('nav-avatar').src = newPic;
             document.getElementById('auth-modal').classList.add('hidden');
+            window.showAlert("Guest account created!");
         } catch(e) { showError("Failed to create guest account."); }
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
     }
 });
 
