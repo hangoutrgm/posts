@@ -544,9 +544,19 @@ window.renderProfileData = (resetLimit = true) => {
 };
 
 window.generatePostHTML = function(post, prefix, filterContext) {
-    const authorInfo = window.globalUsersCache[post.authorId] || { name: "Unknown", pic: window.generateAvatar(post.authorId), points: 0 };
-    const roleData = window.getRole(post.authorId);
+    const displayAuthorId = post.isRepost ? post.originalAuthorId : post.authorId;
+    const authorInfo = window.globalUsersCache[displayAuthorId] || { name: "Unknown", pic: window.generateAvatar(displayAuthorId), points: 0 };
+    const roleData = window.getRole(displayAuthorId);
     const followerCount = authorInfo.followers ? Object.keys(authorInfo.followers).length : 0; 
+    
+    let repostBanner = '';
+    if (post.isRepost) {
+        const reposter = window.globalUsersCache[post.authorId] || { name: 'Someone' };
+        repostBanner = `<div class="flex items-center space-x-1 text-xs text-gray-500 mb-2 font-medium">
+            <i class="fa-solid fa-retweet"></i>
+            <span>Reposted by ${reposter.name}</span>
+        </div>`;
+    }
     
     let timeStr = 'Just now';
     if (post.timestamp) {
@@ -842,7 +852,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             adminControls += `<button onclick="window.toggleLock('${post.id}', ${post.locked})" class="text-gray-400 hover:text-orange-500 mr-2 text-xs" title="${post.locked ? 'Unlock Comments' : 'Lock Comments'}"><i class="fa-solid ${post.locked ? 'fa-lock text-orange-500' : 'fa-lock-open'}"></i></button>`;
         }
 
-        if(window.currentUser.uid === post.authorId) {
+        if(window.currentUser.uid === post.authorId && !post.isRepost) {
             const isPriv = post.visibility === 'private';
             adminControls += `<button onclick="window.togglePostVisibility('${post.id}', '${post.visibility || 'public'}')" class="text-gray-400 hover:text-blue-500 mr-2 text-xs" title="${isPriv ? 'Make Public' : 'Make Private'}"><i class="fa-solid ${isPriv ? 'fa-eye-slash' : 'fa-eye'}"></i></button>`;
             adminControls += `<button onclick="window.editPost('${post.id}')" class="text-gray-400 hover:text-blue-500 mr-2 text-xs"><i class="fa-solid fa-pen"></i></button>`;
@@ -854,24 +864,28 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     const isCommentsOpen = window.openComments.has(post.id);
     const safePostText = window.formatText(post.text);
 
+    
     const visibilityIcon = post.visibility === 'private'
         ? `<i class="fa-solid fa-eye-slash text-[10px] text-gray-400 ml-2" title="Private Post"></i>`
         : `<i class="fa-solid fa-eye text-[10px] text-blue-500 ml-2" title="Public Post"></i>`;
 
     postEl.innerHTML = `
-        <div id="post-header-${prefix}-${post.id}" class="flex justify-between items-start mb-2">
-            <div class="flex items-center space-x-2">
-                <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${post.authorId}')">
-                <div class="leading-tight">
-                    <div class="flex items-center">
-                        <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${post.authorId}')">${authorInfo.name}</h3>${roleData.badgeHtml}${visibilityIcon}
-                        <span class="text-[9px] text-yellow-500 ml-1">⭐ ${authorInfo.points || 0}</span>
-                        <span class="text-[9px] text-blue-500 ml-1 font-bold">👥 ${followerCount}</span>
+        <div id="post-header-${prefix}-${post.id}" class="flex flex-col mb-2">
+            ${repostBanner}
+            <div class="flex justify-between items-start">
+                <div class="flex items-center space-x-2">
+                    <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${displayAuthorId}')">
+                    <div class="leading-tight">
+                        <div class="flex items-center">
+                            <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${displayAuthorId}')">${authorInfo.name}</h3>${roleData.badgeHtml}${visibilityIcon}
+                            <span class="text-[9px] text-yellow-500 ml-1">⭐ ${authorInfo.points || 0}</span>
+                            <span class="text-[9px] text-blue-500 ml-1 font-bold">👥 ${followerCount}</span>
+                        </div>
+                        <p class="text-[10px] text-gray-500">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
                     </div>
-                    <p class="text-[10px] text-gray-500">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
                 </div>
+                <div>${adminControls}</div>
             </div>
-            <div>${adminControls}</div>
         </div>
         
         <div id="post-body-${prefix}-${post.id}">
@@ -892,8 +906,11 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             </div>
             
             <div class="flex items-center space-x-1 shrink-0 ml-auto">
-                <button onclick="window.copyPostLink('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
+                <button onclick="window.repostPost('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Repost">
                     <i class="fa-solid fa-share"></i>
+                </button>
+                <button onclick="window.copyPostLink('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Copy Link">
+                    <i class="fa-solid fa-link"></i>
                 </button>
                 <button onclick="window.toggleComments('${post.id}', '${prefix}')" class="flex items-center space-x-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
                     <i class="fa-regular fa-comment text-sm"></i> <span>${commentCount}</span>

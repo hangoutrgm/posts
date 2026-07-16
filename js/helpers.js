@@ -1,5 +1,5 @@
 import { db } from "./firebase-config.js";
-import { ref, update, remove, set, push, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;
@@ -83,6 +83,44 @@ window.timeAgo = (timestamp) => {
 window.copyPostLink = function(postId) {
     const url = window.location.origin + window.location.pathname + '?post=' + postId;
     navigator.clipboard.writeText(url).then(() => window.showAlert("Post link copied to clipboard!"));
+};
+
+window.repostPost = function(postId) {
+    if (!window.currentUser) return window.showAlert("Please sign in to repost.");
+    if (window.globalUsersCache[window.currentUser.uid]?.isBanned) return window.showAlert("Banned users cannot repost.");
+
+    window.showConfirm("Are you sure you want to repost this to your profile and bump it in the feed?", async () => {
+        try {
+            const snap = await get(ref(db, `community_posts/${postId}`));
+            if (!snap.exists()) return window.showAlert("Post not found.");
+            
+            const originalPost = snap.val();
+            // Prevent reposting a repost
+            const trueOriginalId = originalPost.isRepost ? originalPost.originalPostId : postId;
+            const trueOriginalAuthorId = originalPost.isRepost ? originalPost.originalAuthorId : originalPost.authorId;
+
+            const postRef = push(ref(db, 'community_posts'));
+            await set(postRef, {
+                authorId: window.currentUser.uid,
+                text: originalPost.text || "",
+                image: originalPost.image || "",
+                category: originalPost.category || "General",
+                timestamp: serverTimestamp(),
+                pinned: false,
+                edited: false,
+                locked: false,
+                reactions: {},
+                visibility: originalPost.visibility || 'public',
+                isRepost: true,
+                originalPostId: trueOriginalId,
+                originalAuthorId: trueOriginalAuthorId
+            });
+            window.showAlert("Post reposted successfully!");
+        } catch (error) {
+            console.error("Error reposting:", error);
+            window.showAlert("Failed to repost. Please try again.");
+        }
+    });
 };
 
 window.copyProfileLink = function(uid) {
