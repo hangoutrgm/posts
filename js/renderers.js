@@ -45,6 +45,10 @@ window.renderNotifications = () => {
                 text = 'started following you.'; icon = '👥'; 
                 linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
             }
+            else if(n.type === 'poke') {
+                text = 'poked you!'; icon = '👉';
+                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+            }
 
             // Format timestamp
             let timeDisplay = '';
@@ -411,9 +415,23 @@ window.renderProfileData = (resetLimit = true) => {
     }
 
     let followBtn = '';
+    let pokeBtn = '';
+    let pokeStats = `<p class="text-xs text-gray-500 mt-1"><span class="text-orange-500"><i class="fa-solid fa-hand-point-right"></i> Total Pokes Received: ${uData.totalPokes || 0}</span></p>`;
+
     if(window.currentUser && window.currentUser.uid !== window.activeProfileUid) {
         const isFollowing = window.globalUsersCache[window.currentUser.uid]?.following?.[window.activeProfileUid];
         followBtn = `<button onclick="window.toggleFollow('${window.activeProfileUid}')" class="mt-3 ${isFollowing ? 'bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-300' : 'bg-blue-600 text-white'} text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm">${isFollowing ? 'Following' : 'Follow'}</button>`;
+        
+        pokeBtn = `<button onclick="window.pokeUser('${window.activeProfileUid}')" class="mt-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm ml-2 hover:bg-orange-200 dark:hover:bg-orange-800"><i class="fa-solid fa-hand-point-right"></i> Poke</button>`;
+        pokeStats += `<p id="personal-poke-stats" class="text-[10px] text-gray-400 mt-0.5">Loading your pokes...</p>`;
+        
+        import("https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js").then(({ get, ref }) => {
+            get(ref(window.db, `users/${window.activeProfileUid}/pokesFrom/${window.currentUser.uid}`)).then(snap => {
+                const pokes = snap.val()?.count || 0;
+                const el = document.getElementById('personal-poke-stats');
+                if(el) el.innerHTML = `You poked them: <span class="font-bold text-orange-400">${pokes} times</span>`;
+            });
+        });
     }
 
     const genderBadge = (uData.gender && uData.gender !== "Prefer not to say") ? `<span class="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 text-[9px] px-2 py-0.5 rounded-full font-bold ml-2 shadow-sm"><i class="fa-solid fa-venus-mars mr-1"></i>${uData.gender}</span>` : '';
@@ -440,11 +458,15 @@ window.renderProfileData = (resetLimit = true) => {
             
             ${isBanned ? '<span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-1">Banned</span>' : ''}
             <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
+            ${pokeStats}
             
             ${uData.bio ? `<div class="mt-2 w-fit mx-auto px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-900/60 border-l-2 border-blue-400 dark:border-blue-500 text-[0.9rem] text-gray-600 dark:text-gray-300 italic text-center shadow-inner" style="line-height: 0.9;"><i class="fa-solid fa-quote-left text-blue-300 dark:text-blue-600 mr-1 text-[9px]"></i>${uData.bio}<i class="fa-solid fa-quote-right text-blue-300 dark:text-blue-600 ml-1 text-[9px]"></i></div>` : ''}
             
             ${relStr}
-            ${followBtn}
+            <div class="flex items-center justify-center">
+                ${followBtn}
+                ${pokeBtn}
+            </div>
         </div>
         <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
             <h3 class="text-xs font-bold text-gray-500 uppercase mb-1">Followers (${followerCount})</h3>

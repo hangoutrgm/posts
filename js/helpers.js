@@ -128,6 +128,40 @@ window.copyProfileLink = function(uid) {
     navigator.clipboard.writeText(url).then(() => window.showAlert("Profile link copied to clipboard!"));
 };
 
+window.pokeUser = async function(targetUid) {
+    if (!window.currentUser) return window.showAlert("Please sign in to poke.");
+    if (window.currentUser.uid === targetUid) return window.showAlert("You can't poke yourself!");
+    if (window.globalUsersCache[window.currentUser.uid]?.isBanned) return window.showAlert("Banned users cannot poke.");
+
+    const todayStr = new Date().toLocaleDateString();
+    
+    try {
+        const pokeRef = ref(db, `users/${targetUid}/pokesFrom/${window.currentUser.uid}`);
+        const snap = await get(pokeRef);
+        const data = snap.val() || { count: 0, lastPokedDate: '' };
+        
+        let newCount = data.count;
+        if (data.lastPokedDate !== todayStr) {
+            newCount++;
+            await set(pokeRef, { count: newCount, lastPokedDate: todayStr });
+            await update(ref(db, `users/${targetUid}`), { totalPokes: increment(1) });
+        }
+
+        // Always send a notification
+        push(ref(db, `users/${targetUid}/notifications`), {
+            type: 'poke', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false
+        });
+
+        window.showAlert("You poked them!");
+        if(window.activeProfileUid === targetUid && window.renderProfileData) {
+            window.renderProfileData(false); // refresh the profile UI
+        }
+    } catch(e) {
+        console.error("Error poking:", e);
+        window.showAlert("Failed to send poke.");
+    }
+};
+
 window.viewImage = (src) => {
     document.getElementById('viewer-img').src = src;
     document.getElementById('image-viewer-modal').classList.remove('hidden');
