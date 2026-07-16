@@ -158,7 +158,7 @@ window.openEditProfile = () => {
             const file = this.files[0]; if(!file) return;
             try {
                 const base64Img = await window.compressImage(file);
-                const compressed = await window.uploadToCloudinary(base64Img);
+                const compressed = await window.uploadToCloudinary(base64Img, window.currentUser?.uid);
                 slot.querySelector('.gallery-url-input').value = compressed;
                 // Update preview
                 let prev = slot.querySelector('.gallery-slot-preview');

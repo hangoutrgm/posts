@@ -523,11 +523,11 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         if (file) {
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             if (isVideo) {
-                finalImage = await window.uploadToCloudinary(file);
+                finalImage = await window.uploadToCloudinary(file, window.currentUser.uid);
                 window.incrementVideoUploadLimit();
             } else {
                 const base64Img = await window.compressImage(file); 
-                finalImage = await window.uploadToCloudinary(base64Img);
+                finalImage = await window.uploadToCloudinary(base64Img, window.currentUser.uid);
                 window.incrementUploadLimit();
             }
         }
@@ -592,7 +592,7 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     if (file) {
         try { 
             const base64Img = await window.compressImage(file, true);
-            finalImage = await window.uploadToCloudinary(base64Img);
+            finalImage = await window.uploadToCloudinary(base64Img, window.currentUser.uid);
             window.incrementUploadLimit();
         } catch(e) { 
             console.error("Compression failed", e); 
@@ -904,7 +904,7 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     try {
         if(file) {
             const base64Img = await window.compressImage(file);
-            finalPic = await window.uploadToCloudinary(base64Img);
+            finalPic = await window.uploadToCloudinary(base64Img, window.currentUser.uid);
         }
     } catch(e) { console.error("Compression/Upload failed", e); }
     

@@ -223,7 +223,7 @@ window.compressImage = (file, heavy = false) => {
     });
 };
 
-window.uploadToCloudinary = async (fileOrBase64) => {
+window.uploadToCloudinary = async (fileOrBase64, folder = null) => {
     const cloudName = "rlnbst7h";
     const uploadPreset = "hangout-images";
     const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
@@ -231,6 +231,9 @@ window.uploadToCloudinary = async (fileOrBase64) => {
     const formData = new FormData();
     formData.append('file', fileOrBase64);
     formData.append('upload_preset', uploadPreset);
+    if (folder) {
+        formData.append('folder', `users/${folder}`);
+    }
     
     const response = await fetch(url, {
         method: 'POST',
