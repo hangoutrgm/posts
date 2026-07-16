@@ -917,7 +917,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     timerHtml = `<div class="text-center text-xs font-bold text-gray-500 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full w-fit mx-auto">Waiting for host to end...</div>`;
                 }
                 
-                const endGameBtn = (window.currentUser && post.authorId === window.currentUser.uid) ? `<button onclick="window.endLastCommentGame('${post.id}')" class="mt-3 bg-red-100 text-red-600 hover:bg-red-200 text-xs font-bold py-1.5 px-4 rounded-full transition w-fit mx-auto border border-red-200 shadow-sm"><i class="fa-solid fa-stop-circle mr-1"></i>End Game Now</button>` : '';
+                const endGameBtn = (!post.gameEndTime && window.currentUser && post.authorId === window.currentUser.uid) ? `<button onclick="window.endLastCommentGame('${post.id}')" class="mt-3 bg-red-100 text-red-600 hover:bg-red-200 text-xs font-bold py-1.5 px-4 rounded-full transition w-fit mx-auto border border-red-200 shadow-sm"><i class="fa-solid fa-stop-circle mr-1"></i>End Game Now</button>` : '';
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col">
