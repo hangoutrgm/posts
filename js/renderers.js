@@ -207,7 +207,23 @@ window.renderPostList = (container, postsToRender, prefix, filterContext) => {
         const newEl = window.generatePostHTML(post, prefix, filterContext);
         
         if (existingEl) {
-            const parts = ['post-header', 'post-body', 'reactions', 'comments'];
+            const parts = ['post-header', 'post-body', 'reactions'];
+            // Check if user is composing in this post's comment section
+            const hasOpenReply = [...(window.openReplies || [])].some(cId => {
+                // comment ids are prefixed with postId in their structure
+                const el = existingEl.querySelector(`#reply-box-${prefix}-${cId}`);
+                return el && !el.classList.contains('hidden');
+            });
+            const commentInput = existingEl.querySelector(`#comment-input-${prefix}-${post.id}`);
+            const userIsComposingHere = window.isUserTyping && (
+                hasOpenReply ||
+                (commentInput && commentInput === document.activeElement && commentInput.value)
+            );
+
+            if (!userIsComposingHere) {
+                parts.push('comments');
+            }
+
             parts.forEach(part => {
                 const oldP = existingEl.querySelector(`#${part}-${prefix}-${post.id}`);
                 const newP = newEl.querySelector(`#${part}-${prefix}-${post.id}`);
