@@ -534,12 +534,15 @@ function compressImage(file) {
   });
 }
 
-function uploadToCloudinary(fileOrBase64, onProgress) {
+function uploadToCloudinary(fileOrBase64, onProgress, folder = null) {
   return new Promise((resolve, reject) => {
     const url = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/auto/upload`;
     const formData = new FormData();
     formData.append('file', fileOrBase64);
     formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+    if (folder) {
+      formData.append('folder', `users/${folder}`);
+    }
     
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
@@ -704,11 +707,11 @@ async function sendMessage(event) {
     if (file) {
       button.innerHTML = '<span style="font-size:10px">0%</span>';
       if (file.type.startsWith('video/')) {
-        image = await uploadToCloudinary(file, progressCallback);
+        image = await uploadToCloudinary(file, progressCallback, state.user.uid);
         await useVideoUploadQuota();
       } else {
         const base64Img = await compressImage(file);
-        image = await uploadToCloudinary(base64Img, progressCallback);
+        image = await uploadToCloudinary(base64Img, progressCallback, state.user.uid);
         await useUploadQuota();
       }
     }
@@ -956,7 +959,7 @@ $('group-photo-input')?.addEventListener('change', async (event) => {
   if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the creator can set the group photo.');
   try {
     const base64Img = await compressImage(file);
-    const b64 = await uploadToCloudinary(base64Img);
+    const b64 = await uploadToCloudinary(base64Img, null, state.user.uid);
     await update(ref(db, `chatThreads/${state.activeThreadId}`), { pic: b64 });
     showToast('Group photo updated.');
     $('conversation-dialog').close();
