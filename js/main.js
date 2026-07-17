@@ -397,6 +397,7 @@ window.listenPosts = () => {
             else window.renderFeed(false);
         }
         window.handleDeepLinks();
+        window.isLoadingHistory = false;
     });
 };
 
@@ -404,17 +405,10 @@ window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     
     window.isLoadingHistory = true;
-    const sentinel = document.querySelector('.sentinel-loader');
-    if (sentinel) sentinel.innerHTML = '<span>Loading older posts...</span>';
     
+    // Increase limit and listen
     window.postLimit += 15;
     window.listenPosts();
-    
-    setTimeout(() => {
-        window.isLoadingHistory = false;
-        if (sentinel && window.hasMorePosts) sentinel.innerHTML = '';
-        else if (sentinel && !window.hasMorePosts) sentinel.innerHTML = '<span>No more posts to show.</span>';
-    }, 1000);
 };
 
 window.listenPosts();

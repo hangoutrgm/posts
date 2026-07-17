@@ -380,8 +380,8 @@ window.renderFeed = (resetLimit = true) => {
 
     if (window.feedRenderLimit < window.filteredPostsLength || window.hasMorePosts) {
         const sentinel = document.createElement('div');
-        sentinel.className = 'sentinel-loader h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
-        sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+        sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
+        sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading...</span>';
         feed.appendChild(sentinel);
         
         if(window.feedObserver) window.feedObserver.disconnect();
@@ -396,6 +396,11 @@ window.renderFeed = (resetLimit = true) => {
             }
         }, { rootMargin: "300px" });
         window.feedObserver.observe(sentinel);
+    } else if (displayPosts.length > 0) {
+        const endMessage = document.createElement('div');
+        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold';
+        endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
+        feed.appendChild(endMessage);
     }
 
     window.restoreInputStates(inputStates);
@@ -553,8 +558,8 @@ window.renderProfileData = (resetLimit = true) => {
 
     if (window.profileRenderLimit < pPosts.length || window.hasMorePosts) {
         const sentinel = document.createElement('div');
-        sentinel.className = 'sentinel-loader h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
-        sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+        sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
+        sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading...</span>';
         pFeed.appendChild(sentinel);
         
         if(window.profileObserver) window.profileObserver.disconnect();
@@ -569,6 +574,11 @@ window.renderProfileData = (resetLimit = true) => {
             }
         }, { rootMargin: "300px" });
         window.profileObserver.observe(sentinel);
+    } else if (pPosts.length > 0) {
+        const endMessage = document.createElement('div');
+        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold';
+        endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
+        pFeed.appendChild(endMessage);
     }
 
     window.restoreInputStates(inputStates);
