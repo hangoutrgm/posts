@@ -110,6 +110,7 @@ function initAdminDashboard() {
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
             document.getElementById('set-lbPointsPerWin').value = settings.lbPointsPerWin ?? '';
+            document.getElementById('set-maxStarsPrize').value = settings.maxStarsPrize ?? '';
             document.getElementById('set-maxLbPointsPrize').value = settings.maxLbPointsPrize ?? '';
             document.getElementById('set-gameHostLbReward').value = settings.gameHostLbReward ?? '';
             document.getElementById('set-imageUploadLimit').value = settings.imageUploadLimit ?? '';
@@ -120,6 +121,7 @@ function initAdminDashboard() {
             document.getElementById('set-starsPerComment').value = '';
             document.getElementById('set-starsPerPoked').value = '';
             document.getElementById('set-lbPointsPerWin').value = '';
+            document.getElementById('set-maxStarsPrize').value = '';
             document.getElementById('set-maxLbPointsPrize').value = '';
             document.getElementById('set-gameHostLbReward').value = '';
             document.getElementById('set-imageUploadLimit').value = '';
@@ -132,6 +134,7 @@ function initAdminDashboard() {
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
         document.getElementById('set-lbPointsPerWin').placeholder = window.siteSettings.lbPointsPerWin;
+        document.getElementById('set-maxStarsPrize').placeholder = window.siteSettings.maxStarsPrize || '100';
         document.getElementById('set-maxLbPointsPrize').placeholder = window.siteSettings.maxLbPointsPrize;
         document.getElementById('set-gameHostLbReward').placeholder = window.siteSettings.gameHostLbReward || '0';
         document.getElementById('set-imageUploadLimit').placeholder = window.siteSettings.imageUploadLimit;
@@ -147,6 +150,7 @@ function initAdminDashboard() {
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,
             lbPointsPerWin: parseInt(document.getElementById('set-lbPointsPerWin').value) || 0,
+            maxStarsPrize: parseInt(document.getElementById('set-maxStarsPrize').value) || 0,
             maxLbPointsPrize: parseInt(document.getElementById('set-maxLbPointsPrize').value) || 0,
             gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
             imageUploadLimit: parseInt(document.getElementById('set-imageUploadLimit').value) || 0,

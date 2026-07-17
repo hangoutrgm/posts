@@ -28,6 +28,9 @@ window.openPostGameModal = () => {
     document.getElementById('game-lb-points').max = maxLb;
     document.getElementById('game-lb-points-label').innerText = `LB Points (Max ${maxLb})`;
 
+    const prizeLabel = document.getElementById('game-prize-label');
+    if(prizeLabel) prizeLabel.innerText = `Prize`;
+
     // Populate Users Datalist
     const userDatalist = document.getElementById('game-users-datalist');
     userDatalist.innerHTML = '';
@@ -109,13 +112,6 @@ window.submitGame = async () => {
     
     const prize = document.getElementById('game-prize').value.trim();
     if (!prize) return window.showAlert("Please enter a prize amount.");
-    
-    if (!isNaN(prize)) {
-        const maxPrize = window.siteSettings.maxLbPointsPrize ?? 100;
-        if (Number(prize) > maxPrize) {
-            return window.showAlert(`Maximum prize allowed is ${maxPrize}.`);
-        }
-    }
 
     const maxLbAllowed = window.siteSettings.maxLbPointsPrize ?? 5;
     const lbPointsReward = parseInt(document.getElementById('game-lb-points').value) || 0;
