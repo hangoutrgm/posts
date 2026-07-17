@@ -109,6 +109,7 @@ function initAdminDashboard() {
             document.getElementById('set-starsPerPost').value = settings.starsPerPost ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
+            document.getElementById('set-starsPerFollow').value = settings.starsPerFollow ?? '';
             document.getElementById('set-lbPointsPerWin').value = settings.lbPointsPerWin ?? '';
             document.getElementById('set-maxStarsPrize').value = settings.maxStarsPrize ?? '';
             document.getElementById('set-maxLbPointsPrize').value = settings.maxLbPointsPrize ?? '';
@@ -120,6 +121,7 @@ function initAdminDashboard() {
             document.getElementById('set-starsPerPost').value = '';
             document.getElementById('set-starsPerComment').value = '';
             document.getElementById('set-starsPerPoked').value = '';
+            document.getElementById('set-starsPerFollow').value = '';
             document.getElementById('set-lbPointsPerWin').value = '';
             document.getElementById('set-maxStarsPrize').value = '';
             document.getElementById('set-maxLbPointsPrize').value = '';
@@ -133,6 +135,7 @@ function initAdminDashboard() {
         document.getElementById('set-starsPerPost').placeholder = window.siteSettings.starsPerPost;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
+        document.getElementById('set-starsPerFollow').placeholder = window.siteSettings.starsPerFollow ?? '5';
         document.getElementById('set-lbPointsPerWin').placeholder = window.siteSettings.lbPointsPerWin;
         document.getElementById('set-maxStarsPrize').placeholder = window.siteSettings.maxStarsPrize || '100';
         document.getElementById('set-maxLbPointsPrize').placeholder = window.siteSettings.maxLbPointsPrize;
@@ -149,6 +152,7 @@ function initAdminDashboard() {
             starsPerPost: parseInt(document.getElementById('set-starsPerPost').value) || 0,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,
+            starsPerFollow: parseInt(document.getElementById('set-starsPerFollow').value) || 0,
             lbPointsPerWin: parseInt(document.getElementById('set-lbPointsPerWin').value) || 0,
             maxStarsPrize: parseInt(document.getElementById('set-maxStarsPrize').value) || 0,
             maxLbPointsPrize: parseInt(document.getElementById('set-maxLbPointsPrize').value) || 0,
