@@ -111,6 +111,7 @@ function initAdminDashboard() {
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
             document.getElementById('set-lbPointsPerWin').value = settings.lbPointsPerWin ?? '';
             document.getElementById('set-maxLbPointsPrize').value = settings.maxLbPointsPrize ?? '';
+            document.getElementById('set-gameHostLbReward').value = settings.gameHostLbReward ?? '';
             document.getElementById('set-imageUploadLimit').value = settings.imageUploadLimit ?? '';
             document.getElementById('set-videoUploadLimit').value = settings.videoUploadLimit ?? '';
             document.getElementById('set-videoSizeLimitMB').value = settings.videoSizeLimitMB ?? '';
@@ -120,6 +121,7 @@ function initAdminDashboard() {
             document.getElementById('set-starsPerPoked').value = '';
             document.getElementById('set-lbPointsPerWin').value = '';
             document.getElementById('set-maxLbPointsPrize').value = '';
+            document.getElementById('set-gameHostLbReward').value = '';
             document.getElementById('set-imageUploadLimit').value = '';
             document.getElementById('set-videoUploadLimit').value = '';
             document.getElementById('set-videoSizeLimitMB').value = '';
@@ -131,6 +133,7 @@ function initAdminDashboard() {
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
         document.getElementById('set-lbPointsPerWin').placeholder = window.siteSettings.lbPointsPerWin;
         document.getElementById('set-maxLbPointsPrize').placeholder = window.siteSettings.maxLbPointsPrize;
+        document.getElementById('set-gameHostLbReward').placeholder = window.siteSettings.gameHostLbReward || '0';
         document.getElementById('set-imageUploadLimit').placeholder = window.siteSettings.imageUploadLimit;
         document.getElementById('set-videoUploadLimit').placeholder = window.siteSettings.videoUploadLimit;
         document.getElementById('set-videoSizeLimitMB').placeholder = window.siteSettings.videoSizeLimitMB;
@@ -145,6 +148,7 @@ function initAdminDashboard() {
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,
             lbPointsPerWin: parseInt(document.getElementById('set-lbPointsPerWin').value) || 0,
             maxLbPointsPrize: parseInt(document.getElementById('set-maxLbPointsPrize').value) || 0,
+            gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
             imageUploadLimit: parseInt(document.getElementById('set-imageUploadLimit').value) || 0,
             videoUploadLimit: parseInt(document.getElementById('set-videoUploadLimit').value) || 0,
             videoSizeLimitMB: parseInt(document.getElementById('set-videoSizeLimitMB').value) || 0,

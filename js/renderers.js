@@ -41,6 +41,7 @@ window.renderNotifications = () => {
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
+            else if(n.type === 'game_challenge') { text = 'challenged you to a game! 🎮'; icon = '🎮'; }
             else if(n.type === 'follow') { 
                 text = 'started following you.'; icon = '👥'; 
                 linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
@@ -916,7 +917,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
 
     let gameHtml = '';
     if (post.isGame) {
-        const prizeStr = post.gamePrize ? `<div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center py-1.5 px-3 rounded-lg text-xs font-bold shadow-sm mb-2"><i class="fa-solid fa-gift mr-1"></i> PRIZE: ${post.gamePrize}</div>` : '';
+        let prizeText = '';
+        if (post.gamePrize) prizeText += `PRIZE: ${post.gamePrize}`;
+        if (post.gameLbPoints) prizeText += (prizeText ? ' + ' : '') + `${post.gameLbPoints} LB Points`;
+        const prizeStr = prizeText ? `<div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center py-1.5 px-3 rounded-lg text-xs font-bold shadow-sm mb-2"><i class="fa-solid fa-gift mr-1"></i> ${prizeText}</div>` : '';
         
         if (post.gameType === 'first_to_mine') {
             if (post.gameStatus === 'active') {
@@ -960,6 +964,120 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
                         ${prizeStr}
                         <div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center">${winnerStr}</div>
+                    </div>`;
+            }
+        } else if (post.gameType === 'challenge') {
+            const targetUserName = window.globalUsersCache[post.gameTargetUser]?.name || post.gameTargetUser;
+            const currentReacts = Object.keys(post.reactions || {}).reduce((sum, type) => sum + Object.keys(post.reactions[type] || {}).length, 0);
+            const currentComments = Object.keys(post.comments || {}).length;
+
+            if (post.gameStatus === 'active') {
+                let timerHtml = '';
+                if (post.gameEndTime) {
+                    timerHtml = `<div class="text-center font-mono text-2xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`;
+                }
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 mb-2">Challenge for @${targetUserName}</h4>
+                        <div class="flex space-x-4 mb-2 text-sm font-semibold">
+                            <span class="${currentReacts >= post.gameTargetReacts ? 'text-green-500' : 'text-gray-500'}">Reacts: ${currentReacts}/${post.gameTargetReacts}</span>
+                            <span class="${currentComments >= post.gameTargetComments ? 'text-green-500' : 'text-gray-500'}">Comments: ${currentComments}/${post.gameTargetComments}</span>
+                        </div>
+                        ${timerHtml}
+                        <button onclick="window.checkChallenge('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-check mr-2"></i>Check Progress</button>
+                    </div>`;
+            } else {
+                let outcomeHtml = '';
+                if (post.gameWinner === 'none') {
+                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> @${targetUserName} failed the challenge!</div>`;
+                } else {
+                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
+                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> Challenge Completed by ${winnerName}!</div>`;
+                }
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
+                        ${prizeStr}
+                        ${outcomeHtml}
+                    </div>`;
+            }
+        } else if (post.gameType === 'quick_challenge') {
+            const targetUserName = window.globalUsersCache[post.gameTargetUser]?.name || post.gameTargetUser;
+            if (post.gameStatus === 'active') {
+                const isTargetUser = window.currentUser && window.currentUser.uid === post.gameTargetUser;
+                const qcTimer = post.gameEndTime
+                    ? `<div class="text-center font-mono text-2xl font-black text-orange-600 dark:text-orange-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : `<div class="text-center text-xs font-bold text-gray-500 mt-2">No time limit</div>`;
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-orange-50 dark:bg-slate-800 rounded-xl border-2 border-orange-200 dark:border-orange-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <h4 class="font-bold text-sm text-orange-800 dark:text-orange-200 mb-2">⚡ Quick Challenge for @${targetUserName}</h4>
+                        ${qcTimer}
+                        ${isTargetUser 
+                            ? `<button onclick="window.mineGame('${post.id}')" class="mt-3 bg-orange-600 hover:bg-orange-500 text-white font-black text-xl py-3 px-10 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse"><i class="fa-solid fa-bolt mr-2"></i>MINE QUICK!</button>` 
+                            : `<button disabled class="mt-3 bg-gray-400 text-white font-black text-xl py-3 px-10 rounded-full shadow cursor-not-allowed">Only @${targetUserName} can mine</button>`
+                        }
+                    </div>`;
+            } else {
+                let outcomeHtml = '';
+                if (post.gameWinner === 'none') {
+                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> @${targetUserName} failed the challenge!</div>`;
+                } else {
+                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
+                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} mined it!</div>`;
+                }
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
+                        ${prizeStr}
+                        ${outcomeHtml}
+                    </div>`;
+            }
+        } else if (post.gameType === 'guess_emoji' || post.gameType === 'bring_me_emoji') {
+            const isGuess = post.gameType === 'guess_emoji';
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+
+            if (post.gameStatus === 'active') {
+                let displayContent, gameTitle, hostHint = '', answerHint = '';
+
+                if (isGuess) {
+                    // guess_emoji: show the emoji CHAR to all (players guess its NAME)
+                    displayContent = `<div class="text-5xl mb-2">${post.gameEmojiChar || '❓'}</div>`;
+                    gameTitle = 'What emoji is this? Type the name!';
+                    if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiName}</div>`;
+                    answerHint = `<p class="text-xs text-gray-400 mt-1">Type the emoji name, e.g. "Red Apple"</p>`;
+                } else {
+                    // bring_me_emoji: show the NAME to all (players send the emoji CHAR)
+                    // Host can see the answer emoji char
+                    displayContent = `<div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">${post.gameEmojiName || 'Emoji'}</div>`;
+                    gameTitle = 'Find and send this emoji!';
+                    if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiChar || '(no char stored)'}</div>`;
+                    answerHint = `<p class="text-xs text-gray-400 mt-1">Paste or type the emoji character</p>`;
+                }
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-blue-50 dark:bg-slate-800 rounded-xl border-2 border-blue-200 dark:border-blue-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        ${displayContent}
+                        <h4 class="font-bold text-sm text-blue-800 dark:text-blue-200 mb-1">${gameTitle}</h4>
+                        ${hostHint}
+                        ${answerHint}
+                        <button onclick="window.openAnswerModal('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-keyboard mr-2"></i>Answer</button>
+                    </div>`;
+            } else {
+                const revealedChar = post.gameEmojiChar || '';
+                let outcomeHtml = '';
+                if (post.gameWinner === 'none') {
+                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> No one guessed it!</div>`;
+                } else {
+                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
+                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won!</div>`;
+                }
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
+                        ${prizeStr}
+                        <div class="text-2xl mb-1">${revealedChar} ${post.gameEmojiName || ''}</div>
+                        ${outcomeHtml}
                     </div>`;
             }
         }

@@ -310,16 +310,53 @@
                 <select id="game-type" onchange="window.toggleGameSettings()" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
                     <option value="first_to_mine">First to Mine</option>
                     <option value="last_comment">Last Comment</option>
+                    <option value="challenge">Challenge</option>
+                    <option value="quick_challenge">Quick Challenge</option>
+                    <option value="guess_emoji">Guess the emoji</option>
+                    <option value="bring_me_emoji">Bring me emoji</option>
                 </select>
                 
-                <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Prize</label>
-                <input type="text" id="game-prize" placeholder="e.g. PHP 100 or Secret Amount" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Prize</label>
+                        <input type="text" id="game-prize" placeholder="e.g. PHP 100 or Secret" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    </div>
+                    <div>
+                        <label id="game-lb-points-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">LB Points</label>
+                        <input type="number" id="game-lb-points" placeholder="0" min="0" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    </div>
+                </div>
+
+                <div id="game-target-user-container" class="hidden mb-3">
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Target User Name (Search)</label>
+                    <input type="text" id="game-target-user" list="game-users-datalist" placeholder="Search by name..." class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    <datalist id="game-users-datalist"></datalist>
+                </div>
                 
+                <div id="game-emoji-name-container" class="hidden mb-3">
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Emoji Name</label>
+                    <input type="text" id="game-emoji-name" list="game-emoji-datalist" placeholder="e.g. Apple, Laughing Face" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    <datalist id="game-emoji-datalist"></datalist>
+                </div>
+
+                <div id="game-challenge-targets" class="hidden mb-3 grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Target Reacts</label>
+                        <input type="number" id="game-target-reacts" placeholder="0" min="0" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Target Comments</label>
+                        <input type="number" id="game-target-comments" placeholder="0" min="0" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    </div>
+                </div>
                 <div id="last-comment-settings" class="hidden mb-3 border border-gray-200 dark:border-slate-600 rounded-lg p-3 bg-gray-50 dark:bg-slate-700/50">
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Timer Setting</label>
-                    <div class="flex items-center space-x-4 mb-2">
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
                         <label class="flex items-center text-sm dark:text-white cursor-pointer">
-                            <input type="radio" name="game-timer" id="game-timer-auto" value="auto" checked onchange="window.toggleTimerSettings()" class="mr-2"> Auto Timer
+                            <input type="radio" name="game-timer" id="game-timer-auto" value="auto" checked onchange="window.toggleTimerSettings()" class="mr-2"> Auto (Secs)
+                        </label>
+                        <label class="flex items-center text-sm dark:text-white cursor-pointer">
+                            <input type="radio" name="game-timer" id="game-timer-date" value="date" onchange="window.toggleTimerSettings()" class="mr-2"> Specific Date
                         </label>
                         <label class="flex items-center text-sm dark:text-white cursor-pointer">
                             <input type="radio" name="game-timer" id="game-timer-manual" value="manual" onchange="window.toggleTimerSettings()" class="mr-2"> Manual
@@ -327,12 +364,32 @@
                     </div>
                     
                     <div id="game-duration-container">
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Duration (minutes)</label>
-                        <input type="number" id="game-duration" placeholder="e.g. 5" value="5" min="1" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Duration (seconds)</label>
+                        <input type="number" id="game-duration" placeholder="e.g. 60" value="60" min="1" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    </div>
+                    <div id="game-date-container" class="hidden">
+                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Select Date & Time</label>
+                        <input type="datetime-local" id="game-date" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                     </div>
                 </div>
                 
                 <button onclick="window.submitGame()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg shadow-sm transition mt-2">Post Game</button>
+            </div>
+        </div>
+    </div>
+    <!-- Submit Answer Modal -->
+    <div id="game-answer-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-xl shadow-xl overflow-hidden animate-bounce-in">
+            <div class="bg-blue-600 p-3 flex justify-between items-center text-white">
+                <h2 class="font-bold text-sm" id="game-answer-title"><i class="fa-solid fa-keyboard mr-2"></i>Submit Answer</h2>
+                <button onclick="document.getElementById('game-answer-modal').classList.add('hidden')" class="hover:text-blue-200"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4">
+                <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1" id="game-answer-label">Your Answer</label>
+                <input type="text" id="game-answer-input" placeholder="Enter your answer" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
+                <input type="hidden" id="game-answer-postid">
+                
+                <button onclick="window.submitGameAnswer()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit</button>
             </div>
         </div>
     </div>
