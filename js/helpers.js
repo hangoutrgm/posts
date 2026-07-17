@@ -15,12 +15,16 @@ window.showConfirm = (msg, onConfirm) => {
 
 window.logActivity = (actionText) => {
     if (!window.currentUser) return;
-    const userName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Unknown User';
-    push(ref(db, 'activity_log'), {
-        user: userName,
-        action: actionText,
-        timestamp: Date.now()
-    });
+    try {
+        const userName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Unknown User';
+        push(ref(db, 'activity_log'), {
+            user: userName,
+            action: actionText,
+            timestamp: Date.now()
+        });
+    } catch(e) {
+        console.warn('logActivity failed:', e);
+    }
 };
 
 window.debounce = function(func, wait) {
