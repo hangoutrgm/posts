@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Admin Config - Hangout Posts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: {} } }
+        if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
+        else document.documentElement.classList.add('dark');
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-900 dark:bg-[#0b1120] dark:text-[#f8fafc] transition-colors duration-300">
+
+    <nav class="sticky top-0 z-50 px-3 py-2 flex justify-between items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-slate-800">
+        <div class="flex items-center space-x-2 truncate cursor-pointer" onclick="window.location.href='../'">
+            <i class="fa-solid fa-arrow-left text-blue-500 text-lg"></i>
+            <h1 class="text-base md:text-lg font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600 truncate">Back to Site</h1>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+            <h2 class="text-sm font-bold bg-red-500/20 text-red-500 border border-red-500/30 px-2 py-1 rounded">Admin Dashboard</h2>
+            <button id="theme-toggle" class="p-1.5 text-gray-500 hover:text-blue-500 transition"><i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:block"></i></button>
+        </div>
+    </nav>
+
+    <div id="loading-screen" class="flex flex-col items-center justify-center h-[80vh]">
+        <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
+        <p class="text-gray-500">Verifying Admin Access...</p>
+    </div>
+
+    <main id="admin-content" class="hidden max-w-5xl mx-auto p-4 space-y-6 mt-4">
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-white dark:bg-slate-800/80 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700/50 backdrop-blur-sm">
+                <h3 class="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase mb-1">Total Users</h3>
+                <p id="metric-users" class="text-3xl font-black text-blue-600 dark:text-blue-400">0</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800/80 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700/50 backdrop-blur-sm">
+                <h3 class="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase mb-1">Total Posts</h3>
+                <p id="metric-posts" class="text-3xl font-black text-purple-600 dark:text-purple-400">0</p>
+            </div>
+            <div class="bg-white dark:bg-slate-800/80 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700/50 backdrop-blur-sm">
+                <h3 class="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase mb-1">Online Now</h3>
+                <p id="metric-online" class="text-3xl font-black text-green-600 dark:text-green-400">0</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Settings Form -->
+            <div class="bg-white dark:bg-slate-800/80 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700/50 backdrop-blur-sm">
+                <h3 class="text-lg font-bold mb-4 flex items-center"><i class="fa-solid fa-sliders text-blue-500 mr-2"></i> Dynamic Settings</h3>
+                <form id="settings-form" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Stars per Post</label>
+                            <input type="number" id="set-starsPerPost" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Stars per Comment/Reply/Like</label>
+                            <input type="number" id="set-starsPerComment" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Stars Gained per Poke</label>
+                            <input type="number" id="set-starsPerPoked" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">LB Points per Win</label>
+                            <input type="number" id="set-lbPointsPerWin" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Max LB Points Prize</label>
+                            <input type="number" id="set-maxLbPointsPrize" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Image Upload Limit (Daily)</label>
+                            <input type="number" id="set-imageUploadLimit" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Video Upload Limit (Daily)</label>
+                            <input type="number" id="set-videoUploadLimit" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">Video Size Limit (MB)</label>
+                            <input type="number" id="set-videoSizeLimitMB" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition shadow-md flex items-center justify-center">
+                        <i class="fa-solid fa-save mr-2"></i> Save Settings
+                    </button>
+                </form>
+            </div>
+
+            <!-- Users List -->
+            <div class="bg-white dark:bg-slate-800/80 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700/50 backdrop-blur-sm flex flex-col h-full">
+                <h3 class="text-lg font-bold mb-4 flex items-center"><i class="fa-solid fa-users text-blue-500 mr-2"></i> Users Data</h3>
+                <input type="search" id="admin-user-search" placeholder="Search users by name..." class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+                
+                <div class="overflow-y-auto flex-1 max-h-96 pr-2 custom-scrollbar space-y-2" id="admin-users-list">
+                    <!-- Users will be injected here -->
+                </div>
+            </div> <!-- Close Users List -->
+
+            <!-- Activity Log -->
+            <div class="bg-white dark:bg-slate-800/80 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700/50 backdrop-blur-sm flex flex-col h-full">
+                <h3 class="text-lg font-bold mb-4 flex items-center"><i class="fa-solid fa-list-ul text-blue-500 mr-2"></i> Activity Log</h3>
+                <div class="overflow-y-auto flex-1 max-h-[500px] pr-2 custom-scrollbar space-y-3" id="admin-activity-list">
+                    <!-- Activities will be injected here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="admin.js"></script>
+</body>
+</html>
