@@ -373,6 +373,25 @@ window.deleteItem = (dbPath, targetUid) => {
     });
 }
 
+window.refreshSinglePost = async (postId) => {
+    try {
+        const btn = document.querySelector(`#post-main-${postId} .fa-arrows-rotate`) || document.querySelector(`#post-profile-${postId} .fa-arrows-rotate`);
+        if (btn) btn.classList.add('fa-spin');
+        
+        const snap = await get(ref(db, `community_posts/${postId}`));
+        if (snap.exists()) {
+            const updatedPost = { id: postId, ...snap.val() };
+            const index = window.allPosts.findIndex(p => p.id === postId);
+            if (index !== -1) window.allPosts[index] = updatedPost;
+            
+            if (window.activeProfileUid) window.renderProfileData(false);
+            else window.renderFeed(false);
+        }
+    } catch (e) {
+        console.error("Refresh error:", e);
+    }
+};
+
 window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
     if (!window.currentUser) return;
     

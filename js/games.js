@@ -223,7 +223,7 @@ window.submitGame = async () => {
             });
         }
         window.closePostGameModal();
-        window.showAlert("Game posted successfully!");
+        window.renderProfileData(false);
     } catch(e) {
         console.error("Error posting game:", e);
         window.showAlert("Failed to post game.");
