@@ -455,15 +455,16 @@ window.toggleFollow = (targetUid) => {
     if(!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
     const isFollowing = window.globalUsersCache[window.currentUser.uid]?.following?.[targetUid];
+    const starsPerFollow = window.siteSettings.starsPerFollow ?? 5;
     
     if(isFollowing) {
         remove(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`));
         remove(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`));
-        update(ref(db, `users/${targetUid}`), { points: increment(-5) });
+        update(ref(db, `users/${targetUid}`), { points: increment(-starsPerFollow) });
     } else {
         set(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`), true);
         set(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`), true);
-        update(ref(db, `users/${targetUid}`), { points: increment(5) });
+        update(ref(db, `users/${targetUid}`), { points: increment(starsPerFollow) });
         
         if(targetUid !== window.currentUser.uid) {
             push(ref(db, `users/${targetUid}/notifications`), { 
