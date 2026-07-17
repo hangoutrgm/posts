@@ -8,15 +8,19 @@ window.showAlert = (msg) => {
 
 window.showConfirm = (msg, onConfirm) => {
     document.getElementById('custom-confirm-msg').innerText = msg;
-    const btn = document.getElementById('custom-confirm-btn');
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-    
-    newBtn.addEventListener('click', () => {
-        document.getElementById('custom-confirm-modal').classList.add('hidden');
-        onConfirm();
-    });
+    const confirmBtn = document.getElementById('custom-confirm-btn');
+    confirmBtn.onclick = () => { onConfirm(); document.getElementById('custom-confirm-modal').classList.add('hidden'); };
     document.getElementById('custom-confirm-modal').classList.remove('hidden');
+};
+
+window.logActivity = (actionText) => {
+    if (!window.currentUser) return;
+    const userName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Unknown User';
+    push(ref(db, 'activity_log'), {
+        user: userName,
+        action: actionText,
+        timestamp: Date.now()
+    });
 };
 
 window.debounce = function(func, wait) {
@@ -144,7 +148,8 @@ window.pokeUser = async function(targetUid) {
         if (data.lastPokedDate !== todayStr) {
             newCount++;
             await set(pokeRef, { count: newCount, lastPokedDate: todayStr });
-            await update(ref(db, `users/${targetUid}`), { totalPokes: increment(1) });
+            const pokePoints = window.siteSettings.starsPerPoked ?? 5;
+            await update(ref(db, `users/${targetUid}`), { totalPokes: increment(1), points: increment(pokePoints) });
         }
 
         // Always send a notification

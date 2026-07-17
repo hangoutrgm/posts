@@ -294,6 +294,12 @@ onValue(ref(db, '.info/connected'), (snap) => {
     }
 });
 
+onValue(ref(db, 'settings'), (snap) => {
+    if (snap.exists()) {
+        window.siteSettings = { ...window.siteSettings, ...snap.val() };
+    }
+});
+
 onValue(ref(db, 'presence'), (snap) => {
     window.onlineUsers = snap.val() || {};
     document.getElementById('online-count').innerText = snap.size || 0;
@@ -423,8 +429,9 @@ window.checkUploadLimit = () => {
     const today = new Date().toLocaleDateString('en-CA');
     const userData = window.globalUsersCache[window.currentUser.uid] || {};
     const uploadsToday = userData.dailyUploads?.date === today ? userData.dailyUploads.count : 0;
-    if (uploadsToday >= 10) {
-        window.showAlert("You have reached your daily limit of 10 image uploads.");
+    const limit = window.siteSettings.imageUploadLimit ?? 10;
+    if (uploadsToday >= limit) {
+        window.showAlert(`You have reached your daily limit of ${limit} image uploads.`);
         return false;
     }
     return true;
@@ -443,8 +450,9 @@ window.checkVideoUploadLimit = () => {
     const today = new Date().toLocaleDateString('en-CA');
     const userData = window.globalUsersCache[window.currentUser.uid] || {};
     const uploadsToday = userData.dailyVideoUploads?.date === today ? userData.dailyVideoUploads.count : 0;
-    if (uploadsToday >= 3) {
-        window.showAlert("You have reached your daily limit of 3 video uploads.");
+    const limit = window.siteSettings.videoUploadLimit ?? 3;
+    if (uploadsToday >= limit) {
+        window.showAlert(`You have reached your daily limit of ${limit} video uploads.`);
         return false;
     }
     return true;
@@ -466,8 +474,9 @@ document.getElementById('post-image-file').addEventListener('change', function()
     
     if (file) {
         if (file.type.startsWith('video/')) {
-            if (file.size > 20 * 1024 * 1024) {
-                window.showAlert("Video is too large. Max size is 20MB.");
+            const sizeLimitMB = window.siteSettings.videoSizeLimitMB ?? 20;
+            if (file.size > sizeLimitMB * 1024 * 1024) {
+                window.showAlert(`Video is too large. Max size is ${sizeLimitMB}MB.`);
                 this.value = '';
                 document.getElementById('file-name').innerText = '';
                 previewContainer.classList.add('hidden');
@@ -508,8 +517,9 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         if (isVideo && !window.checkVideoUploadLimit()) return;
         if (!isVideo && !window.checkUploadLimit()) return;
         
-        if (isVideo && file.size > 20 * 1024 * 1024) {
-            window.showAlert("Video is too large. Max size is 20MB.");
+        const sizeLimitMB = window.siteSettings.videoSizeLimitMB ?? 20;
+        if (isVideo && file.size > sizeLimitMB * 1024 * 1024) {
+            window.showAlert(`Video is too large. Max size is ${sizeLimitMB}MB.`);
             return;
         }
     }
@@ -540,8 +550,10 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
             visibility: window.postVisibility || 'public' 
         });
         
-        update(ref(db, `users/${window.currentUser.uid}`), { points: increment(10) });
+        const pointsToAdd = window.siteSettings.starsPerPost ?? 10;
+        update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
         window.notifyMentions(text, postRef.key);
+        window.logActivity("posted a new update");
         
         document.getElementById('post-text').value = '';
         document.getElementById('post-image-url').value = '';
@@ -608,10 +620,11 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
         timestamp: Date.now(), 
         edited: false 
     });
-    update(ref(db, `users/${window.currentUser.uid}`), { points: increment(1) });
+    const pointsToAdd = window.siteSettings.starsPerLike ?? 1;
+    update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
     
     if(window.currentUser.uid !== postAuthorId && postAuthorId !== "undefined") {
-        update(ref(db, `users/${postAuthorId}`), { points: increment(1) });
+        update(ref(db, `users/${postAuthorId}`), { points: increment(pointsToAdd) });
         push(ref(db, `users/${postAuthorId}/notifications`), { 
             type: 'comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
@@ -630,7 +643,9 @@ window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
     input.value = '';
     
     push(ref(db, `community_posts/${postId}/comments/${commentId}/replies`), { uid: window.currentUser.uid, text: text, timestamp: Date.now(), edited: false });
-    update(ref(db, `users/${window.currentUser.uid}`), { points: increment(1) });
+    const pointsToAdd = window.siteSettings.starsPerComment ?? 1;
+    update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
+    window.logActivity(`commented on a post by ${commentAuthorId}`);
     
     if(window.currentUser.uid !== commentAuthorId && commentAuthorId !== "undefined") {
         push(ref(db, `users/${commentAuthorId}/notifications`), { 
@@ -658,7 +673,8 @@ window.react = (postId, postAuthorId, type) => {
     const hasReacted = post.reactions && post.reactions[type] && post.reactions[type][window.currentUser.uid];
     if(hasReacted) {
         remove(ref(db, `community_posts/${postId}/reactions/${type}/${window.currentUser.uid}`));
-        if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") update(ref(db, `users/${postAuthorId}`), { points: increment(-1) });
+        const likePoints = window.siteSettings.starsPerLike ?? 1;
+        if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") update(ref(db, `users/${postAuthorId}`), { points: increment(-likePoints) });
     } else {
         if (userReactCount >= 3) {
             window.showAlert("You can only have up to 3 simultaneous reactions on a post.");
@@ -666,11 +682,15 @@ window.react = (postId, postAuthorId, type) => {
         }
         set(ref(db, `community_posts/${postId}/reactions/${type}/${window.currentUser.uid}`), true);
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
-            update(ref(db, `users/${postAuthorId}`), { points: increment(1) });
+        const likePoints = window.siteSettings.starsPerLike ?? 1;
+        if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
+            update(ref(db, `users/${postAuthorId}`), { points: increment(likePoints) });
+        }
             push(ref(db, `users/${postAuthorId}/notifications`), { 
                 type: 'react_post', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
+        window.logActivity(`reacted to a post by ${postAuthorId}`);
     }
 };
 
@@ -690,7 +710,8 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
     const hasReacted = comment.reactions && comment.reactions[type] && comment.reactions[type][window.currentUser.uid];
     if(hasReacted) {
         remove(ref(db, `community_posts/${postId}/comments/${commentId}/reactions/${type}/${window.currentUser.uid}`));
-        if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") update(ref(db, `users/${commentAuthorId}`), { points: increment(-1) });
+        const likePoints = window.siteSettings.starsPerLike ?? 1;
+        if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") update(ref(db, `users/${commentAuthorId}`), { points: increment(-likePoints) });
     } else {
         if (userReactCount >= 3) {
             window.showAlert("You can only have up to 3 simultaneous reactions on a comment.");
@@ -698,11 +719,13 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
         }
         set(ref(db, `community_posts/${postId}/comments/${commentId}/reactions/${type}/${window.currentUser.uid}`), true);
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") {
-            update(ref(db, `users/${commentAuthorId}`), { points: increment(1) });
+            const likePoints = window.siteSettings.starsPerLike ?? 1;
+            update(ref(db, `users/${commentAuthorId}`), { points: increment(likePoints) });
             push(ref(db, `users/${commentAuthorId}/notifications`), { 
                 type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
+        window.logActivity(`reacted to a comment by ${commentAuthorId}`);
     }
 };
 
@@ -723,7 +746,8 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
     const hasReacted = reply.reactions && reply.reactions[type] && reply.reactions[type][window.currentUser.uid];
     if(hasReacted) {
         remove(ref(db, `community_posts/${postId}/comments/${commentId}/replies/${replyId}/reactions/${type}/${window.currentUser.uid}`));
-        if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") update(ref(db, `users/${replyAuthorId}`), { points: increment(-1) });
+        const likePoints = window.siteSettings.starsPerLike ?? 1;
+        if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") update(ref(db, `users/${replyAuthorId}`), { points: increment(-likePoints) });
     } else {
         if (userReactCount >= 3) {
             window.showAlert("You can only have up to 3 simultaneous reactions on a reply.");
@@ -731,7 +755,8 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
         }
         set(ref(db, `community_posts/${postId}/comments/${commentId}/replies/${replyId}/reactions/${type}/${window.currentUser.uid}`), true);
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
-            update(ref(db, `users/${replyAuthorId}`), { points: increment(1) });
+            const likePoints = window.siteSettings.starsPerLike ?? 1;
+            update(ref(db, `users/${replyAuthorId}`), { points: increment(likePoints) });
             push(ref(db, `users/${replyAuthorId}/notifications`), { 
                 type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
@@ -1027,6 +1052,7 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
 
 document.getElementById('logout-btn').addEventListener('click', () => { 
     stopOwnPresence(window.currentUser); 
+    window.logActivity("logged out");
     signOut(auth); 
     window.showAlert("Logged out successfully!");
 });
@@ -1034,6 +1060,11 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 onAuthStateChanged(auth, (user) => {
     window.currentUser = user;
     if (user) {
+        if (!sessionStorage.getItem('session_started')) {
+            sessionStorage.setItem('session_started', 'true');
+            // Give time for globalUsersCache to populate
+            setTimeout(() => window.logActivity("logged in"), 1000);
+        }
         update(ref(db, `users/${user.uid}`), { lastSeen: serverTimestamp() });
         
         startOwnPresence(user);

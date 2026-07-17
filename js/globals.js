@@ -37,3 +37,17 @@ window.currentMentionMatch = null;
 // Typing protection (v6.3)
 window.isUserTyping = false;
 window.typingTimer = null;
+
+// Dynamic Settings (loaded from Firebase /settings)
+window.siteSettings = {
+    starsPerPost: 10,
+    starsPerComment: 1,
+    starsPerReply: 1,
+    starsPerLike: 1,
+    starsPerPoked: 5,
+    lbPointsPerWin: 5,
+    maxLbPointsPrize: 100,
+    imageUploadLimit: 10,
+    videoUploadLimit: 3,
+    videoSizeLimitMB: 20
+};

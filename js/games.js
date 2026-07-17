@@ -42,6 +42,13 @@ window.submitGame = async () => {
     const prize = document.getElementById('game-prize').value.trim();
     if (!prize) return window.showAlert("Please enter a prize amount.");
     
+    if (!isNaN(prize)) {
+        const maxPrize = window.siteSettings.maxLbPointsPrize ?? 100;
+        if (Number(prize) > maxPrize) {
+            return window.showAlert(`Maximum prize allowed is ${maxPrize}.`);
+        }
+    }
+
     const type = document.getElementById('game-type').value;
     let endTime = null;
     
@@ -99,9 +106,10 @@ window.mineGame = async (postId) => {
         });
         
         if (result.committed && result.snapshot.val().gameWinner === window.currentUser.uid) {
-            // Reward 5 LB points
-            update(ref(db, `users/${window.currentUser.uid}`), { lbPoints: increment(5) });
-            window.showAlert("You mined it first! You win 5 LB points!");
+            // Reward LB points
+            const lbPoints = window.siteSettings.lbPointsPerWin ?? 5;
+            update(ref(db, `users/${window.currentUser.uid}`), { lbPoints: increment(lbPoints) });
+            window.showAlert(`You mined it first! You win ${lbPoints} LB points!`);
         } else {
             window.showAlert("Too late! Someone else already mined it.");
         }
