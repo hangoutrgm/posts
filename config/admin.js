@@ -10,26 +10,39 @@ const adminContent = document.getElementById('admin-content');
 let globalUsers = {};
 let allPostsCount = 0;
 
+const ADMIN_UID = 'IYNhNTCcCsZQSGad3hu9rar0ILC3';
+
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         window.location.href = '../';
         return;
     }
 
-    // Check if admin
-    const userRef = ref(db, `users/${user.uid}`);
-    const snap = await get(userRef);
-    if (!snap.exists() || snap.val().isAdmin !== true) {
-        // Not an admin
-        window.location.href = '../';
-        return;
+    try {
+        // Check if admin by UID or isAdmin flag
+        const isHardcodedAdmin = user.uid === ADMIN_UID;
+        let isDbAdmin = false;
+
+        if (!isHardcodedAdmin) {
+            const userRef = ref(db, `users/${user.uid}`);
+            const snap = await get(userRef);
+            isDbAdmin = snap.exists() && snap.val().isAdmin === true;
+        }
+
+        if (!isHardcodedAdmin && !isDbAdmin) {
+            window.location.href = '../';
+            return;
+        }
+
+        // Is Admin
+        loadingScreen.classList.add('hidden');
+        adminContent.classList.remove('hidden');
+        initAdminDashboard();
+
+    } catch (err) {
+        console.error('Admin check failed:', err);
+        loadingScreen.innerHTML = `<p class="text-red-400">Error verifying access: ${err.message}</p><a href="../" class="text-blue-400 underline mt-2 block">Go back</a>`;
     }
-
-    // Is Admin
-    loadingScreen.classList.add('hidden');
-    adminContent.classList.remove('hidden');
-
-    initAdminDashboard();
 });
 
 function initAdminDashboard() {
