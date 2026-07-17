@@ -251,6 +251,10 @@ window.mineGame = async (postId) => {
             return window.showAlert("Time's up! You failed to complete the challenge in time.");
         }
 
+        if (post.authorId === window.currentUser.uid) {
+            return window.showAlert("You cannot win your own game!");
+        }
+
         if (post.gameType === 'quick_challenge' && post.gameTargetUser !== window.currentUser.uid) {
             return window.showAlert("This Quick Challenge is not for you!");
         }
@@ -296,6 +300,11 @@ window.endLastCommentGame = async (postId) => {
             }
         }
         
+        if (lastCommenterId === post.authorId) {
+            // Forfeit the game if the host was the last commenter
+            lastCommenterId = null;
+        }
+
         await update(ref(db, `community_posts/${postId}`), {
             gameStatus: 'ended',
             gameWinner: lastCommenterId || "none",
@@ -305,14 +314,12 @@ window.endLastCommentGame = async (postId) => {
         if (lastCommenterId) {
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
             if (lbPoints > 0) update(ref(db, `users/${lastCommenterId}`), { lbPoints: increment(lbPoints) });
+            // Reward host only if someone actually won
+            const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId) {
+                update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+            }
         }
-        // Reward host
-        const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
-        if (hostLbReward > 0 && post.authorId) {
-            update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
-        }
-
-        window.showAlert("Game ended!");
     } catch(e) {
         console.error("Error ending game:", e);
     }
@@ -422,6 +429,10 @@ window.submitGameAnswer = async () => {
 
         if (post.gameEndTime && Date.now() >= post.gameEndTime) {
             return window.showAlert("Time's up! The game is over.");
+        }
+
+        if (post.authorId === window.currentUser.uid) {
+            return window.showAlert("You cannot answer your own game!");
         }
 
         // For guess_emoji: player types the name → match against gameEmojiName

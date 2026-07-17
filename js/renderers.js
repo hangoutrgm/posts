@@ -893,18 +893,24 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         const isGamePostUI = post.isGame || post.category === 'Games';
         const myRoleLevelUI = window.getRole(window.currentUser.uid).level;
         const canToggleLock = window.currentUser.uid === post.authorId || myRoleLevelUI >= 3 || (myRoleLevelUI >= 2 && !isGamePostUI);
+        const isEndedGame = isGamePostUI && post.gameStatus === 'ended';
         
         if (canToggleLock) {
             adminControls += `<button onclick="window.toggleLock('${post.id}', ${post.locked})" class="text-gray-400 hover:text-orange-500 mr-2 text-xs" title="${post.locked ? 'Unlock Comments' : 'Lock Comments'}"><i class="fa-solid ${post.locked ? 'fa-lock text-orange-500' : 'fa-lock-open'}"></i></button>`;
         }
 
-        if(window.currentUser.uid === post.authorId && !post.isRepost) {
+        if(window.currentUser.uid === post.authorId && !post.isRepost && !isEndedGame) {
             const isPriv = post.visibility === 'private';
             adminControls += `<button onclick="window.togglePostVisibility('${post.id}', '${post.visibility || 'public'}')" class="text-gray-400 hover:text-blue-500 mr-2 text-xs" title="${isPriv ? 'Make Public' : 'Make Private'}"><i class="fa-solid ${isPriv ? 'fa-eye-slash' : 'fa-eye'}"></i></button>`;
             adminControls += `<button onclick="window.editPost('${post.id}')" class="text-gray-400 hover:text-blue-500 mr-2 text-xs"><i class="fa-solid fa-pen"></i></button>`;
         }
         
-        if(window.canDelete(post.authorId)) adminControls += `<button onclick="window.deleteItem('community_posts/${post.id}', '${post.authorId}')" class="text-gray-400 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>`;
+        if(window.canDelete(post.authorId)) {
+            // Freeze deletion by host if game is ended, unless they are an admin
+            if (!(isEndedGame && window.currentUser.uid === post.authorId && myRoleLevelUI < 3)) {
+                adminControls += `<button onclick="window.deleteItem('community_posts/${post.id}', '${post.authorId}')" class="text-gray-400 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>`;
+            }
+        }
     }
 
     const isCommentsOpen = window.openComments.has(post.id);
@@ -955,15 +961,17 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${endGameBtn}
                     </div>`;
             } else {
-                let winnerStr = "No one won (no comments).";
-                if (post.gameWinner && post.gameWinner !== 'none') {
+                let outcomeHtml = '';
+                if (post.gameWinner === 'none' || !post.gameWinner) {
+                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> Game forfeited! (No winners)</div>`;
+                } else {
                     const winnerName = window.globalUsersCache[post.gameWinner]?.name || "Someone";
-                    winnerStr = `<i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won the Last Comment!`;
+                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won the Last Comment!</div>`;
                 }
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
                         ${prizeStr}
-                        <div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center">${winnerStr}</div>
+                        ${outcomeHtml}
                     </div>`;
             }
         } else if (post.gameType === 'challenge') {
