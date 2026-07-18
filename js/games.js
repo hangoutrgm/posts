@@ -291,6 +291,16 @@ window.submitGame = async () => {
         
         if (bingoLetterCount < 1 || bingoLetterCount > 26) return window.showAlert("Letter count must be between 1 and 26.");
         if (bingoNumberCount < 1 || bingoNumberCount > 100) return window.showAlert("Number count must be between 1 and 100.");
+        
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const maxAvailableLetters = alphabet.indexOf(bingoMaxLetter.toUpperCase()) + 1;
+        if (bingoLetterCount > maxAvailableLetters) {
+            return window.showAlert(`You are asking players to pick ${bingoLetterCount} letters, but only ${maxAvailableLetters} letters (A-${bingoMaxLetter}) are available!`);
+        }
+        
+        if (bingoNumberCount > bingoMaxNumber) {
+            return window.showAlert(`You are asking players to pick ${bingoNumberCount} numbers, but only ${bingoMaxNumber} numbers (1-${bingoMaxNumber}) are available!`);
+        }
     }
 
     if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo'].includes(type)) {
