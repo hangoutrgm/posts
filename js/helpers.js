@@ -1,5 +1,5 @@
 import { db } from "./firebase-config.js";
-import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, update, remove, set, push, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;
@@ -8,23 +8,15 @@ window.showAlert = (msg) => {
 
 window.showConfirm = (msg, onConfirm) => {
     document.getElementById('custom-confirm-msg').innerText = msg;
-    const confirmBtn = document.getElementById('custom-confirm-btn');
-    confirmBtn.onclick = () => { onConfirm(); document.getElementById('custom-confirm-modal').classList.add('hidden'); };
+    const btn = document.getElementById('custom-confirm-btn');
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    
+    newBtn.addEventListener('click', () => {
+        document.getElementById('custom-confirm-modal').classList.add('hidden');
+        onConfirm();
+    });
     document.getElementById('custom-confirm-modal').classList.remove('hidden');
-};
-
-window.logActivity = (actionText) => {
-    if (!window.currentUser) return;
-    try {
-        const userName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Unknown User';
-        push(ref(db, 'activity_log'), {
-            user: userName,
-            action: actionText,
-            timestamp: Date.now()
-        });
-    } catch(e) {
-        console.warn('logActivity failed:', e);
-    }
 };
 
 window.debounce = function(func, wait) {
@@ -93,81 +85,9 @@ window.copyPostLink = function(postId) {
     navigator.clipboard.writeText(url).then(() => window.showAlert("Post link copied to clipboard!"));
 };
 
-window.repostPost = function(postId) {
-    if (!window.currentUser) return window.showAlert("Please sign in to repost.");
-    if (window.globalUsersCache[window.currentUser.uid]?.isBanned) return window.showAlert("Banned users cannot repost.");
-
-    window.showConfirm("Are you sure you want to repost this to your profile and bump it in the feed?", async () => {
-        try {
-            const snap = await get(ref(db, `community_posts/${postId}`));
-            if (!snap.exists()) return window.showAlert("Post not found.");
-            
-            const originalPost = snap.val();
-            // Prevent reposting a repost
-            const trueOriginalId = originalPost.isRepost ? originalPost.originalPostId : postId;
-            const trueOriginalAuthorId = originalPost.isRepost ? originalPost.originalAuthorId : originalPost.authorId;
-
-            const postRef = push(ref(db, 'community_posts'));
-            await set(postRef, {
-                authorId: window.currentUser.uid,
-                text: originalPost.text || "",
-                image: originalPost.image || "",
-                category: originalPost.category || "General",
-                timestamp: serverTimestamp(),
-                pinned: false,
-                edited: false,
-                locked: false,
-                reactions: {},
-                visibility: originalPost.visibility || 'public',
-                isRepost: true,
-                originalPostId: trueOriginalId,
-                originalAuthorId: trueOriginalAuthorId
-            });
-            window.showAlert("Post reposted successfully!");
-        } catch (error) {
-            console.error("Error reposting:", error);
-            window.showAlert("Failed to repost. Please try again.");
-        }
-    });
-};
-
 window.copyProfileLink = function(uid) {
     const url = window.location.origin + window.location.pathname + '?profile=' + uid;
     navigator.clipboard.writeText(url).then(() => window.showAlert("Profile link copied to clipboard!"));
-};
-
-window.pokeUser = async function(targetUid) {
-    if (!window.currentUser) return window.showAlert("Please sign in to poke.");
-    if (window.currentUser.uid === targetUid) return window.showAlert("You can't poke yourself!");
-    if (window.globalUsersCache[window.currentUser.uid]?.isBanned) return window.showAlert("Banned users cannot poke.");
-
-    const todayStr = new Date().toLocaleDateString();
-    
-    try {
-        const pokeRef = ref(db, `users/${targetUid}/pokesFrom/${window.currentUser.uid}`);
-        const snap = await get(pokeRef);
-        const data = snap.val() || { count: 0, lastPokedDate: '' };
-        
-        let newCount = data.count;
-        if (data.lastPokedDate !== todayStr) {
-            newCount++;
-            await set(pokeRef, { count: newCount, lastPokedDate: todayStr });
-            const pokePoints = window.siteSettings.starsPerPoked ?? 5;
-            await update(ref(db, `users/${targetUid}`), { totalPokes: increment(1), points: increment(pokePoints) });
-        }
-
-        // Always send a notification
-        push(ref(db, `users/${targetUid}/notifications`), {
-            type: 'poke', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false
-        });
-
-        if(window.activeProfileUid === targetUid && window.renderProfileData) {
-            window.renderProfileData(false); // refresh the profile UI
-        }
-    } catch(e) {
-        console.error("Error poking:", e);
-        window.showAlert("Failed to send poke.");
-    }
 };
 
 window.viewImage = (src) => {
@@ -232,7 +152,7 @@ window.compressImage = (file, heavy = false) => {
     });
 };
 
-window.uploadToCloudinary = async (fileOrBase64, folder = null) => {
+window.uploadToCloudinary = async (fileOrBase64) => {
     const cloudName = "rlnbst7h";
     const uploadPreset = "hangout-images";
     const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
@@ -240,9 +160,6 @@ window.uploadToCloudinary = async (fileOrBase64, folder = null) => {
     const formData = new FormData();
     formData.append('file', fileOrBase64);
     formData.append('upload_preset', uploadPreset);
-    if (folder) {
-        formData.append('folder', `users/${folder}`);
-    }
     
     const response = await fetch(url, {
         method: 'POST',
@@ -373,37 +290,11 @@ window.deleteItem = (dbPath, targetUid) => {
     });
 }
 
-window.refreshSinglePost = async (postId) => {
-    try {
-        const btn = document.querySelector(`#post-main-${postId} .fa-arrows-rotate`) || document.querySelector(`#post-profile-${postId} .fa-arrows-rotate`);
-        if (btn) btn.classList.add('fa-spin');
-        
-        const snap = await get(ref(db, `community_posts/${postId}`));
-        if (snap.exists()) {
-            const updatedPost = { id: postId, ...snap.val() };
-            const index = window.allPosts.findIndex(p => p.id === postId);
-            if (index !== -1) window.allPosts[index] = updatedPost;
-            
-            if (window.activeProfileUid) window.renderProfileData(false);
-            else window.renderFeed(false);
-        }
-    } catch (e) {
-        console.error("Refresh error:", e);
-    }
-};
-
 window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
     if (!window.currentUser) return;
     
     const roleLevel = window.getRole(window.currentUser.uid).level;
     const isAuthor = window.currentUser.uid === authorId;
-    const isMod = roleLevel === 2;
-    const authorRoleLevel = window.getRole(authorId).level;
-
-    // Mods cannot pin/unpin Admin posts
-    if (isMod && !isAuthor && authorRoleLevel >= 3) {
-        return window.showAlert("Mods cannot pin or unpin Admin posts.");
-    }
     
     if (!isAuthor && roleLevel < 2) return; 
     
@@ -443,15 +334,7 @@ window.executePin = (postId, pinType, targetStatus) => {
 
 window.toggleLock = (postId, currentStatus) => {
     const post = window.allPosts.find(p => p.id === postId);
-    if (!post || !window.currentUser) return;
-    const roleLevel = window.getRole(window.currentUser.uid).level;
-    const isAuthor = window.currentUser.uid === post.authorId;
-    const isMod = roleLevel === 2;
-    // Mods cannot lock/unlock Game posts — only the author or Admin can
-    if (isMod && !isAuthor && post.category === 'Games') {
-        return window.showAlert("Mods cannot lock or unlock Game posts.");
-    }
-    if (roleLevel >= 2 || isAuthor) {
+    if (window.currentUser && (window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === post.authorId)) {
         update(ref(db, `community_posts/${postId}`), { locked: !currentStatus });
     }
 };
@@ -474,16 +357,15 @@ window.toggleFollow = (targetUid) => {
     if(!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
     const isFollowing = window.globalUsersCache[window.currentUser.uid]?.following?.[targetUid];
-    const starsPerFollow = window.siteSettings.starsPerFollow ?? 5;
     
     if(isFollowing) {
         remove(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`));
         remove(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`));
-        update(ref(db, `users/${targetUid}`), { points: increment(-starsPerFollow) });
+        update(ref(db, `users/${targetUid}`), { points: increment(-5) });
     } else {
         set(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`), true);
         set(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`), true);
-        update(ref(db, `users/${targetUid}`), { points: increment(starsPerFollow) });
+        update(ref(db, `users/${targetUid}`), { points: increment(5) });
         
         if(targetUid !== window.currentUser.uid) {
             push(ref(db, `users/${targetUid}/notifications`), { 

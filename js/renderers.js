@@ -1,5 +1,5 @@
 import { db } from "./firebase-config.js";
-import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, update, set, push, remove, increment, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 // Notifications
 window.updateNotifBadge = () => {
@@ -41,13 +41,8 @@ window.renderNotifications = () => {
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
-            else if(n.type === 'game_challenge') { text = 'challenged you to a game! 🎮'; icon = '🎮'; }
             else if(n.type === 'follow') { 
                 text = 'started following you.'; icon = '👥'; 
-                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
-            }
-            else if(n.type === 'poke') {
-                text = 'poked you!'; icon = '👉';
                 linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
             }
 
@@ -84,10 +79,6 @@ window.openProfile = (uid) => {
     document.getElementById('main-view').classList.add('hidden');
     document.getElementById('profile-view').classList.remove('hidden');
     window.activeProfileUid = uid;
-    window.postLimit = 15;
-    window.hasMorePosts = true;
-    if (window.listenPosts) window.listenPosts();
-    // Initial render will be handled by listenPosts response, but render the skeleton/header now:
     window.renderProfileData(true);
     window.scrollTo(0,0);
 };
@@ -96,9 +87,7 @@ window.closeProfile = () => {
     document.getElementById('profile-view').classList.add('hidden');
     document.getElementById('main-view').classList.remove('hidden');
     window.activeProfileUid = null;
-    window.postLimit = 15;
-    window.hasMorePosts = true;
-    if (window.listenPosts) window.listenPosts();
+    window.renderFeed(false);
     window.history.replaceState({}, document.title, window.location.pathname);
 };
 
@@ -113,10 +102,6 @@ window.goToPost = (postId) => {
 window.clearIsolatedPost = () => {
     window.isolatedPostId = null;
     window.feedRenderLimit = 15;
-    if (window.isolatedPostUnsubscribe) {
-        window.isolatedPostUnsubscribe();
-        window.isolatedPostUnsubscribe = null;
-    }
     window.renderFeed(true);
 };
 
@@ -159,7 +144,7 @@ window.openEditProfile = () => {
             const file = this.files[0]; if(!file) return;
             try {
                 const base64Img = await window.compressImage(file);
-                const compressed = await window.uploadToCloudinary(base64Img, window.currentUser?.uid);
+                const compressed = await window.uploadToCloudinary(base64Img);
                 slot.querySelector('.gallery-url-input').value = compressed;
                 // Update preview
                 let prev = slot.querySelector('.gallery-slot-preview');
@@ -208,23 +193,7 @@ window.renderPostList = (container, postsToRender, prefix, filterContext) => {
         const newEl = window.generatePostHTML(post, prefix, filterContext);
         
         if (existingEl) {
-            const parts = ['post-header', 'post-body', 'reactions'];
-            // Check if user is composing in this post's comment section
-            const hasOpenReply = [...(window.openReplies || [])].some(cId => {
-                // comment ids are prefixed with postId in their structure
-                const el = existingEl.querySelector(`#reply-box-${prefix}-${cId}`);
-                return el && !el.classList.contains('hidden');
-            });
-            const commentInput = existingEl.querySelector(`#comment-input-${prefix}-${post.id}`);
-            const userIsComposingHere = window.isUserTyping && (
-                hasOpenReply ||
-                (commentInput && commentInput === document.activeElement && commentInput.value)
-            );
-
-            if (!userIsComposingHere) {
-                parts.push('comments');
-            }
-
+            const parts = ['post-header', 'post-body', 'reactions', 'comments'];
             parts.forEach(part => {
                 const oldP = existingEl.querySelector(`#${part}-${prefix}-${post.id}`);
                 const newP = newEl.querySelector(`#${part}-${prefix}-${post.id}`);
@@ -268,27 +237,17 @@ window.renderFeed = (resetLimit = true) => {
                 <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-blue-600"></i>
                 <p>Loading spotlight post...</p>
             </div>`;
-            if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
-            
-            window.isolatedPostUnsubscribe = onValue(ref(db, `community_posts/${window.isolatedPostId}`), (snapshot) => {
+            get(ref(db, `community_posts/${window.isolatedPostId}`)).then((snapshot) => {
                 if (snapshot.exists()) {
                     const post = { id: snapshot.key, ...snapshot.val() };
-                    
-                    const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
-                    if (existingIndex >= 0) {
-                        window.allPosts[existingIndex] = post;
-                    } else {
-                        window.allPosts.push(post);
-                    }
-
-                    if (!window.isUserTyping) {
-                        window.renderFeed(false);
-                    }
+                    window.historicalPosts.push(post);
+                    window.allPosts = [...window.historicalPosts, ...window.livePosts];
+                    window.renderFeed(false);
                 } else {
                     feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
                     <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
                 }
-            }, (err) => {
+            }).catch((err) => {
                 console.error("Error fetching isolated post:", err);
                 feed.innerHTML = `<p class="text-center text-gray-500 py-10">Failed to load post.</p>
                 <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
@@ -380,8 +339,8 @@ window.renderFeed = (resetLimit = true) => {
 
     if (window.feedRenderLimit < window.filteredPostsLength || window.hasMorePosts) {
         const sentinel = document.createElement('div');
-        sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
-        sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading...</span>';
+        sentinel.className = 'sentinel-loader h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
+        sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
         feed.appendChild(sentinel);
         
         if(window.feedObserver) window.feedObserver.disconnect();
@@ -396,11 +355,6 @@ window.renderFeed = (resetLimit = true) => {
             }
         }, { rootMargin: "300px" });
         window.feedObserver.observe(sentinel);
-    } else if (displayPosts.length > 0) {
-        const endMessage = document.createElement('div');
-        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold';
-        endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
-        feed.appendChild(endMessage);
     }
 
     window.restoreInputStates(inputStates);
@@ -437,21 +391,9 @@ window.renderProfileData = (resetLimit = true) => {
     }
 
     let followBtn = '';
-    let pokeBtn = '';
-    let pokeStats = `<p class="text-xs text-gray-500 mt-1"><span class="text-orange-500"><i class="fa-solid fa-hand-point-right"></i> Total Pokes Received: ${uData.totalPokes || 0}</span></p>`;
-
     if(window.currentUser && window.currentUser.uid !== window.activeProfileUid) {
         const isFollowing = window.globalUsersCache[window.currentUser.uid]?.following?.[window.activeProfileUid];
         followBtn = `<button onclick="window.toggleFollow('${window.activeProfileUid}')" class="mt-3 ${isFollowing ? 'bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-300' : 'bg-blue-600 text-white'} text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm">${isFollowing ? 'Following' : 'Follow'}</button>`;
-        
-        pokeBtn = `<button onclick="window.pokeUser('${window.activeProfileUid}')" class="mt-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm ml-2 hover:bg-orange-200 dark:hover:bg-orange-800"><i class="fa-solid fa-hand-point-right"></i> Poke</button>`;
-        pokeStats += `<p id="personal-poke-stats" class="text-[10px] text-gray-400 mt-0.5">Loading your pokes...</p>`;
-        
-        get(ref(db, `users/${window.activeProfileUid}/pokesFrom/${window.currentUser.uid}`)).then(snap => {
-            const pokes = snap.val()?.count || 0;
-            const el = document.getElementById('personal-poke-stats');
-            if(el) el.innerHTML = `You poked them: <span class="font-bold text-orange-400">${pokes} times</span>`;
-        }).catch(err => console.error("Error fetching pokes:", err));
     }
 
     const genderBadge = (uData.gender && uData.gender !== "Prefer not to say") ? `<span class="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 text-[9px] px-2 py-0.5 rounded-full font-bold ml-2 shadow-sm"><i class="fa-solid fa-venus-mars mr-1"></i>${uData.gender}</span>` : '';
@@ -477,16 +419,12 @@ window.renderProfileData = (resetLimit = true) => {
             </div>
             
             ${isBanned ? '<span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-1">Banned</span>' : ''}
-            <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${uData.lbPoints || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
-            ${pokeStats}
+            <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
             
             ${uData.bio ? `<div class="mt-2 w-fit mx-auto px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-900/60 border-l-2 border-blue-400 dark:border-blue-500 text-[0.9rem] text-gray-600 dark:text-gray-300 italic text-center shadow-inner" style="line-height: 0.9;"><i class="fa-solid fa-quote-left text-blue-300 dark:text-blue-600 mr-1 text-[9px]"></i>${uData.bio}<i class="fa-solid fa-quote-right text-blue-300 dark:text-blue-600 ml-1 text-[9px]"></i></div>` : ''}
             
             ${relStr}
-            <div class="flex items-center justify-center">
-                ${followBtn}
-                ${pokeBtn}
-            </div>
+            ${followBtn}
         </div>
         <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
             <h3 class="text-xs font-bold text-gray-500 uppercase mb-1">Followers (${followerCount})</h3>
@@ -558,8 +496,8 @@ window.renderProfileData = (resetLimit = true) => {
 
     if (window.profileRenderLimit < pPosts.length || window.hasMorePosts) {
         const sentinel = document.createElement('div');
-        sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
-        sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading...</span>';
+        sentinel.className = 'sentinel-loader h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
+        sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
         pFeed.appendChild(sentinel);
         
         if(window.profileObserver) window.profileObserver.disconnect();
@@ -574,11 +512,6 @@ window.renderProfileData = (resetLimit = true) => {
             }
         }, { rootMargin: "300px" });
         window.profileObserver.observe(sentinel);
-    } else if (pPosts.length > 0) {
-        const endMessage = document.createElement('div');
-        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold';
-        endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
-        pFeed.appendChild(endMessage);
     }
 
     window.restoreInputStates(inputStates);
@@ -591,19 +524,9 @@ window.renderProfileData = (resetLimit = true) => {
 };
 
 window.generatePostHTML = function(post, prefix, filterContext) {
-    const displayAuthorId = post.isRepost ? post.originalAuthorId : post.authorId;
-    const authorInfo = window.globalUsersCache[displayAuthorId] || { name: "Unknown", pic: window.generateAvatar(displayAuthorId), points: 0 };
-    const roleData = window.getRole(displayAuthorId);
+    const authorInfo = window.globalUsersCache[post.authorId] || { name: "Unknown", pic: window.generateAvatar(post.authorId), points: 0 };
+    const roleData = window.getRole(post.authorId);
     const followerCount = authorInfo.followers ? Object.keys(authorInfo.followers).length : 0; 
-    
-    let repostBanner = '';
-    if (post.isRepost) {
-        const reposter = window.globalUsersCache[post.authorId] || { name: 'Someone' };
-        repostBanner = `<div class="flex items-center space-x-1 text-xs text-gray-500 mb-2 font-medium">
-            <i class="fa-solid fa-retweet"></i>
-            <span>Reposted by ${reposter.name}</span>
-        </div>`;
-    }
     
     let timeStr = 'Just now';
     if (post.timestamp) {
@@ -613,12 +536,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
 
     const isBannedAuthor = authorInfo.isBanned === true;
     const effectivelyPinned = window.isPostPinned(post, filterContext);
-    const isGamePost = post.isGame || post.category === 'Games';
-    const myRole = window.currentUser ? window.getRole(window.currentUser.uid).level : 0;
-    const isAuthorOfPost = window.currentUser && window.currentUser.uid === post.authorId;
-    // Mods (level 2) cannot bypass the lock on Game posts; only Admin (level 3) or the author can
-    const canBypassLock = isAuthorOfPost || (isGamePost ? myRole >= 3 : myRole >= 2);
-    const canComment = !post.locked || (window.currentUser && canBypassLock);
+    const canComment = !post.locked || (window.currentUser && (window.currentUser.uid === post.authorId || window.getRole(window.currentUser.uid).level >= 2));
 
     const rxColors = { like: "text-blue-500 bg-blue-50 dark:bg-blue-900/30", heart: "text-pink-500 bg-pink-50 dark:bg-pink-900/30", haha: "text-orange-500 bg-orange-50 dark:bg-orange-900/30", wow: "text-yellow-500 bg-yellow-50 dark:bg-yellow-900/30", sad: "text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30", angry: "text-red-500 bg-red-50 dark:bg-red-900/30" };
     const rxHover = { like: "hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20", heart: "hover:text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900/20", haha: "hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20", wow: "hover:text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20", sad: "hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20", angry: "hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" };
@@ -900,393 +818,45 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             adminControls += `<button onclick="window.openPinModal('${post.id}', ${isProfilePinned}, ${isFeedPinned}, '${post.authorId}')" class="text-gray-400 hover:text-green-500 mr-2 text-xs" title="Pin Post Options"><i class="fa-solid fa-thumbtack ${isAnyPinned ? 'text-green-500' : ''}"></i></button>`;
         }
         
-        const isGamePostUI = post.isGame || post.category === 'Games';
-        const myRoleLevelUI = window.getRole(window.currentUser.uid).level;
-        const canToggleLock = window.currentUser.uid === post.authorId || myRoleLevelUI >= 3 || (myRoleLevelUI >= 2 && !isGamePostUI);
-        const isEndedGame = isGamePostUI && post.gameStatus === 'ended';
-        
-        if (canToggleLock) {
+        if(window.currentUser.uid === post.authorId || window.getRole(window.currentUser.uid).level >= 2) {
             adminControls += `<button onclick="window.toggleLock('${post.id}', ${post.locked})" class="text-gray-400 hover:text-orange-500 mr-2 text-xs" title="${post.locked ? 'Unlock Comments' : 'Lock Comments'}"><i class="fa-solid ${post.locked ? 'fa-lock text-orange-500' : 'fa-lock-open'}"></i></button>`;
         }
 
-        if(window.currentUser.uid === post.authorId && !post.isRepost && !isEndedGame) {
+        if(window.currentUser.uid === post.authorId) {
             const isPriv = post.visibility === 'private';
             adminControls += `<button onclick="window.togglePostVisibility('${post.id}', '${post.visibility || 'public'}')" class="text-gray-400 hover:text-blue-500 mr-2 text-xs" title="${isPriv ? 'Make Public' : 'Make Private'}"><i class="fa-solid ${isPriv ? 'fa-eye-slash' : 'fa-eye'}"></i></button>`;
             adminControls += `<button onclick="window.editPost('${post.id}')" class="text-gray-400 hover:text-blue-500 mr-2 text-xs"><i class="fa-solid fa-pen"></i></button>`;
         }
         
-        if(window.canDelete(post.authorId)) {
-            // Freeze deletion by host if game is ended, unless they are an admin
-            if (!(isEndedGame && window.currentUser.uid === post.authorId && myRoleLevelUI < 3)) {
-                adminControls += `<button onclick="window.deleteItem('community_posts/${post.id}', '${post.authorId}')" class="text-gray-400 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>`;
-            }
-        }
+        if(window.canDelete(post.authorId)) adminControls += `<button onclick="window.deleteItem('community_posts/${post.id}', '${post.authorId}')" class="text-gray-400 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>`;
     }
 
     const isCommentsOpen = window.openComments.has(post.id);
     const safePostText = window.formatText(post.text);
 
-    
     const visibilityIcon = post.visibility === 'private'
         ? `<i class="fa-solid fa-eye-slash text-[10px] text-gray-400 ml-2" title="Private Post"></i>`
         : `<i class="fa-solid fa-eye text-[10px] text-blue-500 ml-2" title="Public Post"></i>`;
 
-    let gameHtml = '';
-    if (post.isGame) {
-        let prizeText = '';
-        if (post.gamePrize) prizeText += `PRIZE: ${post.gamePrize}`;
-        if (post.gameLbPoints) prizeText += (prizeText ? ' + ' : '') + `${post.gameLbPoints} LB Points`;
-        const prizeStr = prizeText ? `<div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center py-1.5 px-3 rounded-lg text-xs font-bold shadow-sm mb-2"><i class="fa-solid fa-gift mr-1"></i> ${prizeText}</div>` : '';
-        
-        if (post.gameType === 'first_to_mine') {
-            if (post.gameStatus === 'active') {
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
-                        ${prizeStr}
-                        <button onclick="window.mineGame('${post.id}')" class="bg-purple-600 hover:bg-purple-500 text-white font-black text-xl py-3 px-10 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse"><i class="fa-solid fa-gem mr-2"></i>MINE!</button>
-                    </div>`;
-            } else {
-                const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || "Someone") : "No one";
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
-                        ${prizeStr}
-                        <div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} mined it first!</div>
-                    </div>`;
-            }
-        } else if (post.gameType === 'last_comment') {
-            let timerHtml = '';
-            if (post.gameStatus === 'active') {
-                if (post.gameEndTime) {
-                    timerHtml = `<div class="text-center font-mono text-2xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`;
-                } else {
-                    timerHtml = `<div class="text-center text-xs font-bold text-gray-500 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full w-fit mx-auto">Waiting for host to end...</div>`;
-                }
-                
-                const endGameBtn = (!post.gameEndTime && window.currentUser && post.authorId === window.currentUser.uid) ? `<button onclick="window.endLastCommentGame('${post.id}')" class="mt-3 bg-red-100 text-red-600 hover:bg-red-200 text-xs font-bold py-1.5 px-4 rounded-full transition w-fit mx-auto border border-red-200 shadow-sm"><i class="fa-solid fa-stop-circle mr-1"></i>End Game Now</button>` : '';
-
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col">
-                        ${prizeStr}
-                        ${timerHtml}
-                        ${endGameBtn}
-                    </div>`;
-            } else {
-                let outcomeHtml = '';
-                if (post.gameWinner === 'none' || !post.gameWinner) {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> Game forfeited! (No winners)</div>`;
-                } else {
-                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || "Someone";
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won the Last Comment!</div>`;
-                }
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
-                        ${prizeStr}
-                        ${outcomeHtml}
-                    </div>`;
-            }
-        } else if (post.gameType === 'challenge') {
-            const targetUserName = window.globalUsersCache[post.gameTargetUser]?.name || post.gameTargetUser;
-            const currentReacts = Object.keys(post.reactions || {}).reduce((sum, type) => sum + Object.keys(post.reactions[type] || {}).length, 0);
-            const currentComments = Object.keys(post.comments || {}).length;
-
-            if (post.gameStatus === 'active') {
-                let timerHtml = '';
-                if (post.gameEndTime) {
-                    timerHtml = `<div class="text-center font-mono text-2xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`;
-                }
-
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
-                        ${prizeStr}
-                        <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 mb-2">Challenge for @${targetUserName}</h4>
-                        <div class="flex space-x-4 mb-2 text-sm font-semibold">
-                            <span class="${currentReacts >= post.gameTargetReacts ? 'text-green-500' : 'text-gray-500'}">Reacts: ${currentReacts}/${post.gameTargetReacts}</span>
-                            <span class="${currentComments >= post.gameTargetComments ? 'text-green-500' : 'text-gray-500'}">Comments: ${currentComments}/${post.gameTargetComments}</span>
-                        </div>
-                        ${timerHtml}
-                        <button onclick="window.checkChallenge('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-check mr-2"></i>Check Progress</button>
-                    </div>`;
-            } else {
-                let outcomeHtml = '';
-                if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> @${targetUserName} failed the challenge!</div>`;
-                } else {
-                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> Challenge Completed by ${winnerName}!</div>`;
-                }
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
-                        ${prizeStr}
-                        ${outcomeHtml}
-                    </div>`;
-            }
-        } else if (post.gameType === 'quick_challenge') {
-            const targetUserName = window.globalUsersCache[post.gameTargetUser]?.name || post.gameTargetUser;
-            if (post.gameStatus === 'active') {
-                const isTargetUser = window.currentUser && window.currentUser.uid === post.gameTargetUser;
-                const qcTimer = post.gameEndTime
-                    ? `<div class="text-center font-mono text-2xl font-black text-orange-600 dark:text-orange-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
-                    : `<div class="text-center text-xs font-bold text-gray-500 mt-2">No time limit</div>`;
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-orange-50 dark:bg-slate-800 rounded-xl border-2 border-orange-200 dark:border-orange-900/50 flex flex-col items-center">
-                        ${prizeStr}
-                        <h4 class="font-bold text-sm text-orange-800 dark:text-orange-200 mb-2">⚡ Quick Challenge for @${targetUserName}</h4>
-                        ${qcTimer}
-                        ${isTargetUser 
-                            ? `<button onclick="window.mineGame('${post.id}')" class="mt-3 bg-orange-600 hover:bg-orange-500 text-white font-black text-xl py-3 px-10 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse"><i class="fa-solid fa-bolt mr-2"></i>MINE QUICK!</button>` 
-                            : `<button disabled class="mt-3 bg-gray-400 text-white font-black text-xl py-3 px-10 rounded-full shadow cursor-not-allowed">Only @${targetUserName} can mine</button>`
-                        }
-                    </div>`;
-            } else {
-                let outcomeHtml = '';
-                if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> @${targetUserName} failed the challenge!</div>`;
-                } else {
-                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} mined it!</div>`;
-                }
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
-                        ${prizeStr}
-                        ${outcomeHtml}
-                    </div>`;
-            }
-        } else if (post.gameType === 'guess_emoji' || post.gameType === 'bring_me_emoji') {
-            const isGuess = post.gameType === 'guess_emoji';
-            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
-
-            if (post.gameStatus === 'active') {
-                let displayContent, gameTitle, hostHint = '', answerHint = '';
-
-                if (isGuess) {
-                    // guess_emoji: show the emoji CHAR to all (players guess its NAME)
-                    displayContent = `<div class="text-5xl mb-2">${post.gameEmojiChar || '❓'}</div>`;
-                    gameTitle = 'What emoji is this? Type the name!';
-                    if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiName}</div>`;
-                    answerHint = `<p class="text-xs text-gray-400 mt-1">Type the emoji name, e.g. "Red Apple"</p>`;
-                } else {
-                    // bring_me_emoji: show the NAME to all (players send the emoji CHAR)
-                    // Host can see the answer emoji char
-                    displayContent = `<div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">${post.gameEmojiName || 'Emoji'}</div>`;
-                    gameTitle = 'Find and send this emoji!';
-                    if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiChar || '(no char stored)'}</div>`;
-                    answerHint = `<p class="text-xs text-gray-400 mt-1">Paste or type the emoji character</p>`;
-                }
-
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-blue-50 dark:bg-slate-800 rounded-xl border-2 border-blue-200 dark:border-blue-900/50 flex flex-col items-center">
-                        ${prizeStr}
-                        ${displayContent}
-                        <h4 class="font-bold text-sm text-blue-800 dark:text-blue-200 mb-1">${gameTitle}</h4>
-                        ${hostHint}
-                        ${answerHint}
-                        <button onclick="window.openAnswerModal('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-keyboard mr-2"></i>Answer</button>
-                    </div>`;
-            } else {
-                const revealedChar = post.gameEmojiChar || '';
-                let outcomeHtml = '';
-                if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> No one guessed it!</div>`;
-                } else {
-                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won!</div>`;
-                }
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
-                        ${prizeStr}
-                        <div class="text-2xl mb-1">${revealedChar} ${post.gameEmojiName || ''}</div>
-                        ${outcomeHtml}
-                    </div>`;
-            }
-        } else if (['flags', 'math', 'jumbled_words', 'trivia'].includes(post.gameType)) {
-            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
-            let displayContent = '', gameTitle = '', hostHint = '', answerHint = '';
-            let timerHtml = '';
-
-            if (post.gameEndTime && post.gameStatus === 'active') {
-                timerHtml = `<div class="text-center font-mono text-2xl font-black text-blue-600 dark:text-blue-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`;
-            }
-
-            if (post.gameType === 'flags') {
-                const flagImgSrc = post.gameFlagCode ? `https://flagcdn.com/w80/${post.gameFlagCode}.png` : '';
-                displayContent = flagImgSrc
-                    ? `<img src="${flagImgSrc}" class="h-16 rounded shadow mb-2 border border-gray-200 dark:border-slate-600" alt="Flag">`
-                    : `<div class="text-4xl mb-2">🏳️</div>`;
-                gameTitle = 'What country does this flag belong to?';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameFlagName}</div>`;
-                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the country name, e.g. "France"</p>`;
-            } else if (post.gameType === 'math') {
-                displayContent = `<div class="text-3xl font-bold font-mono text-blue-700 dark:text-blue-300 mb-2">${post.gameMathQuestion} = ?</div>`;
-                gameTitle = 'Solve the math problem!';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMathAnswer}</div>`;
-                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the number</p>`;
-            } else if (post.gameType === 'jumbled_words') {
-                displayContent = `<div class="text-3xl font-bold tracking-[0.3em] font-mono text-blue-700 dark:text-blue-300 mb-2">${post.gameJumbledScrambled}</div>`;
-                gameTitle = 'Unscramble the word!';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameJumbledOriginal}</div>`;
-                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the original word</p>`;
-            } else if (post.gameType === 'trivia') {
-                displayContent = `<div class="text-lg font-semibold text-center text-blue-800 dark:text-blue-200 mb-2 max-w-sm">${post.gameTriviaQuestion}</div>`;
-                gameTitle = 'Trivia Time!';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameTriviaAnswer}</div>`;
-                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
-            }
-
-            if (post.gameStatus === 'active') {
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-blue-50 dark:bg-slate-800 rounded-xl border-2 border-blue-200 dark:border-blue-900/50 flex flex-col items-center">
-                        ${prizeStr}
-                        ${displayContent}
-                        <h4 class="font-bold text-sm text-blue-800 dark:text-blue-200 mb-1">${gameTitle}</h4>
-                        ${hostHint}
-                        ${answerHint}
-                        ${timerHtml}
-                        <button onclick="window.openAnswerModal('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-keyboard mr-2"></i>Answer</button>
-                    </div>`;
-            } else {
-                let outcomeHtml = '';
-                if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> No one got it in time!</div>`;
-                } else {
-                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won!</div>`;
-                }
-                
-                let answerReveal = '';
-                if (post.gameType === 'flags') {
-                    const flagImgSrc = post.gameFlagCode ? `https://flagcdn.com/w80/${post.gameFlagCode}.png` : '';
-                    answerReveal = `<div class="flex flex-col items-center mb-1">${flagImgSrc ? `<img src="${flagImgSrc}" class="h-12 rounded shadow mb-1 border border-gray-200" alt="Flag">` : ''}<span class="font-bold">${post.gameFlagName}</span></div>`;
-                }
-                else if (post.gameType === 'math') answerReveal = `<div class="text-xl mb-1">${post.gameMathQuestion} = <strong>${post.gameMathAnswer}</strong></div>`;
-                else if (post.gameType === 'jumbled_words') answerReveal = `<div class="text-lg mb-1">${post.gameJumbledScrambled} ➔ <strong>${post.gameJumbledOriginal}</strong></div>`;
-                else if (post.gameType === 'trivia') answerReveal = `<div class="text-sm mb-1">${post.gameTriviaQuestion}<br>➔ <strong>${post.gameTriviaAnswer}</strong></div>`;
-
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80 text-center">
-                        ${prizeStr}
-                        ${answerReveal}
-                        ${outcomeHtml}
-                    </div>`;
-            }
-        } else if (post.gameType === 'bingo') {
-            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
-            const myEntry = post.bingoEntries && window.currentUser ? post.bingoEntries[window.currentUser.uid] : null;
-            const entryCount = post.bingoEntries ? Object.keys(post.bingoEntries).length : 0;
-            const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
-
-            const animatingItem = (post.bingoLastSpin && Date.now() - post.bingoLastSpin.startTime < 4000) ? post.bingoLastSpin.item : null;
-            
-            // Build called items chips HTML, excluding the animating item so we don't spoil it early
-            const displayItems = calledItems.filter(item => item !== animatingItem);
-            const calledChipsHtml = displayItems.length
-                ? displayItems.map(item => {
-                    const isNum = !isNaN(Number(item));
-                    const cls = isNum ? 'bg-orange-500 text-white' : 'bg-purple-600 text-white';
-                    return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold ${cls}">${item}</span>`;
-                }).join('')
-                : '<span class="text-gray-400 text-xs">None yet</span>';
-
-            if (post.bingoPhase === 'submission') {
-                const myEntryBadge = myEntry
-                    ? `<div class="mt-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full font-bold"><i class="fa-solid fa-check mr-1"></i>Your entry: ${myEntry.letters.join(' ')} | ${myEntry.numbers.join(' ')}</div>`
-                    : '';
-                const timerHtml = post.gameEndTime
-                    ? `<div class="text-center font-mono text-xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
-                    : '';
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
-                        ${prizeStr}
-                        <h4 class="font-black text-purple-800 dark:text-purple-200 text-lg mb-1">🎱 BINGO!</h4>
-                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">Pick <strong>${post.bingoLetterCount}</strong> letters (A–${post.bingoMaxLetter || 'Z'}) + <strong>${post.bingoNumberCount}</strong> numbers (1–${post.bingoMaxNumber || 10}) for your entry.</p>
-                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries submitted</p>
-                        ${timerHtml}
-                        ${myEntryBadge}
-                        ${!myEntry && !isHost ? `<button onclick="window.openBingoEntryModal('${post.id}')" class="mt-3 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-dice mr-2"></i>Submit My Entry</button>` : ''}
-                        ${isHost ? `<button onclick="window.closeBingoSubmissions('${post.id}')" class="mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-rotate mr-2"></i>Close Submissions & Start Draw</button>` : ''}
-                    </div>`;
-            } else if (post.bingoPhase === 'drawing' || (post.bingoPhase === 'ended' && animatingItem !== null)) {
-                const myEntryBadge = myEntry
-                    ? `<div class="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full font-bold mb-2"><i class="fa-solid fa-ticket mr-1"></i>Your entry: ${myEntry.letters.join(' ')} | ${myEntry.numbers.join(' ')}</div>`
-                    : '';
-                    
-                const isSpinning = animatingItem !== null;
-                const canvasClass = isSpinning ? "opacity-100 scale-100" : "opacity-80 scale-95";
-                
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-yellow-300 dark:border-yellow-900/50 flex flex-col items-center overflow-hidden">
-                        ${prizeStr}
-                        <h4 class="font-black text-orange-800 dark:text-orange-200 text-base mb-1">🎱 Draw in Progress!</h4>
-                        <p class="text-xs text-gray-500 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries</p>
-                        ${myEntryBadge}
-                        
-                        <!-- Bingo Spin Canvas inline in post -->
-                        <div class="relative my-3 transform transition-all duration-300 ${canvasClass}">
-                            <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10 text-red-500 text-2xl leading-none drop-shadow-md">▼</div>
-                            <canvas id="bingo-wheel-${post.id}" width="200" height="200" class="rounded-full shadow-lg border-4 border-yellow-400 bg-white dark:bg-slate-700"></canvas>
-                        </div>
-                        
-                        <div class="w-full mb-3 text-center">
-                            <p class="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1.5">Called: <span class="text-gray-400">(${displayItems.length} so far)</span></p>
-                            <div class="flex flex-wrap justify-center gap-1">${calledChipsHtml}</div>
-                        </div>
-                        
-                        ${isHost ? `<div class="flex gap-2 w-full"><button id="bingo-spin-btn-${post.id}" onclick="window.spinBingoWheel('${post.id}')" ${isSpinning ? 'disabled' : ''} class="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-2 rounded-full shadow transition"><i class="fa-solid fa-play mr-2"></i>SPIN!</button><button onclick="window.endBingoGame('${post.id}')" class="bg-red-500 hover:bg-red-400 text-white font-bold px-3 rounded-full transition text-xs" title="End Game (No Winner)"><i class="fa-solid fa-stop"></i></button></div>` : ''}
-                    </div>`;
-                
-                // Track this post for post-render animation setup
-                if (!window._bingoRenderQueue) window._bingoRenderQueue = [];
-                window._bingoRenderQueue.push({ id: post.id, postData: post });
-            } else if (post.bingoPhase === 'ended' || post.gameStatus === 'ended') {
-                const winnerName = post.gameWinner && post.gameWinner !== 'none'
-                    ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
-                    : null;
-                const winnerEntry = winnerName && post.bingoEntries && post.gameWinner && post.gameWinner !== 'none'
-                    ? post.bingoEntries[post.gameWinner]
-                    : null;
-                const outcomeHtml2 = winnerName
-                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm"><i class="fa-solid fa-trophy mr-1"></i>${winnerName} got BINGO!</div>
-                       ${winnerEntry ? `<p class="text-xs text-gray-400 mt-1">Winning entry: ${winnerEntry.letters.join(' ')} | ${winnerEntry.numbers.join(' ')}</p>` : ''}`
-                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm"><i class="fa-solid fa-xmark mr-1"></i>No winner this round!</div>`;
-                gameHtml = `
-                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center text-center opacity-90">
-                        ${prizeStr}
-                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-2">🎱 Bingo Ended</h4>
-                        <div class="w-full mb-2">
-                            <p class="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">All called items:</p>
-                            <div class="flex flex-wrap gap-1 justify-center">${calledChipsHtml}</div>
-                        </div>
-                        ${outcomeHtml2}
-                    </div>`;
-            }
-        }
-    }
-
     postEl.innerHTML = `
-        <div id="post-header-${prefix}-${post.id}" class="flex flex-col mb-2">
-            ${repostBanner}
-            <div class="flex justify-between items-start">
-                <div class="flex items-center space-x-2 min-w-0">
-                    <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition shrink-0 ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${displayAuthorId}')">
-                    <div class="leading-tight min-w-0 flex-1 overflow-hidden">
-                        <div class="flex items-center overflow-x-auto scrollbar-hide space-x-1 pb-0.5">
-                            <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline shrink-0 whitespace-nowrap ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${displayAuthorId}')">${authorInfo.name}</h3>
-                            <div class="shrink-0 flex items-center">${roleData.badgeHtml}</div>
-                            <div class="shrink-0 flex items-center">${visibilityIcon}</div>
-                            <span class="text-[9px] text-yellow-500 shrink-0 whitespace-nowrap">⭐ ${authorInfo.points || 0}</span>
-                            <span class="text-[9px] text-yellow-600 dark:text-yellow-500 shrink-0 whitespace-nowrap">🏆 ${authorInfo.lbPoints || 0}</span>
-                            <span class="text-[9px] text-blue-500 font-bold shrink-0 whitespace-nowrap">👥 ${followerCount}</span>
-                        </div>
-                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
+        <div id="post-header-${prefix}-${post.id}" class="flex justify-between items-start mb-2">
+            <div class="flex items-center space-x-2">
+                <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${post.authorId}')">
+                <div class="leading-tight">
+                    <div class="flex items-center">
+                        <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${post.authorId}')">${authorInfo.name}</h3>${roleData.badgeHtml}${visibilityIcon}
+                        <span class="text-[9px] text-yellow-500 ml-1">⭐ ${authorInfo.points || 0}</span>
+                        <span class="text-[9px] text-blue-500 ml-1 font-bold">👥 ${followerCount}</span>
                     </div>
+                    <p class="text-[10px] text-gray-500">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
                 </div>
-                <div class="shrink-0 ml-1 flex items-start">${adminControls}</div>
             </div>
+            <div>${adminControls}</div>
         </div>
         
         <div id="post-body-${prefix}-${post.id}">
             ${post.text ? `<p class="text-sm text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-wrap break-words leading-snug">${safePostText} ${post.edited ? '<span class="text-[10px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>${window.generateEmbed(post.text)}` : ''}
             ${post.image ? ((post.image.includes('/video/upload/') || post.image.match(/\.(mp4|webm|mov|ogg)$/i)) ? `<video src="${post.image}" controls class="w-full rounded-lg mb-2 max-h-96 bg-black mt-2"></video>` : `<img src="${post.image}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${post.image}')">`) : ''}
-            ${gameHtml}
         </div>
         
         <div id="reactions-${prefix}-${post.id}" class="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 pt-2 text-xs pb-1 mt-1">
@@ -1302,14 +872,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             </div>
             
             <div class="flex items-center space-x-1 shrink-0 ml-auto">
-                <button onclick="window.refreshSinglePost('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Refresh Post">
-                    <i class="fa-solid fa-arrows-rotate"></i>
-                </button>
-                <button onclick="window.repostPost('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Repost">
+                <button onclick="window.copyPostLink('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
                     <i class="fa-solid fa-share"></i>
-                </button>
-                <button onclick="window.copyPostLink('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Copy Link">
-                    <i class="fa-solid fa-link"></i>
                 </button>
                 <button onclick="window.toggleComments('${post.id}', '${prefix}')" class="flex items-center space-x-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
                     <i class="fa-regular fa-comment text-sm"></i> <span>${commentCount}</span>
@@ -1397,7 +961,7 @@ window.renderMembers = (resetLimit = true) => {
                         ${window.getRole(u.uid).badgeHtml}
                         ${u.isBanned ? '<span class="bg-red-500 text-white text-[8px] font-bold px-1 ml-1 rounded">BANNED</span>' : ''}
                     </div>
-                    <p class="text-[10px] text-gray-500 mt-0.5"><span class="text-yellow-600 dark:text-yellow-500">⭐ ${u.points || 0}</span> • <span class="text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${u.lbPoints || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span></p>
+                    <p class="text-[10px] text-gray-500 mt-0.5"><span class="text-yellow-600 dark:text-yellow-500">⭐ ${u.points || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span></p>
                 </div>
             </div>
             <div class="flex items-center shrink-0">${banBtn}${modBtn}${followBtn}</div>
