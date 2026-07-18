@@ -396,7 +396,14 @@ window.renderFeed = (resetLimit = true) => {
     window.restoreInputStates(inputStates);
     if (activeId) {
         const el = document.getElementById(activeId);
-        if (el) { el.focus(); if(el.setSelectionRange && el.value) { try{ const len = el.value.length; el.setSelectionRange(len, len); }catch(e){} } }
+        if (el) {
+            el.focus();
+            try {
+                const saved = inputStates[activeId];
+                const pos = saved ? saved.end : el.value.length;
+                el.setSelectionRange(pos, pos);
+            } catch(e) {}
+        }
     }
     window.scrollTo(0, currentScroll);
     requestAnimationFrame(() => feed.style.minHeight = '');
@@ -574,7 +581,14 @@ window.renderProfileData = (resetLimit = true) => {
     window.restoreInputStates(inputStates);
     if (activeId) {
         const el = document.getElementById(activeId);
-        if (el) { el.focus(); if(el.setSelectionRange && el.value) { try{const len = el.value.length; el.setSelectionRange(len,len);}catch(e){} } }
+        if (el) {
+            el.focus();
+            try {
+                const saved = inputStates[activeId];
+                const pos = saved ? saved.end : el.value.length;
+                el.setSelectionRange(pos, pos);
+            } catch(e) {}
+        }
     }
     window.scrollTo(0, currentScroll);
     requestAnimationFrame(() => pFeed.style.minHeight = '');

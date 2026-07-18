@@ -38,7 +38,13 @@ window.debounce = function(func, wait) {
 window.saveInputStates = () => {
     const states = {};
     document.querySelectorAll('input[type="text"], textarea').forEach(el => {
-        if(el.id && el.value !== undefined && el.value !== "") states[el.id] = el.value;
+        if(el.id && el.value !== undefined && el.value !== "") {
+            states[el.id] = {
+                value: el.value,
+                start: el.selectionStart,
+                end: el.selectionEnd
+            };
+        }
     });
     return states;
 };
@@ -46,7 +52,10 @@ window.saveInputStates = () => {
 window.restoreInputStates = (states) => {
     for(let id in states) {
         const el = document.getElementById(id);
-        if(el) el.value = states[id];
+        if(el) {
+            el.value = states[id].value;
+            try { el.setSelectionRange(states[id].start, states[id].end); } catch(e) {}
+        }
     }
 };
 
