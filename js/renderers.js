@@ -209,7 +209,8 @@ window.renderPostList = (container, postsToRender, prefix, filterContext) => {
         
         if (existingEl) {
             const parts = ['post-header', 'post-body', 'reactions'];
-            const userIsComposingHere = window.isUserTyping && existingEl.contains(document.activeElement);
+            const hasOpenReplyBox = !!existingEl.querySelector('[id^="reply-box-"]:not(.hidden)');
+            const userIsComposingHere = hasOpenReplyBox || (window.isUserTyping && existingEl.contains(document.activeElement));
 
             if (!userIsComposingHere) {
                 parts.push('comments');
