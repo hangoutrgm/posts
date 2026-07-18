@@ -1098,6 +1098,76 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
+        } else if (['flags', 'math', 'jumbled_words', 'trivia'].includes(post.gameType)) {
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            let displayContent = '', gameTitle = '', hostHint = '', answerHint = '';
+            let timerHtml = '';
+
+            if (post.gameEndTime && post.gameStatus === 'active') {
+                timerHtml = `<div class="text-center font-mono text-2xl font-black text-blue-600 dark:text-blue-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`;
+            }
+
+            if (post.gameType === 'flags') {
+                const flagImgSrc = post.gameFlagCode ? `https://flagcdn.com/w80/${post.gameFlagCode}.png` : '';
+                displayContent = flagImgSrc
+                    ? `<img src="${flagImgSrc}" class="h-16 rounded shadow mb-2 border border-gray-200 dark:border-slate-600" alt="Flag">`
+                    : `<div class="text-4xl mb-2">🏳️</div>`;
+                gameTitle = 'What country does this flag belong to?';
+                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameFlagName}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the country name, e.g. "France"</p>`;
+            } else if (post.gameType === 'math') {
+                displayContent = `<div class="text-3xl font-bold font-mono text-blue-700 dark:text-blue-300 mb-2">${post.gameMathQuestion} = ?</div>`;
+                gameTitle = 'Solve the math problem!';
+                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMathAnswer}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the number</p>`;
+            } else if (post.gameType === 'jumbled_words') {
+                displayContent = `<div class="text-3xl font-bold tracking-[0.3em] font-mono text-blue-700 dark:text-blue-300 mb-2">${post.gameJumbledScrambled}</div>`;
+                gameTitle = 'Unscramble the word!';
+                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameJumbledOriginal}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the original word</p>`;
+            } else if (post.gameType === 'trivia') {
+                displayContent = `<div class="text-lg font-semibold text-center text-blue-800 dark:text-blue-200 mb-2 max-w-sm">${post.gameTriviaQuestion}</div>`;
+                gameTitle = 'Trivia Time!';
+                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameTriviaAnswer}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
+            }
+
+            if (post.gameStatus === 'active') {
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-blue-50 dark:bg-slate-800 rounded-xl border-2 border-blue-200 dark:border-blue-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        ${displayContent}
+                        <h4 class="font-bold text-sm text-blue-800 dark:text-blue-200 mb-1">${gameTitle}</h4>
+                        ${hostHint}
+                        ${answerHint}
+                        ${timerHtml}
+                        <button onclick="window.openAnswerModal('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-keyboard mr-2"></i>Answer</button>
+                    </div>`;
+            } else {
+                let outcomeHtml = '';
+                if (post.gameWinner === 'none') {
+                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> No one got it in time!</div>`;
+                } else {
+                    const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
+                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won!</div>`;
+                }
+                
+                let answerReveal = '';
+                if (post.gameType === 'flags') {
+                    const flagImgSrc = post.gameFlagCode ? `https://flagcdn.com/w80/${post.gameFlagCode}.png` : '';
+                    answerReveal = `<div class="flex flex-col items-center mb-1">${flagImgSrc ? `<img src="${flagImgSrc}" class="h-12 rounded shadow mb-1 border border-gray-200" alt="Flag">` : ''}<span class="font-bold">${post.gameFlagName}</span></div>`;
+                }
+                else if (post.gameType === 'math') answerReveal = `<div class="text-xl mb-1">${post.gameMathQuestion} = <strong>${post.gameMathAnswer}</strong></div>`;
+                else if (post.gameType === 'jumbled_words') answerReveal = `<div class="text-lg mb-1">${post.gameJumbledScrambled} ➔ <strong>${post.gameJumbledOriginal}</strong></div>`;
+                else if (post.gameType === 'trivia') answerReveal = `<div class="text-sm mb-1">${post.gameTriviaQuestion}<br>➔ <strong>${post.gameTriviaAnswer}</strong></div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80 text-center">
+                        ${prizeStr}
+                        ${answerReveal}
+                        ${outcomeHtml}
+                    </div>`;
+            }
         }
     }
 
