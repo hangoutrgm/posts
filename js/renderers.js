@@ -1335,8 +1335,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         </div>
         
         <div id="comments-${prefix}-${post.id}" class="${isCommentsOpen ? '' : 'hidden'} mt-1 border-t border-gray-100 dark:border-slate-700 pt-1">
-            ${commentsHtml}
             ${commentInputBox}
+            ${commentsHtml}
         </div>
     `;
     return postEl;

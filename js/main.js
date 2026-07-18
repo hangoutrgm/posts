@@ -608,6 +608,8 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
         }
     }
 
+    input.focus();
+
     await push(ref(db, `community_posts/${postId}/comments`), { 
         uid: window.currentUser.uid, 
         text: text, 
@@ -627,7 +629,6 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
 
     window.notifyMentions(text, postId);
     if(btn) { btn.innerText = "Send"; btn.disabled = false; }
-    input.focus();
 };
 
 window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
