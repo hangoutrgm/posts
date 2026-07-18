@@ -392,9 +392,10 @@ window.listenPosts = () => {
 
         window.allPosts = newPosts;
         
-        if (!window.isUserTyping) {
+        if (!window.isUserTyping && !window._bingoGlobalSpinning) {
             if (window.activeProfileUid) window.renderProfileData(false);
             else window.renderFeed(false);
+            if (window.processBingoAnimations) window.processBingoAnimations();
         }
         window.handleDeepLinks();
         window.isLoadingHistory = false;

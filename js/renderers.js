@@ -1174,9 +1174,12 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             const entryCount = post.bingoEntries ? Object.keys(post.bingoEntries).length : 0;
             const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
 
-            // Build called items chips HTML
-            const calledChipsHtml = calledItems.length
-                ? calledItems.map(item => {
+            const animatingItem = (post.bingoLastSpin && Date.now() - post.bingoLastSpin.startTime < 4000) ? post.bingoLastSpin.item : null;
+            
+            // Build called items chips HTML, excluding the animating item so we don't spoil it early
+            const displayItems = calledItems.filter(item => item !== animatingItem);
+            const calledChipsHtml = displayItems.length
+                ? displayItems.map(item => {
                     const isNum = !isNaN(Number(item));
                     const cls = isNum ? 'bg-orange-500 text-white' : 'bg-purple-600 text-white';
                     return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold ${cls}">${item}</span>`;
@@ -1194,29 +1197,45 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
                         ${prizeStr}
                         <h4 class="font-black text-purple-800 dark:text-purple-200 text-lg mb-1">🎱 BINGO!</h4>
-                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">Pick <strong>${post.bingoLetterCount}</strong> letters + <strong>${post.bingoNumberCount}</strong> numbers for your entry.</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">Pick <strong>${post.bingoLetterCount}</strong> letters (A–${post.bingoMaxLetter || 'Z'}) + <strong>${post.bingoNumberCount}</strong> numbers (1–${post.bingoMaxNumber || 10}) for your entry.</p>
                         <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries submitted</p>
                         ${timerHtml}
                         ${myEntryBadge}
                         ${!myEntry && !isHost ? `<button onclick="window.openBingoEntryModal('${post.id}')" class="mt-3 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-dice mr-2"></i>Submit My Entry</button>` : ''}
-                        ${isHost ? `<button onclick="window.openBingoSpinModal('${post.id}')" class="mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-rotate mr-2"></i>Close Submissions & Start Draw</button>` : ''}
+                        ${isHost ? `<button onclick="window.closeBingoSubmissions('${post.id}')" class="mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-rotate mr-2"></i>Close Submissions & Start Draw</button>` : ''}
                     </div>`;
-            } else if (post.bingoPhase === 'drawing') {
+            } else if (post.bingoPhase === 'drawing' || (post.bingoPhase === 'ended' && animatingItem !== null)) {
                 const myEntryBadge = myEntry
                     ? `<div class="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full font-bold mb-2"><i class="fa-solid fa-ticket mr-1"></i>Your entry: ${myEntry.letters.join(' ')} | ${myEntry.numbers.join(' ')}</div>`
                     : '';
+                    
+                const isSpinning = animatingItem !== null;
+                const canvasClass = isSpinning ? "opacity-100 scale-100" : "opacity-80 scale-95";
+                
                 gameHtml = `
-                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-yellow-300 dark:border-yellow-900/50 flex flex-col items-center">
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-yellow-300 dark:border-yellow-900/50 flex flex-col items-center overflow-hidden">
                         ${prizeStr}
                         <h4 class="font-black text-orange-800 dark:text-orange-200 text-base mb-1">🎱 Draw in Progress!</h4>
                         <p class="text-xs text-gray-500 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries</p>
                         ${myEntryBadge}
-                        <div class="w-full mb-2">
-                            <p class="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1.5">Called: <span class="text-gray-400">(${calledItems.length} so far)</span></p>
-                            <div class="flex flex-wrap gap-1">${calledChipsHtml}</div>
+                        
+                        <!-- Bingo Spin Canvas inline in post -->
+                        <div class="relative my-3 transform transition-all duration-300 ${canvasClass}">
+                            <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10 text-red-500 text-2xl leading-none drop-shadow-md">▼</div>
+                            <canvas id="bingo-wheel-${post.id}" width="200" height="200" class="rounded-full shadow-lg border-4 border-yellow-400 bg-white dark:bg-slate-700"></canvas>
                         </div>
-                        ${isHost ? `<button onclick="window.openBingoSpinModal('${post.id}')" class="mt-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-rotate mr-2"></i>Open Spin Wheel</button>` : ''}
+                        
+                        <div class="w-full mb-3 text-center">
+                            <p class="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1.5">Called: <span class="text-gray-400">(${displayItems.length} so far)</span></p>
+                            <div class="flex flex-wrap justify-center gap-1">${calledChipsHtml}</div>
+                        </div>
+                        
+                        ${isHost ? `<div class="flex gap-2 w-full"><button id="bingo-spin-btn-${post.id}" onclick="window.spinBingoWheel('${post.id}')" ${isSpinning ? 'disabled' : ''} class="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-2 rounded-full shadow transition"><i class="fa-solid fa-play mr-2"></i>SPIN!</button><button onclick="window.endBingoGame('${post.id}')" class="bg-red-500 hover:bg-red-400 text-white font-bold px-3 rounded-full transition text-xs" title="End Game (No Winner)"><i class="fa-solid fa-stop"></i></button></div>` : ''}
                     </div>`;
+                
+                // Track this post for post-render animation setup
+                if (!window._bingoRenderQueue) window._bingoRenderQueue = [];
+                window._bingoRenderQueue.push({ id: post.id, postData: post });
             } else if (post.bingoPhase === 'ended' || post.gameStatus === 'ended') {
                 const winnerName = post.gameWinner && post.gameWinner !== 'none'
                     ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')

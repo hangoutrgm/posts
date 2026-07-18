@@ -212,6 +212,8 @@ window.submitGame = async () => {
     let triviaAnswer = null;
     let bingoLetterCount = 0;
     let bingoNumberCount = 0;
+    let bingoMaxLetter = 'Z';
+    let bingoMaxNumber = 10;
 
     if (type === 'challenge' || type === 'quick_challenge') {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
@@ -284,8 +286,11 @@ window.submitGame = async () => {
     if (type === 'bingo') {
         bingoLetterCount = parseInt(document.getElementById('game-bingo-letters').value) || 0;
         bingoNumberCount = parseInt(document.getElementById('game-bingo-numbers').value) || 0;
-        if (bingoLetterCount < 1 || bingoLetterCount > 10) return window.showAlert("Letter count must be between 1 and 10.");
-        if (bingoNumberCount < 1 || bingoNumberCount > 10) return window.showAlert("Number count must be between 1 and 10.");
+        bingoMaxLetter = document.getElementById('game-bingo-max-letter').value || 'Z';
+        bingoMaxNumber = parseInt(document.getElementById('game-bingo-max-number').value) || 10;
+        
+        if (bingoLetterCount < 1 || bingoLetterCount > 26) return window.showAlert("Letter count must be between 1 and 26.");
+        if (bingoNumberCount < 1 || bingoNumberCount > 100) return window.showAlert("Number count must be between 1 and 100.");
     }
 
     if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo'].includes(type)) {
@@ -315,7 +320,7 @@ window.submitGame = async () => {
     else if (type === 'math') text = `Math Challenge! Solve this: ${mathQuestion}`;
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
-    else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) + ${bingoNumberCount} number(s). Submission open!`;
+    else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) (A–${bingoMaxLetter}) + ${bingoNumberCount} number(s) (1–${bingoMaxNumber}). Submission open!`;
 
     const postData = {
         authorId: window.currentUser.uid,
@@ -349,6 +354,8 @@ window.submitGame = async () => {
     if (bingoLetterCount) {
         postData.bingoLetterCount = bingoLetterCount;
         postData.bingoNumberCount = bingoNumberCount;
+        postData.bingoMaxLetter = bingoMaxLetter;
+        postData.bingoMaxNumber = bingoMaxNumber;
         postData.bingoPhase = 'submission';
         postData.bingoCalledItems = [];
     }
@@ -656,14 +663,20 @@ window.openBingoEntryModal = async (postId) => {
     window._bingoEntryLetterCount = post.bingoLetterCount;
     window._bingoEntryNumberCount = post.bingoNumberCount;
 
+    const maxLetter = post.bingoMaxLetter || 'Z';
+    const maxNumber = post.bingoMaxNumber || 10;
+
     document.getElementById('bingo-entry-postid').value = postId;
     document.getElementById('bingo-entry-info').textContent =
-        `Pick ${post.bingoLetterCount} letter(s) from A–Z and ${post.bingoNumberCount} number(s) from 1–10.`;
+        `Pick ${post.bingoLetterCount} letter(s) from A–${maxLetter} and ${post.bingoNumberCount} number(s) from 1–${maxNumber}.`;
 
-    // Build letter grid A-Z
+    // Build letter grid
     const letterGrid = document.getElementById('bingo-letter-grid');
     letterGrid.innerHTML = '';
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(l => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const letterIdx = alphabet.indexOf(maxLetter.toUpperCase());
+    const validLetters = letterIdx !== -1 ? alphabet.substring(0, letterIdx + 1).split('') : alphabet.split('');
+    validLetters.forEach(l => {
         const btn = document.createElement('button');
         btn.textContent = l;
         btn.className = 'w-8 h-8 rounded-lg text-sm font-bold border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 transition hover:border-purple-400 hover:text-purple-600';
@@ -671,10 +684,10 @@ window.openBingoEntryModal = async (postId) => {
         letterGrid.appendChild(btn);
     });
 
-    // Build number grid 1-10
+    // Build number grid
     const numberGrid = document.getElementById('bingo-number-grid');
     numberGrid.innerHTML = '';
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= maxNumber; i++) {
         const btn = document.createElement('button');
         btn.textContent = i;
         btn.className = 'w-9 h-9 rounded-lg text-sm font-bold border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 transition hover:border-blue-400 hover:text-blue-600';
@@ -761,20 +774,14 @@ window.closeBingoSubmissions = async (postId) => {
     await update(ref(db, `community_posts/${postId}`), { bingoPhase: 'drawing' });
 };
 
-// ---- SPIN WHEEL ----
-
-window._bingoWheelItems = [];
-window._bingoSpinning = false;
-window._bingoCurrentAngle = 0;
+// ---- GLOBAL SPIN WHEEL & ANIMATIONS ----
 
 const LETTER_COLORS = ['#8B5CF6', '#7C3AED', '#6D28D9', '#A78BFA'];
 const NUMBER_COLORS = ['#F59E0B', '#D97706', '#B45309', '#FCD34D'];
 
-window.drawBingoWheel = (angle) => {
-    const canvas = document.getElementById('bingo-wheel-canvas');
+window.drawBingoWheelCanvas = (canvas, items, angle) => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const items = window._bingoWheelItems;
     if (!items.length) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#6B7280';
@@ -805,7 +812,6 @@ window.drawBingoWheel = (angle) => {
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Label
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(startAngle + sliceAngle / 2);
@@ -817,7 +823,6 @@ window.drawBingoWheel = (angle) => {
         ctx.restore();
     });
 
-    // Center circle
     ctx.beginPath();
     ctx.arc(cx, cy, 18, 0, 2 * Math.PI);
     ctx.fillStyle = '#1E293B';
@@ -827,141 +832,134 @@ window.drawBingoWheel = (angle) => {
     ctx.stroke();
 };
 
-window.openBingoSpinModal = async (postId) => {
+window.getBingoPool = (post) => {
+    const maxLetter = post.bingoMaxLetter || 'Z';
+    const maxNumber = post.bingoMaxNumber || 10;
+    
+    // Generate letters from A up to maxLetter
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const letterIdx = alphabet.indexOf(maxLetter.toUpperCase());
+    const letters = letterIdx !== -1 ? alphabet.substring(0, letterIdx + 1).split('') : alphabet.split('');
+    
+    // Generate numbers from 1 to maxNumber
+    const numbers = Array.from({length: maxNumber}, (_, i) => String(i + 1));
+    
+    return [...letters, ...numbers];
+};
+
+window.spinBingoWheel = async (postId) => {
     const snap = await get(ref(db, `community_posts/${postId}`));
     if (!snap.exists()) return;
     const post = snap.val();
 
-    // Close submissions if still open
-    if (post.bingoPhase === 'submission') {
-        await update(ref(db, `community_posts/${postId}`), { bingoPhase: 'drawing' });
-    }
-
     const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
-    const allItems = [
-        ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
-        ...Array.from({length: 10}, (_, i) => String(i + 1))
-    ];
-    window._bingoWheelItems = allItems.filter(i => !calledItems.includes(i));
-    window._bingoSpinning = false;
-    window._bingoCurrentAngle = 0;
-    window._bingoSpinPostId = postId;
+    const allItems = window.getBingoPool(post);
+    const pool = allItems.filter(i => !calledItems.includes(i));
+    if (!pool.length) return;
 
-    document.getElementById('bingo-spin-postid').value = postId;
-    document.getElementById('bingo-spin-result').textContent = '';
-    document.getElementById('bingo-spin-btn').disabled = false;
-    document.getElementById('bingo-winner-announce').classList.add('hidden');
-    document.getElementById('bingo-end-btn').classList.remove('hidden');
+    // Set disabled immediately so host can't double click
+    const btn = document.getElementById(`bingo-spin-btn-${postId}`);
+    if (btn) btn.disabled = true;
 
-    // Render called items chips
-    window.renderBingoCalledChips(calledItems);
-    document.getElementById('bingo-pool-count').textContent =
-        `${window._bingoWheelItems.length} items remaining in pool`;
-
-    window.drawBingoWheel(0);
-    document.getElementById('bingo-spin-modal').classList.remove('hidden');
-};
-
-window.renderBingoCalledChips = (calledItems) => {
-    const container = document.getElementById('bingo-called-display');
-    if (!container) return;
-    container.innerHTML = calledItems.map(item => {
-        const isNum = !isNaN(Number(item));
-        const cls = isNum
-            ? 'bg-orange-500 text-white'
-            : 'bg-purple-600 text-white';
-        return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold ${cls}">${item}</span>`;
-    }).join('');
-};
-
-window.spinBingoWheel = () => {
-    if (window._bingoSpinning || !window._bingoWheelItems.length) return;
-    window._bingoSpinning = true;
-    document.getElementById('bingo-spin-btn').disabled = true;
-    document.getElementById('bingo-spin-result').textContent = '';
-
-    const items = window._bingoWheelItems;
-    const sliceAngle = (2 * Math.PI) / items.length;
     // Pick a random winner index
-    const winnerIndex = Math.floor(Math.random() * items.length);
-    // Needle is at top (−π/2). We want winnerIndex's slice center to land there.
-    // sliceCenter at winnerIndex = currentAngle + winnerIndex * sliceAngle + sliceAngle/2
-    // We want that = -π/2 + 2πk for some large integer k (many full rotations)
-    const fullRotations = (5 + Math.floor(Math.random() * 4)) * 2 * Math.PI; // 5-8 full spins
-    const targetAngle = -Math.PI / 2 - (winnerIndex * sliceAngle + sliceAngle / 2) + fullRotations;
-    const startAngle = window._bingoCurrentAngle;
-    const duration = 4000; // ms
-    const startTime = performance.now();
-
-    const animate = (now) => {
-        const elapsed = now - startTime;
-        const t = Math.min(elapsed / duration, 1);
-        // Ease out cubic
-        const eased = 1 - Math.pow(1 - t, 3);
-        const currentAngle = startAngle + (targetAngle - startAngle) * eased;
-
-        window.drawBingoWheel(currentAngle);
-
-        if (t < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            window._bingoCurrentAngle = currentAngle;
-            window._bingoSpinning = false;
-            const winner = items[winnerIndex];
-            window.onBingoItemCalled(winner);
+    const winnerIndex = Math.floor(Math.random() * pool.length);
+    const winner = pool[winnerIndex];
+    
+    // We update everything immediately!
+    const newCalledItems = [...calledItems, winner];
+    const updates = { 
+        bingoCalledItems: newCalledItems,
+        bingoLastSpin: {
+            item: winner,
+            startTime: Date.now()
         }
     };
-    requestAnimationFrame(animate);
-};
-
-window.onBingoItemCalled = async (item) => {
-    const postId = window._bingoSpinPostId;
-    const resultEl = document.getElementById('bingo-spin-result');
-    const isNum = !isNaN(Number(item));
-    resultEl.innerHTML = `<span class="px-4 py-1 rounded-full ${isNum ? 'bg-orange-500' : 'bg-purple-600'} text-white text-2xl font-black shadow-lg">${item}</span>`;
-
-    // Update Firebase: append to bingoCalledItems
-    const snap = await get(ref(db, `community_posts/${postId}`));
-    const post = snap.val();
-    const calledItems = Array.isArray(post.bingoCalledItems) ? [...post.bingoCalledItems] : [];
-    calledItems.push(item);
-
-    await update(ref(db, `community_posts/${postId}`), { bingoCalledItems: calledItems });
-
-    // Update local wheel
-    window._bingoWheelItems = window._bingoWheelItems.filter(i => i !== item);
-    window.renderBingoCalledChips(calledItems);
-    document.getElementById('bingo-pool-count').textContent =
-        `${window._bingoWheelItems.length} items remaining in pool`;
 
     // Check for winner
-    const winner = window.checkBingoWinner(post.bingoEntries || {}, calledItems);
-    if (winner) {
-        document.getElementById('bingo-winner-announce').textContent =
-            `🏆 BINGO! ${window.globalUsersCache[winner]?.name || 'Someone'} wins!`;
-        document.getElementById('bingo-winner-announce').classList.remove('hidden');
-        document.getElementById('bingo-spin-btn').disabled = true;
-        document.getElementById('bingo-end-btn').classList.add('hidden');
-
-        await update(ref(db, `community_posts/${postId}`), {
-            gameStatus: 'ended',
-            gameWinner: winner,
-            bingoPhase: 'ended',
-            locked: true
-        });
+    const winnerId = window.checkBingoWinner(post.bingoEntries || {}, newCalledItems);
+    if (winnerId) {
+        updates.gameStatus = 'ended';
+        updates.gameWinner = winnerId;
+        updates.bingoPhase = 'ended';
+        updates.locked = true;
+        
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
-        if (lbPoints > 0) update(ref(db, `users/${winner}`), { lbPoints: increment(lbPoints) });
+        if (lbPoints > 0) update(ref(db, `users/${winnerId}`), { lbPoints: increment(lbPoints) });
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId) {
             update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
         }
-    } else {
-        document.getElementById('bingo-spin-btn').disabled = false;
     }
 
-    if (!window._bingoWheelItems.length && !winner) {
-        document.getElementById('bingo-spin-result').innerHTML += `<p class="text-xs text-red-500 mt-1">All items called — no winner found!</p>`;
-        document.getElementById('bingo-spin-btn').disabled = true;
+    await update(ref(db, `community_posts/${postId}`), updates);
+};
+
+window.processBingoAnimations = () => {
+    if (!window._bingoRenderQueue) return;
+    
+    let isAnySpinning = false;
+
+    window._bingoRenderQueue.forEach(q => {
+        const post = q.postData;
+        const canvas = document.getElementById(`bingo-wheel-${post.id}`);
+        if (!canvas) return;
+
+        // Note: post.bingoCalledItems ALREADY includes the winning item!
+        const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
+        const allItems = window.getBingoPool(post);
+        
+        const spin = post.bingoLastSpin;
+        const isSpinActive = spin && (Date.now() - spin.startTime < 4000);
+
+        // If spinning, the "pool" of the wheel should be what it was BEFORE the spin.
+        // So we add the winning item back to the pool by removing it from "called".
+        const itemsToExclude = isSpinActive ? calledItems.filter(i => i !== spin.item) : calledItems;
+        const pool = allItems.filter(i => !itemsToExclude.includes(i));
+
+        if (isSpinActive) {
+            isAnySpinning = true;
+            // It's animating!
+            const duration = 4000;
+            const elapsed = Date.now() - spin.startTime;
+            const winnerIndex = pool.indexOf(spin.item);
+            
+            if (winnerIndex !== -1) {
+                const sliceAngle = (2 * Math.PI) / pool.length;
+                const fullRotations = 6 * 2 * Math.PI; // Standardize rotations
+                const targetAngle = -Math.PI / 2 - (winnerIndex * sliceAngle + sliceAngle / 2) + fullRotations;
+                
+                const t = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - t, 3);
+                const currentAngle = targetAngle * eased;
+
+                window.drawBingoWheelCanvas(canvas, pool, currentAngle);
+            } else {
+                window.drawBingoWheelCanvas(canvas, pool, 0);
+            }
+        } else {
+            // Not spinning, draw statically on top (needle at 0 angle)
+            window.drawBingoWheelCanvas(canvas, pool, 0);
+        }
+    });
+
+    // Schedule next frame if anything is spinning
+    if (isAnySpinning) {
+        window._bingoGlobalSpinning = true;
+        requestAnimationFrame(window.processBingoAnimations);
+    } else {
+        if (window._bingoGlobalSpinning) {
+            window._bingoGlobalSpinning = false;
+            // The animation just stopped. Feed will resume updating naturally
+            setTimeout(() => {
+                if (window.renderFeed) window.renderFeed(false);
+                else if (window.renderProfileData) window.renderProfileData(false);
+                if (window.processBingoAnimations) window.processBingoAnimations();
+            }, 10);
+        }
+    }
+    
+    if (!window._bingoGlobalSpinning) {
+        window._bingoRenderQueue = [];
     }
 };
 
@@ -975,8 +973,7 @@ window.checkBingoWinner = (entries, calledItems) => {
     return null;
 };
 
-window.endBingoGame = async () => {
-    const postId = document.getElementById('bingo-spin-postid').value;
+window.endBingoGame = async (postId) => {
     if (!postId) return;
     await update(ref(db, `community_posts/${postId}`), {
         gameStatus: 'ended',
@@ -984,6 +981,5 @@ window.endBingoGame = async () => {
         bingoPhase: 'ended',
         locked: true
     });
-    document.getElementById('bingo-spin-modal').classList.add('hidden');
     window.showAlert("Bingo game ended with no winner.");
 };
