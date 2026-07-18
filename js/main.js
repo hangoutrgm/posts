@@ -150,7 +150,7 @@ const setupMentionSystem = () => {
         if (!suggestionBox) {
             suggestionBox = document.createElement('div');
             suggestionBox.id = 'mention-suggestions-box';
-            suggestionBox.className = 'hidden absolute z-50 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 shadow-lg rounded-md mt-1 overflow-y-auto max-h-48';
+            suggestionBox.className = 'hidden absolute z-[120] bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 shadow-lg rounded-md mt-1 overflow-y-auto max-h-48';
             document.body.appendChild(suggestionBox);
         }
 
@@ -627,6 +627,7 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
 
     window.notifyMentions(text, postId);
     if(btn) { btn.innerText = "Send"; btn.disabled = false; }
+    input.focus();
 };
 
 window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
@@ -650,6 +651,7 @@ window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
 
     window.notifyMentions(text, postId);
     window.openRepliesList.add(commentId);
+    input.focus();
 };
 
 window.react = (postId, postAuthorId, type) => {
