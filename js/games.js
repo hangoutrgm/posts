@@ -168,19 +168,25 @@ window.scrambleWord = () => {
     const orig = document.getElementById('game-jumbled-original').value.trim().toUpperCase();
     if (!orig) return window.showAlert("Please enter a word first.");
     
-    let scrambled = orig;
-    let attempts = 0;
-    while (scrambled === orig && attempts < 10) {
-        const arr = orig.split('');
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
+    const words = orig.split(/\s+/);
+    const scrambledWords = words.map(word => {
+        if (word.length <= 1) return word; // Don't scramble single letters
+        
+        let scrambled = word;
+        let attempts = 0;
+        while (scrambled === word && attempts < 15) {
+            const arr = word.split('');
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            scrambled = arr.join('');
+            attempts++;
         }
-        scrambled = arr.join('');
-        attempts++;
-    }
+        return scrambled;
+    });
     
-    document.getElementById('game-jumbled-scrambled').value = scrambled;
+    document.getElementById('game-jumbled-scrambled').value = scrambledWords.join(' ');
 };
 
 window.submitGame = async () => {
@@ -440,10 +446,24 @@ window.endLastCommentGame = async (postId) => {
     if (!window.currentUser) return;
     
     try {
-        const snap = await get(ref(db, `community_posts/${postId}`));
-        const post = snap.val();
+        let snap = await get(ref(db, `community_posts/${postId}`));
+        let post = snap.val();
         if (!post || post.gameStatus !== 'active') return;
         
+        // Prevent multiple evaluations, lock comments immediately
+        await update(ref(db, `community_posts/${postId}`), {
+            gameStatus: 'evaluating',
+            locked: true
+        });
+
+        // Wait 2 seconds for any last-millisecond comments to arrive
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Fetch fresh data
+        snap = await get(ref(db, `community_posts/${postId}`));
+        post = snap.val();
+        if (!post) return;
+
         let lastCommenterId = null;
         let lastCommentTime = 0;
         
@@ -451,23 +471,17 @@ window.endLastCommentGame = async (postId) => {
             for (const key in post.comments) {
                 const c = post.comments[key];
                 if (c.timestamp > lastCommentTime && !c.isDeleted) {
-                    if (!post.gameEndTime || c.timestamp <= post.gameEndTime) {
+                    if (c.uid !== post.authorId) { // Owner cannot be the winner
                         lastCommentTime = c.timestamp;
                         lastCommenterId = c.uid;
                     }
                 }
             }
         }
-        
-        if (lastCommenterId === post.authorId) {
-            // Forfeit the game if the host was the last commenter
-            lastCommenterId = null;
-        }
 
         await update(ref(db, `community_posts/${postId}`), {
             gameStatus: 'ended',
-            gameWinner: lastCommenterId || "none",
-            locked: true
+            gameWinner: lastCommenterId || "none"
         });
 
         if (lastCommenterId) {
