@@ -306,8 +306,17 @@ window.renderFeed = (resetLimit = true) => {
     catFilters.classList.remove('hidden');
 
     const postSearchQ = (document.getElementById('post-search')?.value || '').toLowerCase();
+    // Merge global pinned posts into the display pool so old pinned posts are always available
+    const mergedMap = new Map();
+    window.allPosts.forEach(p => mergedMap.set(p.id, p));
+    if (window.currentFilter === 'All' || window.currentFilter === 'My Posts') {
+        window.globalPinnedPosts.forEach(p => mergedMap.set(p.id, p));
+    } else {
+        window.globalPinnedPosts.filter(p => p.category === window.currentFilter).forEach(p => mergedMap.set(p.id, p));
+    }
+    const mergedPosts = Array.from(mergedMap.values());
     
-    let displayPosts = window.allPosts.filter(p => {
+    let displayPosts = mergedPosts.filter(p => {
         if (window.currentFilter === "My Posts" && (!window.currentUser || p.authorId !== window.currentUser.uid)) return false;
         if (window.currentFilter !== "All" && window.currentFilter !== "My Posts" && p.category !== window.currentFilter) return false;
         
@@ -502,8 +511,15 @@ window.renderProfileData = (resetLimit = true) => {
         </div>` : ''}
     `;
 
+    const profPostsFilter = document.getElementById('profile-posts-filter')?.value || 'All';
     const pFeed = document.getElementById('profile-feed');
-    let pPosts = window.allPosts.filter(p => {
+    // Merge profile pinned posts into the display pool
+    const mergedMap = new Map();
+    window.allPosts.forEach(p => mergedMap.set(p.id, p));
+    window.profilePinnedPosts.filter(p => p.authorId === window.activeProfileUid).forEach(p => mergedMap.set(p.id, p));
+    const mergedPosts = Array.from(mergedMap.values());
+    
+    let pPosts = mergedPosts.filter(p => {
         if (p.authorId !== window.activeProfileUid) return false;
         
         // ==========================================
@@ -1447,7 +1463,7 @@ window.renderMembers = (resetLimit = true) => {
 };
 
 window.showReactors = (postId, commentId = null) => {
-    const post = window.allPosts.find(p => p.id === postId);
+    const post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
     if (!post) return;
     const target = commentId ? post.comments?.[commentId] : post;
     if (!target) return;

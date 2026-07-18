@@ -395,8 +395,20 @@ window.refreshSinglePost = async (postId) => {
         const snap = await get(ref(db, `community_posts/${postId}`));
         if (snap.exists()) {
             const updatedPost = { id: postId, ...snap.val() };
-            const index = window.allPosts.findIndex(p => p.id === postId);
-            if (index !== -1) window.allPosts[index] = updatedPost;
+            const indexAll = window.allPosts.findIndex(p => p.id === postId);
+            if (indexAll !== -1) window.allPosts[indexAll] = updatedPost;
+            
+            const indexGlobal = window.globalPinnedPosts.findIndex(p => p.id === postId);
+            if (indexGlobal !== -1) window.globalPinnedPosts[indexGlobal] = updatedPost;
+            
+            if (window.profilePinnedPosts) {
+                const indexProfile = window.profilePinnedPosts.findIndex(p => p.id === postId);
+                if (indexProfile !== -1) window.profilePinnedPosts[indexProfile] = updatedPost;
+            }
+            
+            if (window.pinnedFreshData && window.pinnedFreshData[postId]) {
+                window.pinnedFreshData[postId] = updatedPost;
+            }
             
             if (window.activeProfileUid) window.renderProfileData(false);
             else window.renderFeed(false);
@@ -452,11 +464,15 @@ window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
 };
 
 window.executePin = (postId, pinType, targetStatus) => {
-    update(ref(db, `community_posts/${postId}`), { [pinType]: targetStatus });
+    update(ref(db, `community_posts/${postId}`), { [pinType]: targetStatus }).then(() => {
+        if (window.listenPinnedPosts) {
+            setTimeout(() => window.listenPinnedPosts(), 500); // Give Firebase a moment to sync before re-fetching
+        }
+    });
 };
 
 window.toggleLock = (postId, currentStatus) => {
-    const post = window.allPosts.find(p => p.id === postId);
+    const post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
     if (!post || !window.currentUser) return;
     const roleLevel = window.getRole(window.currentUser.uid).level;
     const isAuthor = window.currentUser.uid === post.authorId;

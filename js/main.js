@@ -355,10 +355,106 @@ onValue(ref(db, 'users'), (snap) => {
 });
 
 window.allPosts = [];
+window.globalPinnedPosts = [];
+window.profilePinnedPosts = [];
 window.isLoadingHistory = false;
 window.hasMorePosts = true;
 window.postLimit = 15;
 window.postsUnsubscribe = null;
+window.pinnedUnsubscribes = [];
+
+window.ensureIndividualPinnedListeners = (posts) => {
+    window.individualPinnedUnsubscribes = window.individualPinnedUnsubscribes || {};
+    window.pinnedFreshData = window.pinnedFreshData || {};
+    posts.forEach(p => {
+        if (!window.individualPinnedUnsubscribes[p.id]) {
+            window.individualPinnedUnsubscribes[p.id] = onValue(ref(db, `community_posts/${p.id}`), (snapshot) => {
+                if (snapshot.exists()) {
+                    const updatedPost = { id: snapshot.key, ...snapshot.val() };
+                    window.pinnedFreshData[p.id] = updatedPost;
+                    
+                    let needsRender = false;
+                    const idxAll = window.allPosts.findIndex(x => x.id === p.id);
+                    const idxGlobal = window.globalPinnedPosts.findIndex(x => x.id === p.id);
+                    const idxProfile = window.profilePinnedPosts ? window.profilePinnedPosts.findIndex(x => x.id === p.id) : -1;
+                    
+                    if (!updatedPost.feedPinned && !updatedPost.profilePinned && !updatedPost.pinned) {
+                        // It was unpinned. Clean up listener and authoritative data.
+                        window.individualPinnedUnsubscribes[p.id]();
+                        delete window.individualPinnedUnsubscribes[p.id];
+                        delete window.pinnedFreshData[p.id];
+                        
+                        // Remove from caches
+                        if (idxAll !== -1) { window.allPosts.splice(idxAll, 1); needsRender = true; }
+                        if (idxGlobal !== -1) { window.globalPinnedPosts.splice(idxGlobal, 1); needsRender = true; }
+                        if (idxProfile !== -1) { window.profilePinnedPosts.splice(idxProfile, 1); needsRender = true; }
+                    } else {
+                        // Update caches with fresh data
+                        if (idxAll !== -1) { window.allPosts[idxAll] = updatedPost; needsRender = true; }
+                        if (idxGlobal !== -1) { window.globalPinnedPosts[idxGlobal] = updatedPost; needsRender = true; }
+                        if (idxProfile !== -1) { window.profilePinnedPosts[idxProfile] = updatedPost; needsRender = true; }
+                    }
+                    
+                    if (needsRender && !window.isUserTyping && !window._bingoGlobalSpinning) {
+                        if (window.activeProfileUid) window.renderProfileData(false);
+                        else window.renderFeed(false);
+                    }
+                }
+            });
+        }
+    });
+};
+
+window.listenPinnedPosts = () => {
+    window.pinnedUnsubscribes.forEach(unsub => unsub());
+    window.pinnedUnsubscribes = [];
+
+    // Listen for global feed pinned posts
+    const feedPinnedQuery = query(ref(db, 'community_posts'), orderByChild('feedPinned'), equalTo(true));
+    window.pinnedUnsubscribes.push(onValue(feedPinnedQuery, (snapshot) => {
+        const postsMap = new Map();
+        // 1. Inject all actively monitored pinned posts to survive unindexed SDK drops
+        if (window.pinnedFreshData) {
+            Object.values(window.pinnedFreshData).forEach(p => {
+                if (!!p.feedPinned || !!p.pinned) postsMap.set(p.id, p);
+            });
+        }
+        // 2. Add anything from the snapshot
+        snapshot.forEach(child => {
+            const p = { id: child.key, ...child.val() };
+            postsMap.set(p.id, p);
+        });
+        
+        const posts = Array.from(postsMap.values());
+        window.globalPinnedPosts = posts;
+        window.ensureIndividualPinnedListeners(posts);
+        if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+            window.renderFeed(false);
+        }
+    }));
+
+    // Listen for profile pinned posts
+    const profilePinnedQuery = query(ref(db, 'community_posts'), orderByChild('profilePinned'), equalTo(true));
+    window.pinnedUnsubscribes.push(onValue(profilePinnedQuery, (snapshot) => {
+        const postsMap = new Map();
+        if (window.pinnedFreshData) {
+            Object.values(window.pinnedFreshData).forEach(p => {
+                if (!!p.profilePinned || !!p.pinned) postsMap.set(p.id, p);
+            });
+        }
+        snapshot.forEach(child => {
+            const p = { id: child.key, ...child.val() };
+            postsMap.set(p.id, p);
+        });
+        
+        const posts = Array.from(postsMap.values());
+        window.profilePinnedPosts = posts;
+        window.ensureIndividualPinnedListeners(posts);
+        if (!window.isUserTyping && !window._bingoGlobalSpinning && window.activeProfileUid) {
+            window.renderProfileData(false);
+        }
+    }));
+};
 
 window.listenPosts = () => {
     if (window.postsUnsubscribe) window.postsUnsubscribe();
@@ -379,7 +475,13 @@ window.listenPosts = () => {
         if(window.checkGameTimers) window.checkGameTimers(snapshot.val());
         const newPosts = [];
         snapshot.forEach(child => {
-            newPosts.push({ id: child.key, ...child.val() });
+            const p = { id: child.key, ...child.val() };
+            // For the main query, just overlay fresh data if it exists
+            if (window.pinnedFreshData && window.pinnedFreshData[p.id]) {
+                newPosts.push(window.pinnedFreshData[p.id]);
+            } else {
+                newPosts.push(p);
+            }
         });
 
         const oldData = JSON.stringify(window.allPosts);
@@ -390,7 +492,30 @@ window.listenPosts = () => {
             window.hasMorePosts = false;
         }
 
+        // Preserve pinned posts across category/page switches
+        const previousPinned = window.allPosts.filter(p => !!p.feedPinned || !!p.profilePinned || !!p.pinned);
+        
         window.allPosts = newPosts;
+        
+        window.individualPinnedUnsubscribes = window.individualPinnedUnsubscribes || {};
+
+        // Re-add any pinned posts that were lost in the new query
+        previousPinned.forEach(p => {
+            if (!window.allPosts.find(np => np.id === p.id)) {
+                window.allPosts.push(p);
+            }
+        });
+        
+        // Ensure all retained pinned posts have real-time listeners
+        window.ensureIndividualPinnedListeners(previousPinned);
+
+        // Cleanup listeners for posts that ARE in the main query now
+        newPosts.forEach(p => {
+            if (window.individualPinnedUnsubscribes[p.id]) {
+                window.individualPinnedUnsubscribes[p.id]();
+                delete window.individualPinnedUnsubscribes[p.id];
+            }
+        });
         
         if (!window.isUserTyping && !window._bingoGlobalSpinning) {
             if (window.activeProfileUid) window.renderProfileData(false);
@@ -412,6 +537,7 @@ window.loadMorePosts = async () => {
     window.listenPosts();
 };
 
+window.listenPinnedPosts();
 window.listenPosts();
 
 // ==========================================
@@ -658,7 +784,7 @@ window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
 window.react = (postId, postAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
-    let post = window.allPosts.find(p => p.id === postId); if(!post) return;
+    let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     
     let userReactCount = 0;
     if (post.reactions) {
@@ -694,7 +820,7 @@ window.react = (postId, postAuthorId, type) => {
 window.reactComment = (postId, commentId, commentAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
-    let post = window.allPosts.find(p => p.id === postId); if(!post) return;
+    let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     let comment = post.comments && post.comments[commentId]; if(!comment) return;
     
     let userReactCount = 0;
@@ -729,7 +855,7 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
 window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
-    let post = window.allPosts.find(p => p.id === postId); if(!post) return;
+    let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     let comment = post.comments && post.comments[commentId]; if(!comment) return;
     let reply = comment.replies && comment.replies[replyId]; if(!reply) return;
     
@@ -857,13 +983,13 @@ document.getElementById('save-edit-btn').addEventListener('click', () => {
 });
 
 window.editPost = (postId) => {
-    const post = window.allPosts.find(p => p.id === postId);
+    const post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
     if (!post || post.authorId !== window.currentUser.uid) return;
     window.openEditModal({ path: `community_posts/${postId}`, postId: postId }, post.text);
 };
 
 window.editComment = (postId, cId) => {
-    const post = window.allPosts.find(p => p.id === postId);
+    const post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
     if (!post || !post.comments || !post.comments[cId]) return;
     const c = post.comments[cId];
     if (c.uid !== window.currentUser.uid) return;
@@ -871,7 +997,7 @@ window.editComment = (postId, cId) => {
 };
 
 window.editReply = (postId, cId, rId) => {
-    const post = window.allPosts.find(p => p.id === postId);
+    const post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
     if (!post || !post.comments || !post.comments[cId] || !post.comments[cId].replies || !post.comments[cId].replies[rId]) return;
     const r = post.comments[cId].replies[rId];
     if (r.uid !== window.currentUser.uid) return;
