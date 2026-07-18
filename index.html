@@ -318,6 +318,7 @@
                     <option value="math">Math</option>
                     <option value="jumbled_words">Jumbled Words</option>
                     <option value="trivia">Random Trivia</option>
+                    <option value="bingo">Bingo</option>
                 </select>
                 
                 <div class="grid grid-cols-2 gap-2 mb-3">
@@ -408,6 +409,21 @@
                     </div>
                 </div>
                 
+                <div id="game-bingo-container" class="hidden mb-3 border border-purple-200 dark:border-purple-900/50 rounded-lg p-3 bg-purple-50 dark:bg-purple-900/20">
+                    <p class="text-xs text-purple-700 dark:text-purple-300 font-semibold mb-2">🎱 Bingo Configuration</p>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Letters (A–Z)</label>
+                            <input type="number" id="game-bingo-letters" placeholder="e.g. 5" min="1" max="10" value="5" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Numbers (1–10)</label>
+                            <input type="number" id="game-bingo-numbers" placeholder="e.g. 3" min="1" max="10" value="3" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-gray-400">Players will pick exactly this many letters from A–Z and numbers from 1–10.</p>
+                </div>
+
                 <button onclick="window.submitGame()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg shadow-sm transition mt-2">Post Game</button>
             </div>
         </div>
@@ -428,6 +444,60 @@
             </div>
         </div>
     </div>
+    <!-- Bingo Entry Modal -->
+    <div id="bingo-entry-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center p-3 bg-black/70 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div class="bg-gradient-to-r from-purple-600 to-pink-600 p-3 flex justify-between items-center text-white shrink-0">
+                <h2 class="font-bold text-sm"><i class="fa-solid fa-dice mr-2"></i>Submit Bingo Entry</h2>
+                <button onclick="document.getElementById('bingo-entry-modal').classList.add('hidden')" class="hover:text-purple-200"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <div id="bingo-entry-info" class="text-xs text-center text-gray-500 dark:text-gray-400 mb-3 font-semibold"></div>
+                <div class="mb-4">
+                    <p class="text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">🔤 Pick Letters <span id="bingo-letter-counter" class="text-purple-600"></span></p>
+                    <div id="bingo-letter-grid" class="flex flex-wrap gap-1.5"></div>
+                </div>
+                <div class="mb-4">
+                    <p class="text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">🔢 Pick Numbers <span id="bingo-number-counter" class="text-blue-600"></span></p>
+                    <div id="bingo-number-grid" class="flex flex-wrap gap-1.5"></div>
+                </div>
+                <input type="hidden" id="bingo-entry-postid">
+            </div>
+            <div class="p-3 border-t border-gray-100 dark:border-slate-700 shrink-0">
+                <button id="bingo-submit-btn" onclick="window.submitBingoEntry()" disabled class="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-300 disabled:dark:bg-slate-600 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl shadow transition text-sm"><i class="fa-solid fa-check mr-2"></i>Submit Entry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bingo Spin Modal -->
+    <div id="bingo-spin-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center p-3 bg-black/80 backdrop-blur-md">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-3 flex justify-between items-center text-white shrink-0">
+                <h2 class="font-bold text-sm"><i class="fa-solid fa-rotate mr-2"></i>Bingo Draw Wheel</h2>
+                <button onclick="document.getElementById('bingo-spin-modal').classList.add('hidden')" class="hover:text-yellow-200"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 flex flex-col items-center overflow-y-auto flex-1">
+                <div class="relative mb-3">
+                    <!-- Needle pointer -->
+                    <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10 text-red-500 text-2xl leading-none">▼</div>
+                    <canvas id="bingo-wheel-canvas" width="260" height="260" class="rounded-full shadow-2xl border-4 border-yellow-400"></canvas>
+                </div>
+                <div id="bingo-spin-result" class="text-2xl font-black text-center mb-3 min-h-[2rem]"></div>
+                <button id="bingo-spin-btn" onclick="window.spinBingoWheel()" class="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-black text-lg py-3 px-10 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 mb-4"><i class="fa-solid fa-play mr-2"></i>SPIN!</button>
+                <div class="w-full">
+                    <p class="text-xs font-bold text-gray-600 dark:text-gray-300 mb-2">Called so far:</p>
+                    <div id="bingo-called-display" class="flex flex-wrap gap-1.5"></div>
+                    <p id="bingo-pool-count" class="text-xs text-gray-400 mt-2 text-center"></p>
+                </div>
+            </div>
+            <div class="p-3 border-t border-gray-100 dark:border-slate-700 shrink-0">
+                <input type="hidden" id="bingo-spin-postid">
+                <p id="bingo-winner-announce" class="text-center text-sm font-bold text-green-600 dark:text-green-400 hidden mb-2"></p>
+                <button id="bingo-end-btn" onclick="window.endBingoGame()" class="hidden w-full bg-red-500 hover:bg-red-400 text-white font-bold py-2 rounded-xl transition text-sm">End Game (No Winner)</button>
+            </div>
+        </div>
+    </div>
+
 
     <script src="js/renderers.js"></script>
     <script src="js/helpers.js"></script>
