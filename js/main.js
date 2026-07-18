@@ -650,7 +650,6 @@ window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
 
     window.notifyMentions(text, postId);
     window.openRepliesList.add(commentId);
-    window.renderFeed(false); 
 };
 
 window.react = (postId, postAuthorId, type) => {
