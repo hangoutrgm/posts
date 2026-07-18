@@ -1168,6 +1168,77 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
+        } else if (post.gameType === 'bingo') {
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            const myEntry = post.bingoEntries && window.currentUser ? post.bingoEntries[window.currentUser.uid] : null;
+            const entryCount = post.bingoEntries ? Object.keys(post.bingoEntries).length : 0;
+            const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
+
+            // Build called items chips HTML
+            const calledChipsHtml = calledItems.length
+                ? calledItems.map(item => {
+                    const isNum = !isNaN(Number(item));
+                    const cls = isNum ? 'bg-orange-500 text-white' : 'bg-purple-600 text-white';
+                    return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold ${cls}">${item}</span>`;
+                }).join('')
+                : '<span class="text-gray-400 text-xs">None yet</span>';
+
+            if (post.bingoPhase === 'submission') {
+                const myEntryBadge = myEntry
+                    ? `<div class="mt-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full font-bold"><i class="fa-solid fa-check mr-1"></i>Your entry: ${myEntry.letters.join(' ')} | ${myEntry.numbers.join(' ')}</div>`
+                    : '';
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-purple-800 dark:text-purple-200 text-lg mb-1">🎱 BINGO!</h4>
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">Pick <strong>${post.bingoLetterCount}</strong> letters + <strong>${post.bingoNumberCount}</strong> numbers for your entry.</p>
+                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries submitted</p>
+                        ${timerHtml}
+                        ${myEntryBadge}
+                        ${!myEntry && !isHost ? `<button onclick="window.openBingoEntryModal('${post.id}')" class="mt-3 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-dice mr-2"></i>Submit My Entry</button>` : ''}
+                        ${isHost ? `<button onclick="window.openBingoSpinModal('${post.id}')" class="mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-rotate mr-2"></i>Close Submissions & Start Draw</button>` : ''}
+                    </div>`;
+            } else if (post.bingoPhase === 'drawing') {
+                const myEntryBadge = myEntry
+                    ? `<div class="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full font-bold mb-2"><i class="fa-solid fa-ticket mr-1"></i>Your entry: ${myEntry.letters.join(' ')} | ${myEntry.numbers.join(' ')}</div>`
+                    : '';
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-yellow-300 dark:border-yellow-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-orange-800 dark:text-orange-200 text-base mb-1">🎱 Draw in Progress!</h4>
+                        <p class="text-xs text-gray-500 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries</p>
+                        ${myEntryBadge}
+                        <div class="w-full mb-2">
+                            <p class="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1.5">Called: <span class="text-gray-400">(${calledItems.length} so far)</span></p>
+                            <div class="flex flex-wrap gap-1">${calledChipsHtml}</div>
+                        </div>
+                        ${isHost ? `<button onclick="window.openBingoSpinModal('${post.id}')" class="mt-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-rotate mr-2"></i>Open Spin Wheel</button>` : ''}
+                    </div>`;
+            } else if (post.bingoPhase === 'ended' || post.gameStatus === 'ended') {
+                const winnerName = post.gameWinner && post.gameWinner !== 'none'
+                    ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
+                    : null;
+                const winnerEntry = winnerName && post.bingoEntries && post.gameWinner && post.gameWinner !== 'none'
+                    ? post.bingoEntries[post.gameWinner]
+                    : null;
+                const outcomeHtml2 = winnerName
+                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm"><i class="fa-solid fa-trophy mr-1"></i>${winnerName} got BINGO!</div>
+                       ${winnerEntry ? `<p class="text-xs text-gray-400 mt-1">Winning entry: ${winnerEntry.letters.join(' ')} | ${winnerEntry.numbers.join(' ')}</p>` : ''}`
+                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm"><i class="fa-solid fa-xmark mr-1"></i>No winner this round!</div>`;
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center text-center opacity-90">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-2">🎱 Bingo Ended</h4>
+                        <div class="w-full mb-2">
+                            <p class="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">All called items:</p>
+                            <div class="flex flex-wrap gap-1 justify-center">${calledChipsHtml}</div>
+                        </div>
+                        ${outcomeHtml2}
+                    </div>`;
+            }
         }
     }
 

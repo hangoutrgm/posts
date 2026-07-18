@@ -39,6 +39,8 @@ window.openPostGameModal = () => {
     document.getElementById('game-jumbled-scrambled').value = '';
     document.getElementById('game-trivia-question').value = '';
     document.getElementById('game-trivia-answer').value = '';
+    document.getElementById('game-bingo-letters').value = '5';
+    document.getElementById('game-bingo-numbers').value = '3';
     document.getElementById('game-type').value = 'first_to_mine';
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
@@ -85,9 +87,10 @@ window.toggleGameSettings = () => {
     const mathContainer = document.getElementById('game-math-container');
     const jumbledContainer = document.getElementById('game-jumbled-container');
     const triviaContainer = document.getElementById('game-trivia-container');
+    const bingoContainer = document.getElementById('game-bingo-container');
     
-    // Timer setting is shown for last_comment, challenge, quick_challenge, math, and trivia
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia'].includes(type)) {
+    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, and bingo
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
@@ -114,6 +117,9 @@ window.toggleGameSettings = () => {
 
     if (type === 'trivia') triviaContainer.classList.remove('hidden');
     else triviaContainer.classList.add('hidden');
+
+    if (type === 'bingo') bingoContainer.classList.remove('hidden');
+    else bingoContainer.classList.add('hidden');
 };
 
 window.toggleTimerSettings = () => {
@@ -204,6 +210,8 @@ window.submitGame = async () => {
     let jumbledScrambled = null;
     let triviaQuestion = null;
     let triviaAnswer = null;
+    let bingoLetterCount = 0;
+    let bingoNumberCount = 0;
 
     if (type === 'challenge' || type === 'quick_challenge') {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
@@ -273,7 +281,14 @@ window.submitGame = async () => {
         if (!triviaQuestion || !triviaAnswer) return window.showAlert("Please provide a Trivia Question and Answer.");
     }
 
-    if (type === 'last_comment' || type === 'challenge' || type === 'quick_challenge' || type === 'math' || type === 'trivia') {
+    if (type === 'bingo') {
+        bingoLetterCount = parseInt(document.getElementById('game-bingo-letters').value) || 0;
+        bingoNumberCount = parseInt(document.getElementById('game-bingo-numbers').value) || 0;
+        if (bingoLetterCount < 1 || bingoLetterCount > 10) return window.showAlert("Letter count must be between 1 and 10.");
+        if (bingoNumberCount < 1 || bingoNumberCount > 10) return window.showAlert("Number count must be between 1 and 10.");
+    }
+
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo'].includes(type)) {
         const timerMode = document.querySelector('input[name="game-timer"]:checked').value;
         if (timerMode === 'auto') {
             const secs = parseInt(document.getElementById('game-duration').value);
@@ -300,6 +315,7 @@ window.submitGame = async () => {
     else if (type === 'math') text = `Math Challenge! Solve this: ${mathQuestion}`;
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
+    else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) + ${bingoNumberCount} number(s). Submission open!`;
 
     const postData = {
         authorId: window.currentUser.uid,
@@ -330,6 +346,12 @@ window.submitGame = async () => {
     if (jumbledScrambled) postData.gameJumbledScrambled = jumbledScrambled;
     if (triviaQuestion) postData.gameTriviaQuestion = triviaQuestion;
     if (triviaAnswer) postData.gameTriviaAnswer = triviaAnswer;
+    if (bingoLetterCount) {
+        postData.bingoLetterCount = bingoLetterCount;
+        postData.bingoNumberCount = bingoNumberCount;
+        postData.bingoPhase = 'submission';
+        postData.bingoCalledItems = [];
+    }
     if (endTime) postData.gameEndTime = endTime;
 
     try {
@@ -599,4 +621,369 @@ window.submitGameAnswer = async () => {
         console.error("Answer error:", e);
         window.showAlert("Error submitting answer: " + e.message);
     }
+};
+
+// ============================================================
+// BINGO GAME FUNCTIONS
+// ============================================================
+
+// State for bingo entry selection (local, not Firebase)
+window._bingoSelectedLetters = new Set();
+window._bingoSelectedNumbers = new Set();
+window._bingoEntryLetterCount = 0;
+window._bingoEntryNumberCount = 0;
+
+window.openBingoEntryModal = async (postId) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    
+    const snap = await get(ref(db, `community_posts/${postId}`));
+    if (!snap.exists()) return;
+    const post = snap.val();
+
+    if (post.authorId === window.currentUser.uid) return window.showAlert("You cannot enter your own Bingo game.");
+    if (post.bingoPhase !== 'submission') return window.showAlert("Submissions are now closed!");
+    if (post.gameEndTime && Date.now() >= post.gameEndTime) return window.showAlert("Submission time is up!");
+
+    // Check if already submitted
+    const myEntry = await get(ref(db, `community_posts/${postId}/bingoEntries/${window.currentUser.uid}`));
+    if (myEntry.exists()) {
+        const e = myEntry.val();
+        return window.showAlert(`You already submitted: ${e.letters.join(' ')} | ${e.numbers.join(' ')}`);
+    }
+
+    window._bingoSelectedLetters = new Set();
+    window._bingoSelectedNumbers = new Set();
+    window._bingoEntryLetterCount = post.bingoLetterCount;
+    window._bingoEntryNumberCount = post.bingoNumberCount;
+
+    document.getElementById('bingo-entry-postid').value = postId;
+    document.getElementById('bingo-entry-info').textContent =
+        `Pick ${post.bingoLetterCount} letter(s) from A–Z and ${post.bingoNumberCount} number(s) from 1–10.`;
+
+    // Build letter grid A-Z
+    const letterGrid = document.getElementById('bingo-letter-grid');
+    letterGrid.innerHTML = '';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(l => {
+        const btn = document.createElement('button');
+        btn.textContent = l;
+        btn.className = 'w-8 h-8 rounded-lg text-sm font-bold border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 transition hover:border-purple-400 hover:text-purple-600';
+        btn.onclick = () => window.toggleBingoItem(l, 'letter', btn);
+        letterGrid.appendChild(btn);
+    });
+
+    // Build number grid 1-10
+    const numberGrid = document.getElementById('bingo-number-grid');
+    numberGrid.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+        btn.className = 'w-9 h-9 rounded-lg text-sm font-bold border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 transition hover:border-blue-400 hover:text-blue-600';
+        btn.onclick = () => window.toggleBingoItem(String(i), 'number', btn);
+        numberGrid.appendChild(btn);
+    }
+
+    window.updateBingoSelectionCounters();
+    document.getElementById('bingo-entry-modal').classList.remove('hidden');
+};
+
+window.toggleBingoItem = (item, type, btn) => {
+    const isLetter = type === 'letter';
+    const set = isLetter ? window._bingoSelectedLetters : window._bingoSelectedNumbers;
+    const maxCount = isLetter ? window._bingoEntryLetterCount : window._bingoEntryNumberCount;
+
+    if (set.has(item)) {
+        set.delete(item);
+        btn.className = btn.className.replace(/border-purple-500|border-blue-500|bg-purple-100|bg-blue-100|dark:bg-purple-900\/40|dark:bg-blue-900\/40|text-purple-700|text-blue-700/g, '');
+        btn.classList.add('border-gray-200', 'dark:border-slate-600', 'bg-white', 'dark:bg-slate-700', 'text-gray-700', 'dark:text-gray-200');
+    } else {
+        if (set.size >= maxCount) return window.showAlert(`You can only pick ${maxCount} ${type}(s).`);
+        set.add(item);
+        if (isLetter) {
+            btn.className = 'w-8 h-8 rounded-lg text-sm font-bold border-2 border-purple-500 bg-purple-100 dark:bg-purple-900/40 text-purple-700 transition';
+        } else {
+            btn.className = 'w-9 h-9 rounded-lg text-sm font-bold border-2 border-blue-500 bg-blue-100 dark:bg-blue-900/40 text-blue-700 transition';
+        }
+    }
+    window.updateBingoSelectionCounters();
+};
+
+window.updateBingoSelectionCounters = () => {
+    document.getElementById('bingo-letter-counter').textContent =
+        `(${window._bingoSelectedLetters.size}/${window._bingoEntryLetterCount})`;
+    document.getElementById('bingo-number-counter').textContent =
+        `(${window._bingoSelectedNumbers.size}/${window._bingoEntryNumberCount})`;
+
+    const ready = window._bingoSelectedLetters.size === window._bingoEntryLetterCount
+        && window._bingoSelectedNumbers.size === window._bingoEntryNumberCount;
+    document.getElementById('bingo-submit-btn').disabled = !ready;
+};
+
+window.submitBingoEntry = async () => {
+    const postId = document.getElementById('bingo-entry-postid').value;
+    if (!window.currentUser || !postId) return;
+
+    const letters = [...window._bingoSelectedLetters].sort();
+    const numbers = [...window._bingoSelectedNumbers].map(Number).sort((a, b) => a - b).map(String);
+    const entryKey = letters.join('') + '-' + numbers.join('');
+
+    const postRef = ref(db, `community_posts/${postId}`);
+
+    try {
+        // Re-check phase and deadline
+        const snap = await get(postRef);
+        const post = snap.val();
+        if (post.bingoPhase !== 'submission') return window.showAlert("Submissions are closed!");
+        if (post.gameEndTime && Date.now() >= post.gameEndTime) return window.showAlert("Time's up!");
+
+        // Check for duplicate entry key
+        const dupSnap = await get(ref(db, `community_posts/${postId}/bingoEntryKeys/${entryKey}`));
+        if (dupSnap.exists()) return window.showAlert("That combination is already taken! Try a different one.");
+
+        // Check if already submitted
+        const mySnap = await get(ref(db, `community_posts/${postId}/bingoEntries/${window.currentUser.uid}`));
+        if (mySnap.exists()) return window.showAlert("You already submitted an entry!");
+
+        // Write entry and key
+        await update(ref(db, `community_posts/${postId}`), {
+            [`bingoEntries/${window.currentUser.uid}`]: { letters, numbers, entryKey, timestamp: Date.now() },
+            [`bingoEntryKeys/${entryKey}`]: window.currentUser.uid
+        });
+
+        document.getElementById('bingo-entry-modal').classList.add('hidden');
+        window.showAlert(`✅ Entry submitted: ${letters.join(' ')} | ${numbers.join(' ')}`);
+    } catch(e) {
+        console.error("Bingo entry error:", e);
+        window.showAlert("Error submitting entry: " + e.message);
+    }
+};
+
+window.closeBingoSubmissions = async (postId) => {
+    await update(ref(db, `community_posts/${postId}`), { bingoPhase: 'drawing' });
+};
+
+// ---- SPIN WHEEL ----
+
+window._bingoWheelItems = [];
+window._bingoSpinning = false;
+window._bingoCurrentAngle = 0;
+
+const LETTER_COLORS = ['#8B5CF6', '#7C3AED', '#6D28D9', '#A78BFA'];
+const NUMBER_COLORS = ['#F59E0B', '#D97706', '#B45309', '#FCD34D'];
+
+window.drawBingoWheel = (angle) => {
+    const canvas = document.getElementById('bingo-wheel-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const items = window._bingoWheelItems;
+    if (!items.length) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#6B7280';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No items left!', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+
+    const W = canvas.width, H = canvas.height;
+    const cx = W / 2, cy = H / 2, r = W / 2 - 4;
+    const sliceAngle = (2 * Math.PI) / items.length;
+
+    ctx.clearRect(0, 0, W, H);
+
+    items.forEach((item, i) => {
+        const startAngle = angle + i * sliceAngle;
+        const endAngle = startAngle + sliceAngle;
+        const isNumber = !isNaN(Number(item));
+        const colors = isNumber ? NUMBER_COLORS : LETTER_COLORS;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Label
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(startAngle + sliceAngle / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = 'white';
+        const fontSize = items.length > 20 ? 9 : items.length > 15 ? 11 : 13;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillText(item, r - 4, 4);
+        ctx.restore();
+    });
+
+    // Center circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, 18, 0, 2 * Math.PI);
+    ctx.fillStyle = '#1E293B';
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+};
+
+window.openBingoSpinModal = async (postId) => {
+    const snap = await get(ref(db, `community_posts/${postId}`));
+    if (!snap.exists()) return;
+    const post = snap.val();
+
+    // Close submissions if still open
+    if (post.bingoPhase === 'submission') {
+        await update(ref(db, `community_posts/${postId}`), { bingoPhase: 'drawing' });
+    }
+
+    const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
+    const allItems = [
+        ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+        ...Array.from({length: 10}, (_, i) => String(i + 1))
+    ];
+    window._bingoWheelItems = allItems.filter(i => !calledItems.includes(i));
+    window._bingoSpinning = false;
+    window._bingoCurrentAngle = 0;
+    window._bingoSpinPostId = postId;
+
+    document.getElementById('bingo-spin-postid').value = postId;
+    document.getElementById('bingo-spin-result').textContent = '';
+    document.getElementById('bingo-spin-btn').disabled = false;
+    document.getElementById('bingo-winner-announce').classList.add('hidden');
+    document.getElementById('bingo-end-btn').classList.remove('hidden');
+
+    // Render called items chips
+    window.renderBingoCalledChips(calledItems);
+    document.getElementById('bingo-pool-count').textContent =
+        `${window._bingoWheelItems.length} items remaining in pool`;
+
+    window.drawBingoWheel(0);
+    document.getElementById('bingo-spin-modal').classList.remove('hidden');
+};
+
+window.renderBingoCalledChips = (calledItems) => {
+    const container = document.getElementById('bingo-called-display');
+    if (!container) return;
+    container.innerHTML = calledItems.map(item => {
+        const isNum = !isNaN(Number(item));
+        const cls = isNum
+            ? 'bg-orange-500 text-white'
+            : 'bg-purple-600 text-white';
+        return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold ${cls}">${item}</span>`;
+    }).join('');
+};
+
+window.spinBingoWheel = () => {
+    if (window._bingoSpinning || !window._bingoWheelItems.length) return;
+    window._bingoSpinning = true;
+    document.getElementById('bingo-spin-btn').disabled = true;
+    document.getElementById('bingo-spin-result').textContent = '';
+
+    const items = window._bingoWheelItems;
+    const sliceAngle = (2 * Math.PI) / items.length;
+    // Pick a random winner index
+    const winnerIndex = Math.floor(Math.random() * items.length);
+    // Needle is at top (−π/2). We want winnerIndex's slice center to land there.
+    // sliceCenter at winnerIndex = currentAngle + winnerIndex * sliceAngle + sliceAngle/2
+    // We want that = -π/2 + 2πk for some large integer k (many full rotations)
+    const fullRotations = (5 + Math.floor(Math.random() * 4)) * 2 * Math.PI; // 5-8 full spins
+    const targetAngle = -Math.PI / 2 - (winnerIndex * sliceAngle + sliceAngle / 2) + fullRotations;
+    const startAngle = window._bingoCurrentAngle;
+    const duration = 4000; // ms
+    const startTime = performance.now();
+
+    const animate = (now) => {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - t, 3);
+        const currentAngle = startAngle + (targetAngle - startAngle) * eased;
+
+        window.drawBingoWheel(currentAngle);
+
+        if (t < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            window._bingoCurrentAngle = currentAngle;
+            window._bingoSpinning = false;
+            const winner = items[winnerIndex];
+            window.onBingoItemCalled(winner);
+        }
+    };
+    requestAnimationFrame(animate);
+};
+
+window.onBingoItemCalled = async (item) => {
+    const postId = window._bingoSpinPostId;
+    const resultEl = document.getElementById('bingo-spin-result');
+    const isNum = !isNaN(Number(item));
+    resultEl.innerHTML = `<span class="px-4 py-1 rounded-full ${isNum ? 'bg-orange-500' : 'bg-purple-600'} text-white text-2xl font-black shadow-lg">${item}</span>`;
+
+    // Update Firebase: append to bingoCalledItems
+    const snap = await get(ref(db, `community_posts/${postId}`));
+    const post = snap.val();
+    const calledItems = Array.isArray(post.bingoCalledItems) ? [...post.bingoCalledItems] : [];
+    calledItems.push(item);
+
+    await update(ref(db, `community_posts/${postId}`), { bingoCalledItems: calledItems });
+
+    // Update local wheel
+    window._bingoWheelItems = window._bingoWheelItems.filter(i => i !== item);
+    window.renderBingoCalledChips(calledItems);
+    document.getElementById('bingo-pool-count').textContent =
+        `${window._bingoWheelItems.length} items remaining in pool`;
+
+    // Check for winner
+    const winner = window.checkBingoWinner(post.bingoEntries || {}, calledItems);
+    if (winner) {
+        document.getElementById('bingo-winner-announce').textContent =
+            `🏆 BINGO! ${window.globalUsersCache[winner]?.name || 'Someone'} wins!`;
+        document.getElementById('bingo-winner-announce').classList.remove('hidden');
+        document.getElementById('bingo-spin-btn').disabled = true;
+        document.getElementById('bingo-end-btn').classList.add('hidden');
+
+        await update(ref(db, `community_posts/${postId}`), {
+            gameStatus: 'ended',
+            gameWinner: winner,
+            bingoPhase: 'ended',
+            locked: true
+        });
+        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        if (lbPoints > 0) update(ref(db, `users/${winner}`), { lbPoints: increment(lbPoints) });
+        const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+        if (hostLbReward > 0 && post.authorId) {
+            update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+        }
+    } else {
+        document.getElementById('bingo-spin-btn').disabled = false;
+    }
+
+    if (!window._bingoWheelItems.length && !winner) {
+        document.getElementById('bingo-spin-result').innerHTML += `<p class="text-xs text-red-500 mt-1">All items called — no winner found!</p>`;
+        document.getElementById('bingo-spin-btn').disabled = true;
+    }
+};
+
+window.checkBingoWinner = (entries, calledItems) => {
+    const calledSet = new Set(calledItems);
+    for (const uid in entries) {
+        const entry = entries[uid];
+        const allCalled = [...entry.letters, ...entry.numbers].every(i => calledSet.has(i));
+        if (allCalled) return uid;
+    }
+    return null;
+};
+
+window.endBingoGame = async () => {
+    const postId = document.getElementById('bingo-spin-postid').value;
+    if (!postId) return;
+    await update(ref(db, `community_posts/${postId}`), {
+        gameStatus: 'ended',
+        gameWinner: 'none',
+        bingoPhase: 'ended',
+        locked: true
+    });
+    document.getElementById('bingo-spin-modal').classList.add('hidden');
+    window.showAlert("Bingo game ended with no winner.");
 };
