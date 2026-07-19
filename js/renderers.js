@@ -1151,7 +1151,11 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameFlagName}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the country name, e.g. "France"</p>`;
             } else if (post.gameType === 'math') {
-                displayContent = `<div class="text-3xl font-bold font-mono text-blue-700 dark:text-blue-300 mb-2">${post.gameMathQuestion} = ?</div>`;
+                // Only append "= ?" if the question doesn't already contain it (algebra questions include it)
+                const mathDisplay = post.gameMathQuestion.includes('=') 
+                    ? post.gameMathQuestion 
+                    : `${post.gameMathQuestion} = ?`;
+                displayContent = `<div class="text-3xl font-bold font-mono text-blue-700 dark:text-blue-300 mb-2">${mathDisplay}</div>`;
                 gameTitle = 'Solve the math problem!';
                 if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMathAnswer}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the number</p>`;
@@ -1310,7 +1314,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} players joined</p>
                         ${hasJoined 
                             ? `<div class="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full font-bold mb-2"><i class="fa-solid fa-check mr-1"></i>You joined!</div>`
-                            : `<button onclick="window.joinSpinNames('${post.id}')" class="mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-right-to-bracket mr-2"></i>Join Spin</button>`
+                            : (!isHost ? `<button onclick="window.joinSpinNames('${post.id}')" class="mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-right-to-bracket mr-2"></i>Join Spin</button>` : `<div class="text-xs text-gray-400 italic">You are the host</div>`)
                         }
                         ${isHost ? `<button onclick="window.closeSpinNames('${post.id}')" class="mt-3 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-2 px-6 rounded-full shadow transition text-xs"><i class="fa-solid fa-play mr-2"></i>Close Submissions & Start Draw</button>` : ''}
                     </div>`;
@@ -1363,11 +1367,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone') : 'Someone';
             gameHtml = `
                 <div class="mt-3 mb-2 p-4 bg-gradient-to-r from-pink-100 to-rose-100 dark:from-pink-900/40 dark:to-rose-900/40 rounded-xl border-2 border-pink-300 dark:border-pink-700/50 flex flex-col items-center text-center shadow-sm">
-                    <div class="text-4xl mb-2 animate-bounce">🎁</div>
-                    <h4 class="font-black text-pink-800 dark:text-pink-300 text-lg mb-1">NCL Awarded!</h4>
-                    <p class="text-sm text-pink-900 dark:text-pink-200"><strong>${winnerName}</strong> instantly received:</p>
-                    <div class="mt-2 bg-white dark:bg-slate-800/80 px-4 py-2 rounded-lg font-bold text-pink-600 dark:text-pink-400 shadow-inner">
-                        ${post.gamePrize} ${post.gameLbPoints > 0 ? `+ ${post.gameLbPoints} LB Points` : ''}
+                    <div class="text-3xl mb-2">🎁</div>
+                    <h4 class="font-black text-pink-800 dark:text-pink-300 text-lg mb-1">ncl @${winnerName}</h4>
+                    <div class="mt-2 bg-white dark:bg-slate-800/80 px-4 py-2 rounded-lg font-bold text-pink-600 dark:text-pink-400 shadow-inner text-sm">
+                        ${post.gamePrize}
                     </div>
                 </div>`;
         }

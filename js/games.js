@@ -208,6 +208,16 @@ window.toggleGameSettings = () => {
 
     if (type === 'ncl') nclContainer.classList.remove('hidden');
     else nclContainer.classList.add('hidden');
+
+    // Hide LB Points field for NCL (disabled for now)
+    const lbPointsLabel = document.getElementById('game-lb-points-label');
+    const lbPointsInput = document.getElementById('game-lb-points');
+    if (type === 'ncl') {
+        if (lbPointsLabel) lbPointsLabel.closest('div').classList.add('hidden');
+        if (lbPointsInput) lbPointsInput.value = '0';
+    } else {
+        if (lbPointsLabel) lbPointsLabel.closest('div').classList.remove('hidden');
+    }
 };
 
 window.toggleSpinNamesWinners = () => {
@@ -445,8 +455,12 @@ window.submitGame = async () => {
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
     else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) (A–${bingoMaxLetter}) + ${bingoNumberCount} number(s) (1–${bingoMaxNumber}). Submission open!`;
-    else if (type === 'spin_names') text = `🎡 Spin the Names! Click Join to enter for a chance to win!`;
-    else if (type === 'ncl') text = `🎁 NCL Awarded! @${targetUserName} instantly received the prize: ${prize}!`;
+    else if (type === 'spin_names') {
+        // Build caption with spin numbers and prizes
+        const prizeLines = spinNamesPrizes.map(p => `Spin #${p.target}: ${p.prize}`).join(' | ');
+        text = `🎡 Spin the Names! Join for a chance to win! — ${prizeLines}`;
+    }
+    else if (type === 'ncl') text = `ncl - ${prize} - @${targetUserName}. Congrats!! 🎉`;
 
     const postData = {
         authorId: window.currentUser.uid,
@@ -495,30 +509,32 @@ window.submitGame = async () => {
     try {
         const newPostRef = push(ref(db, 'community_posts'));
         await set(newPostRef, postData);
-        // Send a notification to the target user
-        if (targetUserUid) {
-            const notifRef = push(ref(db, `users/${targetUserUid}/notifications`));
-            await set(notifRef, {
-                type: 'game_challenge',
-                fromUid: window.currentUser.uid,
-                fromName: window.currentUser.name,
-                postId: newPostRef.key,
-                timestamp: Date.now(),
-                read: false,
-                message: type === 'ncl' ? `awarded you ${prize} via NCL!` : `challenged you to a game!`
-            });
-        }
-        
-        if (type === 'ncl' && lbPointsReward > 0) {
-            update(ref(db, `users/${targetUserUid}`), { lbPoints: increment(lbPointsReward) });
-        }
-
+        // Close modal first — post was created successfully
         window.closePostGameModal();
-        window.renderProfileData(false);
+
+        // Send notification separately so failures here don't show a fake error
+        if (targetUserUid) {
+            try {
+                const notifRef = push(ref(db, `users/${targetUserUid}/notifications`));
+                await set(notifRef, {
+                    type: 'game_challenge',
+                    fromUid: window.currentUser.uid,
+                    fromName: window.currentUser.name,
+                    postId: newPostRef.key,
+                    timestamp: Date.now(),
+                    read: false,
+                    message: type === 'ncl' ? `awarded you ${prize} via ncl!` : `challenged you to a game!`
+                });
+            } catch(notifErr) {
+                console.warn('Notification write failed (non-critical):', notifErr);
+            }
+        }
     } catch(e) {
         console.error("Error posting game:", e);
         window.showAlert("Failed to post game.");
     }
+    // Always attempt re-render after modal closes (outside try so errors above don't block)
+    if (typeof window.renderProfileData === 'function') window.renderProfileData(false);
 };
 
 window.mineGame = async (postId) => {
