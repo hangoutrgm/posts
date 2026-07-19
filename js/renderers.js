@@ -296,6 +296,7 @@ window.renderFeed = (resetLimit = true) => {
         }
 
         window.renderPostList(feed, [singlePost], 'main', 'isolated');
+        if (window.processBingoAnimations) window.processBingoAnimations();
         return;
     }
     
