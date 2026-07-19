@@ -842,7 +842,7 @@ window.openBingoEntryModal = async (postId) => {
         const btn = document.createElement('button');
         btn.textContent = l;
         btn.className = 'w-8 h-8 rounded-lg text-sm font-bold border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 transition hover:border-purple-400 hover:text-purple-600';
-        btn.onclick = (e) => window.toggleBingoItem(e.target, l, 'letter');
+        btn.onclick = () => window.toggleBingoItem(l, 'letter', btn);
         letterGrid.appendChild(btn);
     });
 
@@ -853,7 +853,7 @@ window.openBingoEntryModal = async (postId) => {
         const btn = document.createElement('button');
         btn.textContent = i;
         btn.className = 'w-9 h-9 rounded-lg text-sm font-bold border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-gray-200 transition hover:border-blue-400 hover:text-blue-600';
-        btn.onclick = (e) => window.toggleBingoItem(e.target, String(i), 'number');
+        btn.onclick = () => window.toggleBingoItem(String(i), 'number', btn);
         numberGrid.appendChild(btn);
     }
 
