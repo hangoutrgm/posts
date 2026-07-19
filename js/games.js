@@ -1068,7 +1068,7 @@ window.processBingoAnimations = () => {
         if (post.gameType === 'spin_names') {
             const canvas = document.getElementById(`spin-names-wheel-${post.id}`);
             if (!canvas) return;
-            const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+            const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
             const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
             const winnerUids = existingWinners.map(w => w.uid);
             const remaining = joined.filter(u => !winnerUids.includes(u.uid));
@@ -1196,11 +1196,18 @@ window.joinSpinNames = async (postId) => {
     if (!snap.exists()) return;
     const post = snap.val();
     if (post.spinNamesPhase !== 'submission') return window.showAlert('Submissions are closed.');
-    const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
-    if (joined.some(u => u.uid === window.currentUser.uid)) return window.showAlert('You have already joined!');
+    if (post.authorId === window.currentUser.uid) return window.showAlert('You are the host and cannot join your own game.');
+
+    // Check if already joined by reading their specific entry
+    const existingSnap = await get(ref(db, `community_posts/${postId}/spinNamesJoined/${window.currentUser.uid}`));
+    if (existingSnap.exists()) return window.showAlert('You have already joined!');
+
     const shortName = (window.globalUsersCache?.[window.currentUser.uid]?.name || window.currentUser.name || 'Unknown').substring(0, 14);
-    const newJoined = [...joined, { uid: window.currentUser.uid, name: shortName }];
-    await update(ref(db, `community_posts/${postId}`), { spinNamesJoined: newJoined });
+    // Write to per-user path — allowed by the spinNamesJoined/$uid Firebase rule
+    await set(ref(db, `community_posts/${postId}/spinNamesJoined/${window.currentUser.uid}`), {
+        uid: window.currentUser.uid,
+        name: shortName
+    });
 };
 
 window.closeSpinNames = async (postId) => {
@@ -1209,7 +1216,7 @@ window.closeSpinNames = async (postId) => {
     if (!snap.exists()) return;
     const post = snap.val();
     if (post.authorId !== window.currentUser.uid) return;
-    const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+    const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
     if (joined.length < 2) return window.showAlert('Need at least 2 players to start the draw.');
     await update(ref(db, `community_posts/${postId}`), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
 };
@@ -1225,7 +1232,7 @@ window.startSpinNamesWheel = async (postId) => {
     const btn = document.getElementById(`spin-names-btn-${postId}`);
     if (btn) btn.disabled = true;
 
-    const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+    const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
     const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
     const winnerUids = existingWinners.map(w => w.uid);
 

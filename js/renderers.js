@@ -1299,7 +1299,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             }
         } else if (post.gameType === 'spin_names') {
             const isHost = window.currentUser && window.currentUser.uid === post.authorId;
-            const joinedArray = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+            const joinedArray = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
             const hasJoined = window.currentUser ? joinedArray.some(u => u.uid === window.currentUser.uid) : false;
             const entryCount = joinedArray.length;
             
