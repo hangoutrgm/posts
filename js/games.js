@@ -8,7 +8,20 @@ const POPULAR_EMOJIS = [
     "🤡 Clown Face", "👻 Ghost", "👽 Alien", "🤖 Robot", "💩 Pile of Poo",
     "🔥 Fire", "✨ Sparkles", "🌟 Glowing Star", "💯 Hundred Points", "❤️ Red Heart",
     "🍎 Red Apple", "🍔 Hamburger", "🍕 Pizza", "🍺 Beer Mug", "🚗 Automobile",
-    "⚽ Soccer Ball", "🏀 Basketball", "🎮 Video Game", "📱 Mobile Phone", "💻 Laptop"
+    "⚽ Soccer Ball", "🏀 Basketball", "🎮 Video Game", "📱 Mobile Phone", "💻 Laptop",
+    "🥺 Pleading Face", "😭 Loudly Crying Face", "😜 Winking Face with Tongue", "😇 Smiling Face with Halo",
+    "🤬 Face with Symbols on Mouth", "🤯 Exploding Head", "🥶 Cold Face", "🥵 Hot Face",
+    "😈 Smiling Face with Horns", "💀 Skull", "👺 Goblin", "👹 Ogre", "👾 Alien Monster",
+    "🎃 Jack-O-Lantern", "🐱 Cat Face", "🐶 Dog Face", "🦊 Fox", "🦄 Unicorn",
+    "🦋 Butterfly", "🦖 T-Rex", "🐙 Octopus", "🍉 Watermelon", "🍓 Strawberry",
+    "🥑 Avocado", "🍩 Doughnut", "🍟 French Fries", "🌮 Taco", "🍣 Sushi",
+    "🍦 Ice Cream", "☕ Hot Beverage", "🍷 Wine Glass", "🚀 Rocket", "✈️ Airplane",
+    "🚁 Helicopter", "🚢 Ship", "🎡 Ferris Wheel", "⛺ Tent", "⛰️ Mountain",
+    "🏖️ Beach with Umbrella", "🗺️ World Map", "⌚ Watch", "💎 Gem Stone", "💡 Light Bulb",
+    "📚 Books", "🎉 Party Popper", "🎈 Balloon", "🎁 Wrapped Gift", "🧸 Teddy Bear",
+    "🎵 Musical Note", "🎸 Guitar", "📸 Camera", "🎬 Clapper Board", "🎨 Palette",
+    "🏆 Trophy", "🥇 1st Place Medal", "🎲 Game Die", "🧩 Puzzle Piece", "🥊 Martial Arts Uniform",
+    "✅ Check Mark Button", "❌ Cross Mark", "⚠️ Warning", "🛑 Stop Sign", "⏳ Hourglass"
 ];
 
 const POPULAR_FLAGS = [
@@ -18,8 +31,75 @@ const POPULAR_FLAGS = [
     { code: 'br', name: 'Brazil' }, { code: 'mx', name: 'Mexico' }, { code: 'in', name: 'India' },
     { code: 'cn', name: 'China' }, { code: 'kr', name: 'South Korea' }, { code: 'ru', name: 'Russia' },
     { code: 'ph', name: 'Philippines' }, { code: 'sg', name: 'Singapore' }, { code: 'my', name: 'Malaysia' },
-    { code: 'id', name: 'Indonesia' }, { code: 'th', name: 'Thailand' }
+    { code: 'id', name: 'Indonesia' }, { code: 'th', name: 'Thailand' }, { code: 'vn', name: 'Vietnam' },
+    { code: 'ar', name: 'Argentina' }, { code: 'za', name: 'South Africa' }, { code: 'ng', name: 'Nigeria' },
+    { code: 'eg', name: 'Egypt' }, { code: 'ke', name: 'Kenya' }, { code: 'nz', name: 'New Zealand' },
+    { code: 'nl', name: 'Netherlands' }, { code: 'se', name: 'Sweden' }, { code: 'no', name: 'Norway' },
+    { code: 'dk', name: 'Denmark' }, { code: 'fi', name: 'Finland' }, { code: 'ch', name: 'Switzerland' },
+    { code: 'at', name: 'Austria' }, { code: 'be', name: 'Belgium' }, { code: 'pt', name: 'Portugal' },
+    { code: 'gr', name: 'Greece' }, { code: 'tr', name: 'Turkey' }, { code: 'sa', name: 'Saudi Arabia' },
+    { code: 'ae', name: 'United Arab Emirates' }, { code: 'il', name: 'Israel' }, { code: 'pl', name: 'Poland' },
+    { code: 'ua', name: 'Ukraine' }, { code: 'ie', name: 'Ireland' }, { code: 'cz', name: 'Czechia' },
+    { code: 'hu', name: 'Hungary' }, { code: 'ro', name: 'Romania' }, { code: 'cl', name: 'Chile' },
+    { code: 'co', name: 'Colombia' }, { code: 'pe', name: 'Peru' }, { code: 've', name: 'Venezuela' },
+    { code: 'pk', name: 'Pakistan' }, { code: 'bd', name: 'Bangladesh' }, { code: 'lk', name: 'Sri Lanka' },
+    { code: 'np', name: 'Nepal' }, { code: 'mm', name: 'Myanmar' }, { code: 'kh', name: 'Cambodia' },
+    { code: 'tw', name: 'Taiwan' }, { code: 'hk', name: 'Hong Kong' }, { code: 'ma', name: 'Morocco' },
+    { code: 'dz', name: 'Algeria' }, { code: 'gh', name: 'Ghana' }, { code: 'tz', name: 'Tanzania' },
+    { code: 'et', name: 'Ethiopia' }, { code: 'ug', name: 'Uganda' }, { code: 'iq', name: 'Iraq' },
+    { code: 'ir', name: 'Iran' }, { code: 'sy', name: 'Syria' }, { code: 'lb', name: 'Lebanon' },
+    { code: 'jo', name: 'Jordan' }, { code: 'kw', name: 'Kuwait' }, { code: 'qa', name: 'Qatar' },
+    { code: 'cu', name: 'Cuba' }, { code: 'jm', name: 'Jamaica' }, { code: 'do', name: 'Dominican Republic' },
+    { code: 'ht', name: 'Haiti' }, { code: 'pa', name: 'Panama' }, { code: 'cr', name: 'Costa Rica' },
+    { code: 'gt', name: 'Guatemala' }, { code: 'hn', name: 'Honduras' }, { code: 'sv', name: 'El Salvador' }
 ];
+
+window.generateRandomMath = () => {
+    const isAlgebra = Math.random() > 0.5;
+    let question, answer;
+
+    if (isAlgebra) {
+        // Simple algebra like ax + b = c, find x
+        const a = Math.floor(Math.random() * 5) + 1; // 1 to 5
+        const x = Math.floor(Math.random() * 10) + 1; // 1 to 10
+        const b = Math.floor(Math.random() * 20) + 1; // 1 to 20
+        const isPlus = Math.random() > 0.5;
+        
+        if (isPlus) {
+            const c = (a * x) + b;
+            question = a === 1 ? `x + ${b} = ${c}, x = ?` : `${a}x + ${b} = ${c}, x = ?`;
+        } else {
+            const c = (a * x) - b;
+            question = a === 1 ? `x - ${b} = ${c}, x = ?` : `${a}x - ${b} = ${c}, x = ?`;
+        }
+        answer = x.toString();
+    } else {
+        // Basic arithmetic
+        const ops = ['+', '-', '*'];
+        const op = ops[Math.floor(Math.random() * ops.length)];
+        let num1, num2;
+        
+        if (op === '*') {
+            num1 = Math.floor(Math.random() * 12) + 2;
+            num2 = Math.floor(Math.random() * 12) + 2;
+        } else {
+            num1 = Math.floor(Math.random() * 50) + 10;
+            num2 = Math.floor(Math.random() * 50) + 10;
+            if (op === '-' && num2 > num1) {
+                // Ensure positive answer for subtraction
+                const temp = num1;
+                num1 = num2;
+                num2 = temp;
+            }
+        }
+        
+        question = `${num1} ${op} ${num2}`;
+        answer = eval(question).toString();
+    }
+
+    document.getElementById('game-math-question').value = question;
+    document.getElementById('game-math-answer').value = answer;
+};
 
 window.openPostGameModal = () => {
     if (!window.currentUser) return window.showAlert("Please sign in to host a game.");
@@ -88,16 +168,18 @@ window.toggleGameSettings = () => {
     const jumbledContainer = document.getElementById('game-jumbled-container');
     const triviaContainer = document.getElementById('game-trivia-container');
     const bingoContainer = document.getElementById('game-bingo-container');
+    const spinNamesContainer = document.getElementById('game-spin-names-container');
+    const nclContainer = document.getElementById('game-ncl-container');
     
-    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, and bingo
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo'].includes(type)) {
+    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, and spin_names
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
         settingsDiv.classList.add('hidden');
     }
 
-    if (type === 'challenge' || type === 'quick_challenge') targetUserContainer.classList.remove('hidden');
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl') targetUserContainer.classList.remove('hidden');
     else targetUserContainer.classList.add('hidden');
 
     if (type === 'challenge') challengeTargets.classList.remove('hidden');
@@ -120,6 +202,18 @@ window.toggleGameSettings = () => {
 
     if (type === 'bingo') bingoContainer.classList.remove('hidden');
     else bingoContainer.classList.add('hidden');
+
+    if (type === 'spin_names') spinNamesContainer.classList.remove('hidden');
+    else spinNamesContainer.classList.add('hidden');
+
+    if (type === 'ncl') nclContainer.classList.remove('hidden');
+    else nclContainer.classList.add('hidden');
+};
+
+window.toggleSpinNamesWinners = () => {
+    const count = parseInt(document.getElementById('game-spin-names-count').value);
+    document.getElementById('spin-winner-2').classList.toggle('hidden', count < 2);
+    document.getElementById('spin-winner-3').classList.toggle('hidden', count < 3);
 };
 
 window.toggleTimerSettings = () => {
@@ -192,8 +286,10 @@ window.scrambleWord = () => {
 window.submitGame = async () => {
     if (!window.currentUser) return;
     
+    const type = document.getElementById('game-type').value;
     const prize = document.getElementById('game-prize').value.trim();
-    if (!prize) return window.showAlert("Please enter a prize amount.");
+    // spin_names uses per-winner prizes; ncl prize is set in the global field
+    if (!prize && type !== 'spin_names') return window.showAlert("Please enter a prize amount.");
 
     const maxLbAllowed = window.siteSettings.maxLbPointsPrize ?? 5;
     const lbPointsReward = parseInt(document.getElementById('game-lb-points').value) || 0;
@@ -201,7 +297,7 @@ window.submitGame = async () => {
         return window.showAlert(`LB Points reward must be between 0 and ${maxLbAllowed}.`);
     }
 
-    const type = document.getElementById('game-type').value;
+    // type already read above
     let endTime = null;
     let targetUserUid = null;
     let targetReacts = 0;
@@ -220,8 +316,10 @@ window.submitGame = async () => {
     let bingoNumberCount = 0;
     let bingoMaxLetter = 'Z';
     let bingoMaxNumber = 10;
+    let spinNamesWinnersCount = 0;
+    let spinNamesPrizes = [];
 
-    if (type === 'challenge' || type === 'quick_challenge') {
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl') {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
         if (!targetNameInput) return window.showAlert("Please search and select a target user.");
         // Resolve name -> UID
@@ -309,7 +407,17 @@ window.submitGame = async () => {
         }
     }
 
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo'].includes(type)) {
+    if (type === 'spin_names') {
+        spinNamesWinnersCount = parseInt(document.getElementById('game-spin-names-count').value) || 1;
+        for (let i = 1; i <= spinNamesWinnersCount; i++) {
+            const spinTarget = parseInt(document.getElementById(`spin-target-${i}`).value);
+            const spinPrize = document.getElementById(`spin-prize-${i}`).value.trim();
+            if (!spinTarget || !spinPrize) return window.showAlert(`Please fill out the Spin # and Prize for Winner ${i}.`);
+            spinNamesPrizes.push({ target: spinTarget, prize: spinPrize, wonBy: null });
+        }
+    }
+
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names'].includes(type)) {
         const timerMode = document.querySelector('input[name="game-timer"]:checked').value;
         if (timerMode === 'auto') {
             const secs = parseInt(document.getElementById('game-duration').value);
@@ -337,6 +445,8 @@ window.submitGame = async () => {
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
     else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) (A–${bingoMaxLetter}) + ${bingoNumberCount} number(s) (1–${bingoMaxNumber}). Submission open!`;
+    else if (type === 'spin_names') text = `🎡 Spin the Names! Click Join to enter for a chance to win!`;
+    else if (type === 'ncl') text = `🎁 NCL Awarded! @${targetUserName} instantly received the prize: ${prize}!`;
 
     const postData = {
         authorId: window.currentUser.uid,
@@ -348,8 +458,8 @@ window.submitGame = async () => {
         gameType: type,
         gamePrize: prize,
         gameLbPoints: lbPointsReward,
-        gameStatus: 'active',
-        gameWinner: null
+        gameStatus: type === 'ncl' ? 'completed' : 'active',
+        gameWinner: type === 'ncl' ? targetUserUid : null
     };
 
     if (targetUserUid) postData.gameTargetUser = targetUserUid;
@@ -375,6 +485,11 @@ window.submitGame = async () => {
         postData.bingoPhase = 'submission';
         postData.bingoCalledItems = [];
     }
+    if (spinNamesWinnersCount > 0) {
+        postData.spinNamesWinnersCount = spinNamesWinnersCount;
+        postData.spinNamesPrizes = spinNamesPrizes;
+        postData.spinNamesPhase = 'submission';
+    }
     if (endTime) postData.gameEndTime = endTime;
 
     try {
@@ -385,12 +500,19 @@ window.submitGame = async () => {
             const notifRef = push(ref(db, `users/${targetUserUid}/notifications`));
             await set(notifRef, {
                 type: 'game_challenge',
-                sourceUid: window.currentUser.uid,
+                fromUid: window.currentUser.uid,
+                fromName: window.currentUser.name,
                 postId: newPostRef.key,
                 timestamp: Date.now(),
-                read: false
+                read: false,
+                message: type === 'ncl' ? `awarded you ${prize} via NCL!` : `challenged you to a game!`
             });
         }
+        
+        if (type === 'ncl' && lbPointsReward > 0) {
+            update(ref(db, `users/${targetUserUid}`), { lbPoints: increment(lbPointsReward) });
+        }
+
         window.closePostGameModal();
         window.renderProfileData(false);
     } catch(e) {
@@ -925,6 +1047,49 @@ window.processBingoAnimations = () => {
 
     window._bingoRenderQueue.forEach(q => {
         const post = q.postData;
+
+        // Handle Spin the Names wheel
+        if (post.gameType === 'spin_names') {
+            const canvas = document.getElementById(`spin-names-wheel-${post.id}`);
+            if (!canvas) return;
+            const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+            const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
+            const winnerUids = existingWinners.map(w => w.uid);
+            const remaining = joined.filter(u => !winnerUids.includes(u.uid));
+
+            const spin = post.spinNamesLastSpin;
+            const isSpinActive = spin && (Date.now() - spin.startTime < 4000);
+
+            if (isSpinActive) {
+                isAnySpinning = true;
+                const duration = 4000;
+                const elapsed = Date.now() - spin.startTime;
+                // Pool before this spin = remaining + the winner who was just selected
+                const poolBeforeSpin = [...remaining];
+                const spinnerIdx = poolBeforeSpin.findIndex(p => p.name === spin.item);
+                if (spinnerIdx === -1 && !remaining.some(p => p.name === spin.item)) {
+                    // Winner was removed from remaining, add back for animation
+                    const winnerEntry = joined.find(p => p.name === spin.item);
+                    if (winnerEntry) poolBeforeSpin.push(winnerEntry);
+                }
+                const winnerIndex = poolBeforeSpin.findIndex(p => p.name === spin.item);
+                if (winnerIndex !== -1 && poolBeforeSpin.length > 0) {
+                    const sliceAngle = (2 * Math.PI) / poolBeforeSpin.length;
+                    const fullRotations = 6 * 2 * Math.PI;
+                    const targetAngle = -Math.PI / 2 - (winnerIndex * sliceAngle + sliceAngle / 2) + fullRotations;
+                    const t = Math.min(elapsed / duration, 1);
+                    const eased = 1 - Math.pow(1 - t, 3);
+                    window.drawSpinNamesWheelCanvas(canvas, poolBeforeSpin, targetAngle * eased);
+                } else {
+                    window.drawSpinNamesWheelCanvas(canvas, remaining.length ? remaining : joined, 0);
+                }
+            } else {
+                window.drawSpinNamesWheelCanvas(canvas, remaining.length ? remaining : joined, 0);
+            }
+            return;
+        }
+
+        // Handle Bingo wheel
         const canvas = document.getElementById(`bingo-wheel-${post.id}`);
         if (!canvas) return;
 
@@ -1006,4 +1171,153 @@ window.endBingoGame = async (postId) => {
         locked: true
     });
     window.showAlert("Bingo game ended with no winner.");
+};
+// ===================== SPIN THE NAMES LOGIC =====================
+
+window.joinSpinNames = async (postId) => {
+    if (!window.currentUser) return window.showAlert('Please sign in to join.');
+    const snap = await get(ref(db, `community_posts/${postId}`));
+    if (!snap.exists()) return;
+    const post = snap.val();
+    if (post.spinNamesPhase !== 'submission') return window.showAlert('Submissions are closed.');
+    const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+    if (joined.some(u => u.uid === window.currentUser.uid)) return window.showAlert('You have already joined!');
+    const shortName = (window.globalUsersCache?.[window.currentUser.uid]?.name || window.currentUser.name || 'Unknown').substring(0, 14);
+    const newJoined = [...joined, { uid: window.currentUser.uid, name: shortName }];
+    await update(ref(db, `community_posts/${postId}`), { spinNamesJoined: newJoined });
+};
+
+window.closeSpinNames = async (postId) => {
+    if (!window.currentUser) return;
+    const snap = await get(ref(db, `community_posts/${postId}`));
+    if (!snap.exists()) return;
+    const post = snap.val();
+    if (post.authorId !== window.currentUser.uid) return;
+    const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+    if (joined.length < 2) return window.showAlert('Need at least 2 players to start the draw.');
+    await update(ref(db, `community_posts/${postId}`), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
+};
+
+window.startSpinNamesWheel = async (postId) => {
+    if (!window.currentUser) return;
+    const snap = await get(ref(db, `community_posts/${postId}`));
+    if (!snap.exists()) return;
+    const post = snap.val();
+    if (post.authorId !== window.currentUser.uid) return;
+    if (post.spinNamesPhase !== 'drawing') return;
+
+    const btn = document.getElementById(`spin-names-btn-${postId}`);
+    if (btn) btn.disabled = true;
+
+    const joined = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+    const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
+    const winnerUids = existingWinners.map(w => w.uid);
+
+    // Players still in the wheel (remove previous winners)
+    const remaining = joined.filter(u => !winnerUids.includes(u.uid));
+    if (!remaining.length) return window.showAlert('No remaining players.');
+
+    // Pick a random player from remaining
+    const winner = remaining[Math.floor(Math.random() * remaining.length)];
+
+    // Which spin is this?
+    const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
+    const currentSpinNumber = existingWinners.length + 1;
+    const matchingPrize = prizes.find(p => p.target === currentSpinNumber);
+
+    const updates = {
+        spinNamesLastSpin: { item: winner.name, startTime: Date.now() }
+    };
+
+    // If this spin number is a winning spin, record the winner
+    if (matchingPrize) {
+        const newWinners = [...existingWinners, {
+            uid: winner.uid,
+            name: winner.name,
+            prize: matchingPrize.prize,
+            target: currentSpinNumber
+        }];
+        updates.spinNamesWinners = newWinners;
+
+        // Award LB points if any (split from post gameLbPoints across winners, or just award per win)
+        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 0;
+        if (lbPoints > 0) {
+            update(ref(db, `users/${winner.uid}`), { lbPoints: increment(lbPoints) });
+        }
+
+        // Check if all prizes have been awarded
+        if (newWinners.length >= prizes.length) {
+            updates.spinNamesPhase = 'ended';
+            updates.gameStatus = 'ended';
+            updates.gameWinner = winner.uid;
+            updates.locked = true;
+            const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId) {
+                update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+            }
+        }
+    }
+
+    await update(ref(db, `community_posts/${postId}`), updates);
+};
+
+// ===================== SPIN NAMES CANVAS DRAWING =====================
+
+window.drawSpinNamesWheelCanvas = (canvas, players, angle) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!players.length) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#6B7280';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No players!', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+
+    const SPIN_COLORS = [
+        '#6366F1','#8B5CF6','#EC4899','#06B6D4','#10B981',
+        '#F59E0B','#EF4444','#3B82F6','#14B8A6','#F97316'
+    ];
+
+    const W = canvas.width, H = canvas.height;
+    const cx = W / 2, cy = H / 2, r = W / 2 - 4;
+    const sliceAngle = (2 * Math.PI) / players.length;
+
+    ctx.clearRect(0, 0, W, H);
+
+    players.forEach((player, i) => {
+        const startAngle = angle + i * sliceAngle;
+        const endAngle = startAngle + sliceAngle;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = SPIN_COLORS[i % SPIN_COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(startAngle + sliceAngle / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = 'white';
+        const fontSize = players.length > 12 ? 8 : players.length > 7 ? 10 : 12;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        // Truncate name to fit
+        const displayName = player.name.length > 10 ? player.name.substring(0, 9) + '…' : player.name;
+        ctx.fillText(displayName, r - 4, 4);
+        ctx.restore();
+    });
+
+    // Center hub
+    ctx.beginPath();
+    ctx.arc(cx, cy, 18, 0, 2 * Math.PI);
+    ctx.fillStyle = '#1E293B';
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 };

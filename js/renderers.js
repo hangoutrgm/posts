@@ -1293,6 +1293,83 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml2}
                     </div>`;
             }
+        } else if (post.gameType === 'spin_names') {
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            const joinedArray = Array.isArray(post.spinNamesJoined) ? post.spinNamesJoined : [];
+            const hasJoined = window.currentUser ? joinedArray.some(u => u.uid === window.currentUser.uid) : false;
+            const entryCount = joinedArray.length;
+            
+            const animatingItem = (post.spinNamesLastSpin && Date.now() - post.spinNamesLastSpin.startTime < 4000) ? post.spinNamesLastSpin.item : null;
+            const winnersList = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
+            
+            if (post.spinNamesPhase === 'submission') {
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-blue-200 dark:border-blue-900/50 flex flex-col items-center">
+                        <h4 class="font-black text-blue-800 dark:text-blue-200 text-lg mb-1">🎡 Spin the Names!</h4>
+                        <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">Join the draw for a chance to win.</p>
+                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} players joined</p>
+                        ${hasJoined 
+                            ? `<div class="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full font-bold mb-2"><i class="fa-solid fa-check mr-1"></i>You joined!</div>`
+                            : `<button onclick="window.joinSpinNames('${post.id}')" class="mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-right-to-bracket mr-2"></i>Join Spin</button>`
+                        }
+                        ${isHost ? `<button onclick="window.closeSpinNames('${post.id}')" class="mt-3 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-2 px-6 rounded-full shadow transition text-xs"><i class="fa-solid fa-play mr-2"></i>Close Submissions & Start Draw</button>` : ''}
+                    </div>`;
+            } else if (post.spinNamesPhase === 'drawing' || (post.spinNamesPhase === 'ended' && animatingItem !== null)) {
+                const isSpinning = animatingItem !== null;
+                const canvasClass = isSpinning ? "opacity-100 scale-100" : "opacity-80 scale-95";
+                
+                // Show current target for this spin (which spin is this?)
+                const currentSpinNum = winnersList.length + (isSpinning ? 1 : 1);
+                
+                let winnersHtml = winnersList.length > 0 
+                    ? winnersList.map((w, idx) => `<div class="text-[10px] bg-white dark:bg-slate-700 rounded px-2 py-1 shadow-sm mb-1">Spin #${w.target}: <strong>${w.name}</strong> - ${w.prize}</div>`).join('')
+                    : `<span class="text-xs text-gray-400">None yet</span>`;
+                    
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border-2 border-indigo-300 dark:border-indigo-900/50 flex flex-col items-center overflow-hidden">
+                        <h4 class="font-black text-indigo-800 dark:text-indigo-200 text-base mb-1">🎡 Draw in Progress!</h4>
+                        <p class="text-xs text-gray-500 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} players in wheel</p>
+                        
+                        <div class="relative my-3 transform transition-all duration-300 ${canvasClass}">
+                            <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10 text-red-500 text-2xl leading-none drop-shadow-md">▼</div>
+                            <canvas id="spin-names-wheel-${post.id}" width="200" height="200" class="rounded-full shadow-lg border-4 border-indigo-400 bg-white dark:bg-slate-700"></canvas>
+                        </div>
+                        
+                        <div class="w-full mb-3 text-center">
+                            <p class="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1.5">Winners so far:</p>
+                            <div class="flex flex-col items-center gap-1">${winnersHtml}</div>
+                        </div>
+                        
+                        ${isHost ? `<div class="flex gap-2 w-full"><button id="spin-names-btn-${post.id}" onclick="window.startSpinNamesWheel('${post.id}')" ${isSpinning ? 'disabled' : ''} class="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-2 rounded-full shadow transition"><i class="fa-solid fa-play mr-2"></i>SPIN!</button></div>` : ''}
+                    </div>`;
+                
+                if (!window._bingoRenderQueue) window._bingoRenderQueue = [];
+                window._bingoRenderQueue.push({ id: post.id, postData: post }); // Reuse bingo queue to trigger canvas drawing
+                
+            } else if (post.spinNamesPhase === 'ended' || post.gameStatus === 'ended') {
+                let winnersHtml = winnersList.length > 0 
+                    ? winnersList.map((w, idx) => `<div class="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 text-xs font-bold px-3 py-2 rounded mb-1 shadow-sm"><i class="fa-solid fa-trophy mr-1 text-yellow-500"></i>${w.name} won ${w.prize}! (Spin #${w.target})</div>`).join('')
+                    : `<div class="bg-gray-100 dark:bg-gray-800 text-gray-500 text-xs font-bold px-3 py-2 rounded">No winners.</div>`;
+                    
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center text-center opacity-90">
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-2">🎡 Spin the Names Ended</h4>
+                        <div class="w-full mb-2 flex flex-col items-center">
+                            ${winnersHtml}
+                        </div>
+                    </div>`;
+            }
+        } else if (post.gameType === 'ncl') {
+            const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone') : 'Someone';
+            gameHtml = `
+                <div class="mt-3 mb-2 p-4 bg-gradient-to-r from-pink-100 to-rose-100 dark:from-pink-900/40 dark:to-rose-900/40 rounded-xl border-2 border-pink-300 dark:border-pink-700/50 flex flex-col items-center text-center shadow-sm">
+                    <div class="text-4xl mb-2 animate-bounce">🎁</div>
+                    <h4 class="font-black text-pink-800 dark:text-pink-300 text-lg mb-1">NCL Awarded!</h4>
+                    <p class="text-sm text-pink-900 dark:text-pink-200"><strong>${winnerName}</strong> instantly received:</p>
+                    <div class="mt-2 bg-white dark:bg-slate-800/80 px-4 py-2 rounded-lg font-bold text-pink-600 dark:text-pink-400 shadow-inner">
+                        ${post.gamePrize} ${post.gameLbPoints > 0 ? `+ ${post.gameLbPoints} LB Points` : ''}
+                    </div>
+                </div>`;
         }
     }
 
