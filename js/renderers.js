@@ -271,7 +271,7 @@ window.renderFeed = (resetLimit = true) => {
                         window.allPosts.push(post);
                     }
 
-                    if (!window.isUserTyping) {
+                    if (!window.isUserTyping && !window._bingoGlobalSpinning) {
                         window.renderFeed(false);
                     }
                 } else {
@@ -416,6 +416,7 @@ window.renderFeed = (resetLimit = true) => {
     }
     window.scrollTo(0, currentScroll);
     requestAnimationFrame(() => feed.style.minHeight = '');
+    if (window.processBingoAnimations) window.processBingoAnimations();
 };
 
 window.renderProfileData = (resetLimit = true) => {
@@ -608,6 +609,7 @@ window.renderProfileData = (resetLimit = true) => {
     }
     window.scrollTo(0, currentScroll);
     requestAnimationFrame(() => pFeed.style.minHeight = '');
+    if (window.processBingoAnimations) window.processBingoAnimations();
 };
 
 window.generatePostHTML = function(post, prefix, filterContext) {
