@@ -1627,3 +1627,209 @@ window.promptCustomReaction = (postId, authorId, commentId = null, commentAuthor
     modal.classList.remove('hidden');
     input.focus();
 };
+
+window.openRankingModal = () => {
+    document.getElementById('ranking-modal').classList.remove('hidden');
+    window.renderRankings(true);
+};
+
+window.renderRankings = async (resetLimit = true) => {
+    const list = document.getElementById('ranking-list');
+    const loader = document.getElementById('ranking-loader');
+    
+    if(resetLimit) window.rankingRenderLimit = 20;
+
+    const currentScroll = list.scrollTop;
+    list.style.minHeight = list.clientHeight + 'px';
+    
+    if(resetLimit) list.innerHTML = '';
+    
+    if (window.currentRankingFilter === "Earnings") {
+        if (!window.currentUser) {
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">Please log in to view your earnings.</p>`;
+            return;
+        }
+        
+        // Use a cached version to prevent refetching during lazy loading if we already have it
+        if (resetLimit || !window._earningsCache) {
+            if(resetLimit) list.innerHTML = '';
+            loader.classList.remove('hidden');
+            try {
+                const snap = await get(ref(db, `users/${window.currentUser.uid}/earnings`));
+                loader.classList.add('hidden');
+                
+                if (!snap.exists()) {
+                    list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no earnings yet.</p>`;
+                    window._earningsCache = [];
+                    return;
+                }
+                
+                let earningsArray = [];
+                snap.forEach(child => {
+                    earningsArray.push({ id: child.key, ...child.val() });
+                });
+                
+                earningsArray.sort((a, b) => b.timestamp - a.timestamp);
+                window._earningsCache = earningsArray;
+            } catch (error) {
+                console.error(error);
+                loader.classList.add('hidden');
+                list.innerHTML = `<p class="text-center text-red-500 text-sm py-4">Error loading earnings.</p>`;
+                return;
+            }
+        }
+        
+        if (resetLimit) list.innerHTML = '';
+        const earningsArray = window._earningsCache;
+
+        // Build totals summary when showing from the beginning
+        if (resetLimit && earningsArray.length > 0) {
+            const totalLb = earningsArray.reduce((sum, e) => sum + (e.lbPoints || 0), 0);
+            const totalPrize = earningsArray.reduce((sum, e) => {
+                const num = parseFloat((e.prize || '').toString().replace(/[^0-9.]/g, ''));
+                return sum + (isNaN(num) ? 0 : num);
+            }, 0);
+
+            const summaryEl = document.createElement('div');
+            summaryEl.className = 'flex items-center justify-around p-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800/50 mb-3';
+            summaryEl.innerHTML = `
+                <div class="text-center">
+                    <div class="text-xl font-black text-yellow-600 dark:text-yellow-400">🏆 ${totalLb}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total LB Points</div>
+                </div>
+                <div class="w-px h-10 bg-yellow-200 dark:bg-yellow-800/50"></div>
+                <div class="text-center">
+                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? totalPrize : earningsArray.filter(e => e.prize).length + ' reward(s)'}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Value</div>
+                </div>
+                <div class="w-px h-10 bg-yellow-200 dark:bg-yellow-800/50"></div>
+                <div class="text-center">
+                    <div class="text-xl font-black text-blue-600 dark:text-blue-400">${earningsArray.length}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Wins</div>
+                </div>
+            `;
+            list.appendChild(summaryEl);
+        }
+
+        const toRender = earningsArray.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
+        const fragment = document.createDocumentFragment();
+        
+        toRender.forEach(e => {
+            const el = document.createElement('div');
+            el.className = `flex flex-col p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2`;
+            
+            const date = new Date(e.timestamp).toLocaleDateString();
+            const prizeStr = e.prize ? `<span class="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded text-xs font-bold mr-1">🎁 ${e.prize}</span>` : '';
+            const lbStr = e.lbPoints ? `<span class="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-2 py-0.5 rounded text-xs font-bold">🏆 +${e.lbPoints}</span>` : '';
+            
+            el.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight">
+                        ${e.title}
+                    </h4>
+                    <span class="text-[10px] text-gray-400 shrink-0 ml-2">${date}</span>
+                </div>
+                <div class="flex items-center mb-1">
+                    ${prizeStr}${lbStr}
+                </div>
+                ${e.postId ? `<button onclick="window.goToPost('${e.postId}'); document.getElementById('ranking-modal').classList.add('hidden');" class="text-[10px] text-blue-500 hover:underline mt-1 self-start">View Game</button>` : ''}
+            `;
+            fragment.appendChild(el);
+        });
+        
+        if (window.rankingRenderLimit < earningsArray.length) {
+            const sentinel = document.createElement('div');
+            sentinel.className = 'h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
+            sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+            fragment.appendChild(sentinel);
+            list.appendChild(fragment);
+            
+            if(window.rankingObserver) window.rankingObserver.disconnect();
+            window.rankingObserver = new IntersectionObserver((entries) => {
+                if(entries[0].isIntersecting) {
+                    window.rankingRenderLimit += 20;
+                    // Remove old sentinel
+                    const s = list.querySelector('.fa-spinner')?.closest('div');
+                    if (s) s.remove();
+                    window.renderRankings(false);
+                }
+            }, { rootMargin: "200px" });
+            window.rankingObserver.observe(sentinel);
+        } else {
+            list.appendChild(fragment);
+        }
+        
+    } else {
+        // Leaderboards or Stars
+        let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name);
+        
+        if (window.currentRankingFilter === "Leaderboards") {
+            usersArray.sort((a, b) => (b.lbPoints || 0) - (a.lbPoints || 0));
+        } else if (window.currentRankingFilter === "Stars") {
+            usersArray.sort((a, b) => (b.points || 0) - (a.points || 0));
+        }
+        
+        if(usersArray.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">No users found.</p>`;
+            return;
+        }
+
+        const toRender = usersArray.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
+        const fragment = document.createDocumentFragment();
+
+        toRender.forEach((u, idx) => {
+            const rank = (resetLimit ? 0 : window.rankingRenderLimit - 20) + idx + 1;
+            let rankHtml = `<div class="w-6 text-center font-bold text-gray-400 dark:text-gray-500 text-xs">#${rank}</div>`;
+            if (rank === 1) rankHtml = `<div class="w-6 text-center text-yellow-500 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+            else if (rank === 2) rankHtml = `<div class="w-6 text-center text-gray-400 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+            else if (rank === 3) rankHtml = `<div class="w-6 text-center text-amber-600 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+
+            const el = document.createElement('div');
+            el.className = `flex items-center justify-between p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2`;
+            
+            const highlightValue = window.currentRankingFilter === "Leaderboards" 
+                ? `<span class="text-yellow-600 dark:text-yellow-500 font-bold">🏆 ${u.lbPoints || 0}</span>` 
+                : `<span class="text-yellow-600 dark:text-yellow-500 font-bold">⭐ ${u.points || 0}</span>`;
+            
+            el.innerHTML = `
+                <div class="flex items-center space-x-3 overflow-hidden">
+                    ${rankHtml}
+                    <div class="relative shrink-0">
+                        <img src="${u.pic}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
+                    </div>
+                    <div class="leading-tight truncate pr-2">
+                        <div class="flex items-center">
+                            <h3 class="font-bold text-sm text-gray-900 dark:text-white truncate cursor-pointer hover:underline" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">${u.name}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center shrink-0 pr-1 text-sm">${highlightValue}</div>
+            `;
+            fragment.appendChild(el);
+        });
+
+        if (window.rankingRenderLimit < usersArray.length) {
+            const sentinel = document.createElement('div');
+            sentinel.className = 'h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
+            sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+            fragment.appendChild(sentinel);
+            list.appendChild(fragment);
+            
+            if(window.rankingObserver) window.rankingObserver.disconnect();
+            window.rankingObserver = new IntersectionObserver((entries) => {
+                if(entries[0].isIntersecting) {
+                    window.rankingRenderLimit += 20;
+                    const s = list.querySelector('.fa-spinner')?.closest('div');
+                    if (s) s.remove();
+                    window.renderRankings(false);
+                }
+            }, { rootMargin: "200px" });
+            window.rankingObserver.observe(sentinel);
+        } else {
+            list.appendChild(fragment);
+        }
+    }
+    
+    if(resetLimit) list.scrollTop = currentScroll;
+    requestAnimationFrame(() => list.style.minHeight = '');
+};

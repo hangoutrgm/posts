@@ -1,6 +1,35 @@
 import { db } from "./firebase-config.js";
 import { ref, update, set, push, get, runTransaction, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
+window.logEarnings = (uid, postId, title, prize, lbPoints) => {
+    push(ref(db, `users/${uid}/earnings`), {
+        postId: postId || '',
+        title: title || 'Game Reward',
+        prize: prize || '',
+        lbPoints: lbPoints || 0,
+        timestamp: Date.now()
+    });
+};
+
+window.gameTypeLabel = (type) => {
+    const labels = {
+        'math': 'Math Challenge',
+        'trivia': 'Trivia Game',
+        'jumbled_words': 'Jumbled Words',
+        'flags': 'Guess the Flag',
+        'guess_emoji': 'Guess the Emoji',
+        'bring_me_emoji': 'Bring Me the Emoji',
+        'first_to_mine': 'First to Mine',
+        'last_comment': 'Last Comment',
+        'challenge': 'Challenge',
+        'quick_challenge': 'Quick Challenge',
+        'bingo': 'Bingo',
+        'spin_names': 'Spin the Names',
+        'ncl': 'NCL Reward'
+    };
+    return labels[type] || type;
+};
+
 const POPULAR_EMOJIS = [
     "😀 Grinning Face", "😂 Face with Tears of Joy", "🤣 Rolling on the Floor Laughing", 
     "😍 Smiling Face with Heart-Eyes", "🥰 Smiling Face with Hearts", "😎 Smiling Face with Sunglasses",
@@ -509,6 +538,12 @@ window.submitGame = async () => {
     try {
         const newPostRef = push(ref(db, 'community_posts'));
         await set(newPostRef, postData);
+
+        // For NCL: log the earning immediately since it's awarded on post creation
+        if (type === 'ncl' && targetUserUid) {
+            window.logEarnings(targetUserUid, newPostRef.key, 'NCL Reward', prize, lbPointsReward);
+        }
+
         // Close modal first — post was created successfully
         window.closePostGameModal();
 
@@ -569,6 +604,7 @@ window.mineGame = async (postId) => {
 
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
         if (lbPoints > 0) update(ref(db, `users/${window.currentUser.uid}`), { lbPoints: increment(lbPoints) });
+        window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId && post.authorId !== window.currentUser.uid) {
             update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
@@ -625,6 +661,7 @@ window.endLastCommentGame = async (postId) => {
         if (lastCommenterId) {
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
             if (lbPoints > 0) update(ref(db, `users/${lastCommenterId}`), { lbPoints: increment(lbPoints) });
+            window.logEarnings(lastCommenterId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
             // Reward host only if someone actually won
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId) {
@@ -700,7 +737,7 @@ window.checkChallenge = async (postId) => {
             if (result.committed && result.snapshot.val().gameWinner === post.gameTargetUser) {
                 const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
                 if (lbPoints > 0) update(ref(db, `users/${post.gameTargetUser}`), { lbPoints: increment(lbPoints) });
-                // Reward host
+                window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
                 const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                 if (hostLbReward > 0 && post.authorId) {
                     update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
@@ -780,6 +817,7 @@ window.submitGameAnswer = async () => {
 
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
         if (lbPoints > 0) update(ref(db, `users/${window.currentUser.uid}`), { lbPoints: increment(lbPoints) });
+        window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId && post.authorId !== window.currentUser.uid) {
             update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
@@ -1047,6 +1085,7 @@ window.spinBingoWheel = async (postId) => {
         
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
         if (lbPoints > 0) update(ref(db, `users/${winnerId}`), { lbPoints: increment(lbPoints) });
+        window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId) {
             update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
@@ -1267,6 +1306,8 @@ window.startSpinNamesWheel = async (postId) => {
         if (lbPoints > 0) {
             update(ref(db, `users/${winner.uid}`), { lbPoints: increment(lbPoints) });
         }
+        window.logEarnings(winner.uid, postId, `Spin Names Win (#${spinTarget})`, winner.prize, lbPoints);
+
 
         // Check if all prizes have been awarded
         if (newWinners.length >= prizes.length) {

@@ -51,6 +51,21 @@ document.querySelectorAll('.member-filter-btn').forEach(btn => {
     });
 });
 
+window.currentRankingFilter = 'Leaderboards';
+document.querySelectorAll('.ranking-filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const targetBtn = e.currentTarget;
+        document.querySelectorAll('.ranking-filter-btn').forEach(b => { 
+            b.classList.remove('bg-blue-600', 'text-white', 'border-transparent'); 
+            b.classList.add('bg-gray-100', 'text-gray-700', 'dark:bg-slate-900', 'dark:text-gray-300', 'border-gray-200', 'dark:border-slate-700'); 
+        });
+        targetBtn.classList.add('bg-blue-600', 'text-white', 'border-transparent'); 
+        targetBtn.classList.remove('bg-gray-100', 'text-gray-700', 'dark:bg-slate-900', 'dark:text-gray-300', 'border-gray-200', 'dark:border-slate-700');
+        window.currentRankingFilter = targetBtn.getAttribute('data-filter');
+        if (window.renderRankings) window.renderRankings(true);
+    });
+});
+
 // ==========================================
 // V6.1 & V6.2 FEATURES: VISIBILITY & MENTIONS
 // ==========================================
