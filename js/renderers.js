@@ -1630,6 +1630,9 @@ window.promptCustomReaction = (postId, authorId, commentId = null, commentAuthor
 
 window.openRankingModal = () => {
     document.getElementById('ranking-modal').classList.remove('hidden');
+    // Clear caches so data is fresh on every open
+    window._earningsCache = null;
+    window._hostedGamesCache = null;
     window.renderRankings(true);
 };
 
@@ -1758,7 +1761,128 @@ window.renderRankings = async (resetLimit = true) => {
         } else {
             list.appendChild(fragment);
         }
-        
+
+    } else if (window.currentRankingFilter === "Host Log") {
+        if (!window.currentUser) {
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">Please log in to view your host log.</p>`;
+            return;
+        }
+
+        if (resetLimit || !window._hostedGamesCache) {
+            if (resetLimit) list.innerHTML = '';
+            loader.classList.remove('hidden');
+            try {
+                const snap = await get(ref(db, `users/${window.currentUser.uid}/hostedGames`));
+                loader.classList.add('hidden');
+
+                if (!snap.exists()) {
+                    list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no hosted games yet.</p>`;
+                    window._hostedGamesCache = [];
+                    return;
+                }
+
+                let hostedArray = [];
+                snap.forEach(child => {
+                    hostedArray.push({ id: child.key, ...child.val() });
+                });
+                hostedArray.sort((a, b) => b.timestamp - a.timestamp);
+                window._hostedGamesCache = hostedArray;
+            } catch (error) {
+                console.error(error);
+                loader.classList.add('hidden');
+                list.innerHTML = `<p class="text-center text-red-500 text-sm py-4">Error loading host log.</p>`;
+                return;
+            }
+        }
+
+        if (resetLimit) list.innerHTML = '';
+        const hostedArray = window._hostedGamesCache;
+
+        // Summary banner
+        if (resetLimit && hostedArray.length > 0) {
+            const totalPrize = hostedArray.reduce((sum, e) => {
+                const num = parseFloat((e.prize || '').toString().replace(/[^0-9.]/g, ''));
+                return sum + (isNaN(num) ? 0 : num);
+            }, 0);
+            const pendingCount = hostedArray.filter(e => e.paymentStatus !== 'paid').length;
+
+            const summaryEl = document.createElement('div');
+            summaryEl.className = 'flex items-center justify-around p-3 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800/50 mb-3';
+            summaryEl.innerHTML = `
+                <div class="text-center">
+                    <div class="text-xl font-black text-indigo-600 dark:text-indigo-400">🎮 ${hostedArray.length}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Games Hosted</div>
+                </div>
+                <div class="w-px h-10 bg-indigo-200 dark:bg-indigo-800/50"></div>
+                <div class="text-center">
+                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? totalPrize : hostedArray.filter(e => e.prize).length + ' prize(s)'}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Given</div>
+                </div>
+                <div class="w-px h-10 bg-indigo-200 dark:bg-indigo-800/50"></div>
+                <div class="text-center">
+                    <div class="text-xl font-black text-orange-500 dark:text-orange-400">⏳ ${pendingCount}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Pending</div>
+                </div>
+            `;
+            list.appendChild(summaryEl);
+        }
+
+        const toRender = hostedArray.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
+        const fragment = document.createDocumentFragment();
+
+        toRender.forEach(e => {
+            const el = document.createElement('div');
+            el.className = 'flex flex-col p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2';
+
+            const date = new Date(e.timestamp).toLocaleDateString();
+            const prizeStr = e.prize ? `<span class="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded text-xs font-bold">🎁 ${e.prize}</span>` : '';
+            const isPaid = e.paymentStatus === 'paid';
+            const payBtn = `<button
+                id="pay-btn-${e.id}"
+                onclick="window.markHostedGamePaid('${e.id}', this)"
+                class="text-[10px] font-bold px-2 py-0.5 rounded ml-auto shrink-0 ${isPaid ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-800/50 transition cursor-pointer'}"
+                ${isPaid ? 'disabled' : ''}>
+                ${isPaid ? '✅ Paid' : '⏳ Pending'}
+            </button>`;
+
+            el.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight truncate pr-2">${e.title}</h4>
+                    <span class="text-[10px] text-gray-400 shrink-0">${date}</span>
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                    🏆 Winner: <span class="font-semibold text-gray-700 dark:text-gray-300">${e.winnerName || 'Unknown'}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    ${prizeStr}
+                    ${payBtn}
+                </div>
+                ${e.postId ? `<button onclick="window.goToPost('${e.postId}'); document.getElementById('ranking-modal').classList.add('hidden');" class="text-[10px] text-blue-500 hover:underline mt-1 self-start">View Game</button>` : ''}
+            `;
+            fragment.appendChild(el);
+        });
+
+        if (window.rankingRenderLimit < hostedArray.length) {
+            const sentinel = document.createElement('div');
+            sentinel.className = 'h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
+            sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+            fragment.appendChild(sentinel);
+            list.appendChild(fragment);
+
+            if (window.rankingObserver) window.rankingObserver.disconnect();
+            window.rankingObserver = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                    window.rankingRenderLimit += 20;
+                    const s = list.querySelector('.fa-spinner')?.closest('div');
+                    if (s) s.remove();
+                    window.renderRankings(false);
+                }
+            }, { rootMargin: "200px" });
+            window.rankingObserver.observe(sentinel);
+        } else {
+            list.appendChild(fragment);
+        }
+
     } else {
         // Leaderboards or Stars
         let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name);
@@ -1832,4 +1956,24 @@ window.renderRankings = async (resetLimit = true) => {
     
     if(resetLimit) list.scrollTop = currentScroll;
     requestAnimationFrame(() => list.style.minHeight = '');
+};
+
+window.markHostedGamePaid = async (entryId, btn) => {
+    if (!window.currentUser) return;
+    try {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        await update(ref(db, `users/${window.currentUser.uid}/hostedGames/${entryId}`), { paymentStatus: 'paid' });
+        // Update local cache so re-renders stay consistent
+        if (window._hostedGamesCache) {
+            const entry = window._hostedGamesCache.find(e => e.id === entryId);
+            if (entry) entry.paymentStatus = 'paid';
+        }
+        btn.textContent = '✅ Paid';
+        btn.className = btn.className.replace(/bg-orange-\S+ text-orange-\S+/g, 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default');
+    } catch(err) {
+        console.error('Error marking paid:', err);
+        btn.disabled = false;
+        btn.textContent = '⏳ Pending';
+    }
 };
