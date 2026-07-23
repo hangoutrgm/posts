@@ -2,7 +2,8 @@
 import { app, auth, db, fsdb } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
 import "./helpers.js";
 import "./renderers.js";
@@ -534,67 +535,75 @@ window.listenPinnedPosts = () => {
     }));
 };
 
-window.listenPosts = () => {
-    if (window.postsUnsubscribe) window.postsUnsubscribe();
-      let dbQuery;
+// Build a base Firestore query with optional filter/author constraints (no limit yet)
+window._buildBaseQuery = () => {
     const postsRef = collection(fsdb, 'community_posts');
     if (window.activeProfileUid) {
-        dbQuery = query(postsRef, where('authorId', '==', window.activeProfileUid), orderBy('timestamp', 'desc'), limit(window.postLimit));
+        return query(postsRef, where('authorId', '==', window.activeProfileUid), orderBy('timestamp', 'desc'));
     } else if (window.currentFilter === 'My Posts' && window.currentUser) {
-        dbQuery = query(postsRef, where('authorId', '==', window.currentUser.uid), orderBy('timestamp', 'desc'), limit(window.postLimit));
+        return query(postsRef, where('authorId', '==', window.currentUser.uid), orderBy('timestamp', 'desc'));
     } else if (window.currentFilter && window.currentFilter !== 'All') {
-        dbQuery = query(postsRef, where('category', '==', window.currentFilter), orderBy('timestamp', 'desc'), limit(window.postLimit));
+        return query(postsRef, where('category', '==', window.currentFilter), orderBy('timestamp', 'desc'));
     } else {
-        dbQuery = query(postsRef, orderBy('timestamp', 'desc'), limit(window.postLimit));
+        return query(postsRef, orderBy('timestamp', 'desc'));
     }
+};
 
-    window.postsUnsubscribe = onSnapshot(dbQuery, (snapshot) => {
+// listenPosts: sets a live onSnapshot on the FIRST 15 posts only (for real-time new post updates)
+window.listenPosts = () => {
+    if (window.postsUnsubscribe) window.postsUnsubscribe();
+
+    // Reset pagination state when starting fresh
+    window._lastPostDoc = null;
+    window._historyPosts = [];
+
+    const dbQuery = query(window._buildBaseQuery(), limit(15));
+
+    window.postsUnsubscribe = onSnapshot(dbQuery, { includeMetadataChanges: false }, (snapshot) => {
         const rawDocs = {};
         snapshot.forEach(child => rawDocs[child.id] = child.data());
-        if(window.checkGameTimers) window.checkGameTimers(rawDocs);
-        
-        const newPosts = [];
+        if (window.checkGameTimers) window.checkGameTimers(rawDocs);
+
+        const livePosts = [];
         snapshot.forEach(child => {
             const p = { id: child.id, ...child.data() };
-            // For the main query, just overlay fresh data if it exists
             if (window.pinnedFreshData && window.pinnedFreshData[p.id]) {
-                newPosts.push(window.pinnedFreshData[p.id]);
+                livePosts.push(window.pinnedFreshData[p.id]);
             } else {
-                newPosts.push(p);
+                livePosts.push(p);
             }
         });
-        if (newPosts.length < window.postLimit && window.postLimit > 15) {
-            window.hasMorePosts = false;
+
+        // Store the last doc from the live batch so history pagination knows where to start
+        const snapDocs = snapshot.docs;
+        if (snapDocs.length > 0) {
+            window._liveLastDoc = snapDocs[snapDocs.length - 1];
         }
 
-        // Preserve pinned posts across category/page switches
+        // hasMorePosts: true if we got a full page of 15 (there may be history beyond)
+        window.hasMorePosts = (snapshot.size >= 15);
+
+        // Merge: live posts at top, history pages below (deduplicate)
+        const historyIds = new Set((window._historyPosts || []).map(p => p.id));
+        const mergedLive = livePosts.filter(p => !historyIds.has(p.id));
+        window.allPosts = [...mergedLive, ...(window._historyPosts || [])];
+
+        // Preserve pinned posts
         const previousPinned = window.allPosts.filter(p => !!p.feedPinned || !!p.profilePinned || !!p.pinned);
-        
-        window.allPosts = newPosts;
-        
         window.individualPinnedUnsubscribes = window.individualPinnedUnsubscribes || {};
-
-        // Re-add any pinned posts that were lost in the new query
         previousPinned.forEach(p => {
-            if (!window.allPosts.find(np => np.id === p.id)) {
-                window.allPosts.push(p);
-            }
+            if (!window.allPosts.find(np => np.id === p.id)) window.allPosts.push(p);
         });
-        
-        // Ensure all retained pinned posts have real-time listeners
         window.ensureIndividualPinnedListeners(previousPinned);
-
-        // Cleanup listeners for posts that ARE in the main query now
-        newPosts.forEach(p => {
+        window.allPosts.forEach(p => {
             if (window.individualPinnedUnsubscribes[p.id]) {
                 window.individualPinnedUnsubscribes[p.id]();
                 delete window.individualPinnedUnsubscribes[p.id];
             }
         });
-        
+
         if (!window.isUserTyping && !window._bingoGlobalSpinning) {
             if (!window.usersReady) {
-                // Users cache not loaded yet — flag a pending render; users onValue will flush it
                 window._pendingPostRender = true;
             } else {
                 if (window.activeProfileUid) window.renderProfileData(false);
@@ -607,14 +616,62 @@ window.listenPosts = () => {
     });
 };
 
+// loadMorePosts: fetches the next page of 15 older posts using cursor-based pagination
+// This is a one-time getDocs call, NOT a live listener — old posts don't need live updates
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
-    
     window.isLoadingHistory = true;
-    
-    // Increase limit and listen
-    window.postLimit += 15;
-    window.listenPosts();
+
+    try {
+        // Start after the last doc we have (either last history doc, or last live doc)
+        const cursor = window._lastPostDoc || window._liveLastDoc;
+        if (!cursor) {
+            window.isLoadingHistory = false;
+            return;
+        }
+
+        const pageQuery = query(window._buildBaseQuery(), startAfter(cursor), limit(15));
+        const pageSnap = await window._getDocsFS(pageQuery);
+
+        if (pageSnap.empty) {
+            window.hasMorePosts = false;
+            window.isLoadingHistory = false;
+            if (window.activeProfileUid) window.renderProfileData(false);
+            else window.renderFeed(false);
+            return;
+        }
+
+        // Remember the last doc in this page for the next scroll
+        const pageDocs = pageSnap.docs;
+        window._lastPostDoc = pageDocs[pageDocs.length - 1];
+
+        // hasMorePosts: true only if we got a full page
+        window.hasMorePosts = (pageSnap.size >= 15);
+
+        // Append new page posts to history (avoiding duplicates)
+        const existingIds = new Set(window.allPosts.map(p => p.id));
+        const newHistoryPosts = [];
+        pageDocs.forEach(child => {
+            if (!existingIds.has(child.id)) {
+                const p = { id: child.id, ...child.data() };
+                newHistoryPosts.push(window.pinnedFreshData && window.pinnedFreshData[p.id] ? window.pinnedFreshData[p.id] : p);
+            }
+        });
+
+        window._historyPosts = [...(window._historyPosts || []), ...newHistoryPosts];
+        window.allPosts = [...window.allPosts, ...newHistoryPosts];
+
+        // Expand the render window to show the newly loaded posts immediately
+        window.feedRenderLimit = window.allPosts.length;
+        window.profileRenderLimit = window.allPosts.length;
+
+        if (window.activeProfileUid) window.renderProfileData(false);
+        else window.renderFeed(false);
+    } catch (e) {
+        console.error('loadMorePosts error:', e);
+    } finally {
+        window.isLoadingHistory = false;
+    }
 };
 
 window.listenPinnedPosts();

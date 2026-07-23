@@ -179,7 +179,7 @@ window.repostPost = function(postId) {
                 text: originalPost.text || "",
                 image: originalPost.image || "",
                 category: originalPost.category || "General",
-                timestamp: fsServerTimestamp(),
+                timestamp: Date.now(),
                 pinned: false,
                 edited: false,
                 locked: false,

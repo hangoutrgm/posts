@@ -293,7 +293,11 @@ window.renderFeed = (resetLimit = true) => {
                     }
 
                     if (!window.isUserTyping && !window._bingoGlobalSpinning) {
-                        window.renderFeed(false);
+                        if (!window.usersReady) {
+                            window._pendingPostRender = true;
+                        } else {
+                            window.renderFeed(false);
+                        }
                     }
                 } else {
                     feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
@@ -392,8 +396,6 @@ window.renderFeed = (resetLimit = true) => {
         feed.innerHTML = `<p class="text-center text-gray-400 text-xs py-10">No posts found.</p>`;
         feed.style.minHeight = '';
         return;
-    } else if (displayPosts.length === 0 && window.hasMorePosts) {
-        feed.innerHTML = '';
     }
 
     window.filteredPostsLength = displayPosts.length;
@@ -420,8 +422,12 @@ window.renderFeed = (resetLimit = true) => {
         }, { rootMargin: "300px" });
         window.feedObserver.observe(sentinel);
     } else if (displayPosts.length > 0) {
+        // Prevent multiple end messages from stacking if feed is not wiped
+        const existingMsg = feed.querySelector('.end-message-catchup');
+        if (existingMsg) existingMsg.remove();
+        
         const endMessage = document.createElement('div');
-        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold';
+        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold end-message-catchup';
         endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
         feed.appendChild(endMessage);
     }
@@ -589,8 +595,6 @@ window.renderProfileData = (resetLimit = true) => {
         pFeed.innerHTML = `<p class="text-center text-gray-500 text-xs py-5">No posts yet.</p>`;
         pFeed.style.minHeight = '';
         return;
-    } else if (pPosts.length === 0 && window.hasMorePosts) {
-        pFeed.innerHTML = '';
     }
 
     const postsToRender = pPosts.slice(0, window.profileRenderLimit);
