@@ -373,7 +373,15 @@ onValue(ref(db, 'presence'), (snap) => {
 
 onValue(ref(db, 'users'), (snap) => {
     window.globalUsersCache = snap.val() || {};
-    if(window.activeProfileUid) window.renderProfileData(false); else window.renderFeed(false);
+    const wasReady = window.usersReady;
+    window.usersReady = true;
+    // If posts arrived before users (race condition), flush the pending render now
+    if (!wasReady && window._pendingPostRender) {
+        window._pendingPostRender = false;
+        window.renderFeed(false);
+    } else {
+        if(window.activeProfileUid) window.renderProfileData(false); else window.renderFeed(false);
+    }
     if(!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
     
     if(window.currentUser && window.globalUsersCache[window.currentUser.uid]) {
@@ -425,6 +433,8 @@ window.isLoadingHistory = false;
 window.hasMorePosts = true;
 window.postLimit = 15;
 window.postsUnsubscribe = null;
+window.usersReady = false;   // Gate: don't render posts until users cache is loaded
+window._pendingPostRender = false; // Was a render requested before users were ready?
 window.pinnedUnsubscribes = [];
 
 window.ensureIndividualPinnedListeners = (posts) => {
@@ -493,7 +503,11 @@ window.listenPinnedPosts = () => {
         window.globalPinnedPosts = posts;
         window.ensureIndividualPinnedListeners(posts);
         if (!window.isUserTyping && !window._bingoGlobalSpinning) {
-            window.renderFeed(false);
+            if (!window.usersReady) {
+                window._pendingPostRender = true;
+            } else {
+                window.renderFeed(false);
+            }
         }
     }));
 
@@ -515,7 +529,7 @@ window.listenPinnedPosts = () => {
         window.profilePinnedPosts = posts;
         window.ensureIndividualPinnedListeners(posts);
         if (!window.isUserTyping && !window._bingoGlobalSpinning && window.activeProfileUid) {
-            window.renderProfileData(false);
+            if (window.usersReady) window.renderProfileData(false);
         }
     }));
 };
@@ -579,9 +593,14 @@ window.listenPosts = () => {
         });
         
         if (!window.isUserTyping && !window._bingoGlobalSpinning) {
-            if (window.activeProfileUid) window.renderProfileData(false);
-            else window.renderFeed(false);
-            if (window.processBingoAnimations) window.processBingoAnimations();
+            if (!window.usersReady) {
+                // Users cache not loaded yet — flag a pending render; users onValue will flush it
+                window._pendingPostRender = true;
+            } else {
+                if (window.activeProfileUid) window.renderProfileData(false);
+                else window.renderFeed(false);
+                if (window.processBingoAnimations) window.processBingoAnimations();
+            }
         }
         window.handleDeepLinks();
         window.isLoadingHistory = false;
