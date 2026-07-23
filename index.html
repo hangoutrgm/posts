@@ -545,7 +545,7 @@
                 <input type="text" id="game-answer-input" placeholder="Enter your answer" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
                 <input type="hidden" id="game-answer-postid">
                 
-                <button onclick="window.submitGameAnswer()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit</button>
+                <button onclick="window.answerGame(document.getElementById('game-answer-postid').value, document.getElementById('game-answer-input').value)" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit</button>
             </div>
         </div>
     </div>
@@ -577,8 +577,8 @@
 
 
 
-    <script src="js/renderers.js"></script>
-    <script src="js/helpers.js"></script>
+    <script type="module" src="js/renderers.js"></script>
+    <script type="module" src="js/helpers.js"></script>
     <script type="module" src="js/games.js"></script>
     <script type="module" src="js/main.js"></script>
     <script>

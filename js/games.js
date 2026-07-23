@@ -1,5 +1,6 @@
-import { db } from "./firebase-config.js";
-import { ref, update, set, push, get, runTransaction, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { db, fsdb } from "./firebase-config.js";
+import { ref, update, set, push, get, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { collection, doc, addDoc, getDoc, updateDoc, deleteField, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 window.logEarnings = (uid, postId, title, prize, lbPoints) => {
     push(ref(db, `users/${uid}/earnings`), {
@@ -548,14 +549,13 @@ window.submitGame = async () => {
     if (endTime) postData.gameEndTime = endTime;
 
     try {
-        const newPostRef = push(ref(db, 'community_posts'));
-        await set(newPostRef, postData);
+        const newPostRef = await addDoc(collection(fsdb, 'community_posts'), postData);
 
         // For NCL: log the earning immediately since it's awarded on post creation
         if (type === 'ncl' && targetUserUid) {
-            window.logEarnings(targetUserUid, newPostRef.key, 'NCL Reward', prize, lbPointsReward);
+            window.logEarnings(targetUserUid, newPostRef.id, 'NCL Reward', prize, lbPointsReward);
             const nclWinnerName = window.globalUsersCache?.[targetUserUid]?.name || targetUserUid;
-            window.logHostedGame(window.currentUser.uid, newPostRef.key, 'NCL Reward', prize, targetUserUid, nclWinnerName);
+            window.logHostedGame(window.currentUser.uid, newPostRef.id, 'NCL Reward', prize, targetUserUid, nclWinnerName);
         }
 
         // Close modal first — post was created successfully
@@ -588,12 +588,12 @@ window.submitGame = async () => {
 
 window.mineGame = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
-    const postRef = ref(db, `community_posts/${postId}`);
+    const postRef = doc(fsdb, 'community_posts', postId);
 
     try {
-        const snap = await get(postRef);
+        const snap = await getDoc(postRef);
         if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.val();
+        const post = snap.data();
 
         if (post.gameStatus !== 'active') {
             return window.showAlert("Too late! This game has already ended.");
@@ -611,7 +611,7 @@ window.mineGame = async (postId) => {
             return window.showAlert("This Quick Challenge is not for you!");
         }
 
-        await update(postRef, {
+        await updateDoc(postRef, {
             gameStatus: 'ended',
             gameWinner: window.currentUser.uid
         });
@@ -638,12 +638,12 @@ window.endLastCommentGame = async (postId) => {
     if (!window.currentUser) return;
     
     try {
-        let snap = await get(ref(db, `community_posts/${postId}`));
-        let post = snap.val();
-        if (!post || post.gameStatus !== 'active') return;
+        let snap = await getDoc(doc(fsdb, 'community_posts', postId));
+        let post = snap.data();
+        if (post.gameStatus !== 'active') return; 
         
-        // Prevent multiple evaluations, lock comments immediately
-        await update(ref(db, `community_posts/${postId}`), {
+        // Update gameStatus to ending to lock out others
+        await updateDoc(doc(fsdb, 'community_posts', postId), {
             gameStatus: 'evaluating',
             locked: true
         });
@@ -651,9 +651,9 @@ window.endLastCommentGame = async (postId) => {
         // Wait 2 seconds for any last-millisecond comments to arrive
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Fetch fresh data
-        snap = await get(ref(db, `community_posts/${postId}`));
-        post = snap.val();
+        // One more check in case of race conditions
+        snap = await getDoc(doc(fsdb, 'community_posts', postId));
+        post = snap.data();
         if (!post) return;
 
         let lastCommenterId = null;
@@ -671,7 +671,7 @@ window.endLastCommentGame = async (postId) => {
             }
         }
 
-        await update(ref(db, `community_posts/${postId}`), {
+        await updateDoc(doc(fsdb, 'community_posts', postId), {
             gameStatus: 'ended',
             gameWinner: lastCommenterId || "none"
         });
@@ -705,12 +705,13 @@ window.checkGameTimers = (postsData) => {
                 window.endLastCommentGame(key);
             } else {
                 // For quick_challenge, challenge, guess_emoji, bring_me_emoji
-                // If time expires without a winner, the game ends with no winner
-                update(ref(db, `community_posts/${key}`), {
-                    gameStatus: 'ended',
-                    gameWinner: "none",
-                    locked: true
-                }).catch(e => console.error("Error failing game on timeout:", e));
+                if (p.gameEndTime && p.gameStatus === 'active' && Date.now() > p.gameEndTime) {
+                    updateDoc(doc(fsdb, 'community_posts', key), {
+                        gameStatus: 'ended',
+                        gameWinner: "none",
+                        locked: true
+                    }).catch(e => console.error("Error failing game on timeout:", e));
+                }
             }
         }
     }
@@ -737,10 +738,10 @@ setInterval(() => {
 
 window.checkChallenge = async (postId) => {
     if (!window.currentUser) return;
-    const postRef = ref(db, `community_posts/${postId}`);
-    const snap = await get(postRef);
+    const postRef = doc(fsdb, 'community_posts', postId);
+    const snap = await getDoc(postRef);
     if (!snap.exists()) return;
-    const post = snap.val();
+    const post = snap.data();
 
     if (post.gameStatus !== 'active' || post.gameType !== 'challenge') return;
 
@@ -748,15 +749,21 @@ window.checkChallenge = async (postId) => {
     const currentComments = Object.keys(post.comments || {}).length;
 
     if (currentReacts >= post.gameTargetReacts && currentComments >= post.gameTargetComments) {
-        await runTransaction(postRef, (p) => {
-            if (p && p.gameStatus === 'active') {
-                p.gameStatus = 'ended';
-                p.gameWinner = p.gameTargetUser;
-                return p;
-            }
-            return p;
-        }).then(result => {
-            if (result.committed && result.snapshot.val().gameWinner === post.gameTargetUser) {
+        let isWinner = false;
+        try {
+            await fsRunTransaction(fsdb, async (transaction) => {
+                const tSnap = await transaction.get(postRef);
+                if (!tSnap.exists()) return;
+                const p = tSnap.data();
+                if (p.gameStatus === 'active') {
+                    transaction.update(postRef, {
+                        gameStatus: 'ended',
+                        gameWinner: p.gameTargetUser
+                    });
+                    isWinner = true;
+                }
+            });
+            if (isWinner) {
                 const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
                 if (lbPoints > 0) update(ref(db, `users/${post.gameTargetUser}`), { lbPoints: increment(lbPoints) });
                 window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
@@ -770,7 +777,9 @@ window.checkChallenge = async (postId) => {
                 }
                 window.showAlert(`Challenge completed! @${winnerName} won!`);
             }
-        });
+        } catch(e) {
+            console.error(e);
+        }
     } else {
         window.showAlert(`Progress: Reacts (${currentReacts}/${post.gameTargetReacts}), Comments (${currentComments}/${post.gameTargetComments})`);
     }
@@ -783,18 +792,16 @@ window.openAnswerModal = (postId) => {
     document.getElementById('game-answer-modal').classList.remove('hidden');
 };
 
-window.submitGameAnswer = async () => {
-    if (!window.currentUser) return;
-    const postId = document.getElementById('game-answer-postid').value;
-    const answer = document.getElementById('game-answer-input').value.trim();
+window.answerGame = async (postId, answer) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
     if (!answer) return window.showAlert("Please enter an answer.");
 
-    const postRef = ref(db, `community_posts/${postId}`);
+    const postRef = doc(fsdb, 'community_posts', postId);
 
     try {
-        const snap = await get(postRef);
+        const snap = await getDoc(postRef);
         if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.val();
+        const post = snap.data();
 
         if (post.gameStatus !== 'active') {
             return window.showAlert("This game has already ended.");
@@ -835,7 +842,7 @@ window.submitGameAnswer = async () => {
         }
 
         // Write winner
-        await update(postRef, {
+        await updateDoc(postRef, {
             gameStatus: 'ended',
             gameWinner: window.currentUser.uid
         });
@@ -872,19 +879,18 @@ window._bingoEntryNumberCount = 0;
 window.openBingoEntryModal = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
     
-    const snap = await get(ref(db, `community_posts/${postId}`));
+    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
     if (!snap.exists()) return;
-    const post = snap.val();
+    const post = snap.data();
 
     if (post.authorId === window.currentUser.uid) return window.showAlert("You cannot enter your own Bingo game.");
     if (post.bingoPhase !== 'submission') return window.showAlert("Submissions are now closed!");
     if (post.gameEndTime && Date.now() >= post.gameEndTime) return window.showAlert("Submission time is up!");
 
     // Check if already submitted
-    const myEntry = await get(ref(db, `community_posts/${postId}/bingoEntries/${window.currentUser.uid}`));
-    if (myEntry.exists()) {
-        const e = myEntry.val();
-        return window.showAlert(`You already submitted: ${e.letters.join(' ')} | ${e.numbers.join(' ')}`);
+    const myEntry = post.bingoEntries && post.bingoEntries[window.currentUser.uid];
+    if (myEntry) {
+        return window.showAlert(`You already submitted: ${myEntry.letters.join(' ')} | ${myEntry.numbers.join(' ')}`);
     }
 
     window._bingoSelectedLetters = new Set();
@@ -968,27 +974,27 @@ window.submitBingoEntry = async () => {
     const numbers = [...window._bingoSelectedNumbers].map(Number).sort((a, b) => a - b).map(String);
     const entryKey = letters.join('') + '-' + numbers.join('');
 
-    const postRef = ref(db, `community_posts/${postId}`);
+    const postRef = doc(fsdb, 'community_posts', postId);
 
     try {
         // Re-check phase and deadline
-        const snap = await get(postRef);
-        const post = snap.val();
+        const snap = await getDoc(postRef);
+        const post = snap.data();
         if (post.bingoPhase !== 'submission') return window.showAlert("Submissions are closed!");
         if (post.gameEndTime && Date.now() >= post.gameEndTime) return window.showAlert("Time's up!");
 
         // Check for duplicate entry key
-        const dupSnap = await get(ref(db, `community_posts/${postId}/bingoEntryKeys/${entryKey}`));
-        if (dupSnap.exists()) return window.showAlert("That combination is already taken! Try a different one.");
+        const dupEntry = post.bingoEntryKeys && post.bingoEntryKeys[entryKey];
+        if (dupEntry) return window.showAlert("That combination is already taken! Try a different one.");
 
         // Check if already submitted
-        const mySnap = await get(ref(db, `community_posts/${postId}/bingoEntries/${window.currentUser.uid}`));
-        if (mySnap.exists()) return window.showAlert("You already submitted an entry!");
+        const myEntry = post.bingoEntries && post.bingoEntries[window.currentUser.uid];
+        if (myEntry) return window.showAlert("You already submitted an entry!");
 
-        // Write entry and key
-        await update(ref(db, `community_posts/${postId}`), {
-            [`bingoEntries/${window.currentUser.uid}`]: { letters, numbers, entryKey, timestamp: Date.now() },
-            [`bingoEntryKeys/${entryKey}`]: window.currentUser.uid
+        // Write entry and key using dot notation for map fields
+        await updateDoc(postRef, {
+            [`bingoEntries.${window.currentUser.uid}`]: { letters, numbers, entryKey, timestamp: Date.now() },
+            [`bingoEntryKeys.${entryKey}`]: window.currentUser.uid
         });
 
         document.getElementById('bingo-entry-modal').classList.add('hidden');
@@ -1000,7 +1006,7 @@ window.submitBingoEntry = async () => {
 };
 
 window.closeBingoSubmissions = async (postId) => {
-    await update(ref(db, `community_posts/${postId}`), { bingoPhase: 'drawing' });
+    await updateDoc(doc(fsdb, 'community_posts', postId), { bingoPhase: 'drawing' });
 };
 
 // ---- GLOBAL SPIN WHEEL & ANIMATIONS ----
@@ -1077,9 +1083,10 @@ window.getBingoPool = (post) => {
 };
 
 window.spinBingoWheel = async (postId) => {
-    const snap = await get(ref(db, `community_posts/${postId}`));
+    const postRef = doc(fsdb, 'community_posts', postId);
+    const snap = await getDoc(postRef);
     if (!snap.exists()) return;
-    const post = snap.val();
+    const post = snap.data();
 
     const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
     const allItems = window.getBingoPool(post);
@@ -1125,7 +1132,8 @@ window.spinBingoWheel = async (postId) => {
         }
     }
 
-    await update(ref(db, `community_posts/${postId}`), updates);
+    await updateDoc(postRef, updates);
+    window.processBingoAnimations();
 };
 
 window.processBingoAnimations = () => {
@@ -1136,7 +1144,6 @@ window.processBingoAnimations = () => {
     window._bingoRenderQueue.forEach(q => {
         const post = q.postData;
 
-        // Handle Spin the Names wheel
         if (post.gameType === 'spin_names') {
             const canvas = document.getElementById(`spin-names-wheel-${post.id}`);
             if (!canvas) return;
@@ -1152,11 +1159,9 @@ window.processBingoAnimations = () => {
                 isAnySpinning = true;
                 const duration = 4000;
                 const elapsed = Date.now() - spin.startTime;
-                // Pool before this spin = remaining + the winner who was just selected
                 const poolBeforeSpin = [...remaining];
                 const spinnerIdx = poolBeforeSpin.findIndex(p => p.name === spin.item);
                 if (spinnerIdx === -1 && !remaining.some(p => p.name === spin.item)) {
-                    // Winner was removed from remaining, add back for animation
                     const winnerEntry = joined.find(p => p.name === spin.item);
                     if (winnerEntry) poolBeforeSpin.push(winnerEntry);
                 }
@@ -1177,32 +1182,27 @@ window.processBingoAnimations = () => {
             return;
         }
 
-        // Handle Bingo wheel
         const canvas = document.getElementById(`bingo-wheel-${post.id}`);
         if (!canvas) return;
 
-        // Note: post.bingoCalledItems ALREADY includes the winning item!
         const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
         const allItems = window.getBingoPool(post);
         
         const spin = post.bingoLastSpin;
         const isSpinActive = spin && (Date.now() - spin.startTime < 4000);
 
-        // If spinning, the "pool" of the wheel should be what it was BEFORE the spin.
-        // So we add the winning item back to the pool by removing it from "called".
         const itemsToExclude = isSpinActive ? calledItems.filter(i => i !== spin.item) : calledItems;
         const pool = allItems.filter(i => !itemsToExclude.includes(i));
 
         if (isSpinActive) {
             isAnySpinning = true;
-            // It's animating!
             const duration = 4000;
             const elapsed = Date.now() - spin.startTime;
             const winnerIndex = pool.indexOf(spin.item);
             
             if (winnerIndex !== -1) {
                 const sliceAngle = (2 * Math.PI) / pool.length;
-                const fullRotations = 6 * 2 * Math.PI; // Standardize rotations
+                const fullRotations = 6 * 2 * Math.PI;
                 const targetAngle = -Math.PI / 2 - (winnerIndex * sliceAngle + sliceAngle / 2) + fullRotations;
                 
                 const t = Math.min(elapsed / duration, 1);
@@ -1214,19 +1214,16 @@ window.processBingoAnimations = () => {
                 window.drawBingoWheelCanvas(canvas, pool, 0);
             }
         } else {
-            // Not spinning, draw statically on top (needle at 0 angle)
             window.drawBingoWheelCanvas(canvas, pool, 0);
         }
     });
 
-    // Schedule next frame if anything is spinning
     if (isAnySpinning) {
         window._bingoGlobalSpinning = true;
         requestAnimationFrame(window.processBingoAnimations);
     } else {
         if (window._bingoGlobalSpinning) {
             window._bingoGlobalSpinning = false;
-            // The animation just stopped. Feed will resume updating naturally
             setTimeout(() => {
                 if (window.renderFeed) window.renderFeed(false);
                 else if (window.renderProfileData) window.renderProfileData(false);
@@ -1250,9 +1247,9 @@ window.checkBingoWinner = (entries, calledItems) => {
     return null;
 };
 
-window.endBingoGame = async (postId) => {
+window.resetBingoGame = async (postId) => {
     if (!postId) return;
-    await update(ref(db, `community_posts/${postId}`), {
+    await updateDoc(doc(fsdb, 'community_posts', postId), {
         gameStatus: 'ended',
         gameWinner: 'none',
         bingoPhase: 'ended',
@@ -1263,48 +1260,64 @@ window.endBingoGame = async (postId) => {
 // ===================== SPIN THE NAMES LOGIC =====================
 
 window.joinSpinNames = async (postId) => {
-    if (!window.currentUser) return window.showAlert('Please sign in to join.');
-    const snap = await get(ref(db, `community_posts/${postId}`));
+    if (!window.currentUser) return window.showAlert("Please sign in to join.");
+    
+    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
     if (!snap.exists()) return;
-    const post = snap.val();
-    if (post.spinNamesPhase !== 'submission') return window.showAlert('Submissions are closed.');
-    if (post.authorId === window.currentUser.uid) return window.showAlert('You are the host and cannot join your own game.');
+    const post = snap.data();
+    
+    if (post.spinNamesPhase !== 'submission') return window.showAlert("Submissions are closed.");
+    if (post.gameEndTime && Date.now() >= post.gameEndTime) return window.showAlert("Time's up!");
 
-    // Check if already joined by reading their specific entry
-    const existingSnap = await get(ref(db, `community_posts/${postId}/spinNamesJoined/${window.currentUser.uid}`));
-    if (existingSnap.exists()) return window.showAlert('You have already joined!');
+    const existingEntry = post.spinNamesJoined && post.spinNamesJoined[window.currentUser.uid];
+    if (existingEntry) return window.showAlert("You have already joined this wheel!");
 
-    const shortName = (window.globalUsersCache?.[window.currentUser.uid]?.name || window.currentUser.name || 'Unknown').substring(0, 14);
-    // Write to per-user path — allowed by the spinNamesJoined/$uid Firebase rule
-    await set(ref(db, `community_posts/${postId}/spinNamesJoined/${window.currentUser.uid}`), {
-        uid: window.currentUser.uid,
-        name: shortName
+    await updateDoc(doc(fsdb, 'community_posts', postId), {
+        [`spinNamesJoined.${window.currentUser.uid}`]: { 
+            uid: window.currentUser.uid,
+            name: window.globalUsersCache[window.currentUser.uid]?.name || window.currentUser.uid,
+            timestamp: Date.now()
+        }
     });
+    window.showAlert("You have joined the wheel!");
 };
 
 window.closeSpinNames = async (postId) => {
     if (!window.currentUser) return;
-    const snap = await get(ref(db, `community_posts/${postId}`));
+    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
     if (!snap.exists()) return;
-    const post = snap.val();
+    const post = snap.data();
     if (post.authorId !== window.currentUser.uid) return;
     const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
     if (joined.length < 2) return window.showAlert('Need at least 2 players to start the draw.');
-    await update(ref(db, `community_posts/${postId}`), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
+    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
 };
 
 window.startSpinNamesWheel = async (postId) => {
     if (!window.currentUser) return;
-    const snap = await get(ref(db, `community_posts/${postId}`));
+    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
     if (!snap.exists()) return;
-    const post = snap.val();
+    const post = snap.data();
+    
+    if (!post.spinNamesJoined || Object.keys(post.spinNamesJoined).length === 0) return window.showAlert("No players have joined yet.");
+
+    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
+};
+
+window.drawSpinNamesItem = async (postId) => {
+    if (!window.currentUser) return;
+    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+    if (!snap.exists()) return;
+    const post = snap.data();
     if (post.authorId !== window.currentUser.uid) return;
     if (post.spinNamesPhase !== 'drawing') return;
 
     const btn = document.getElementById(`spin-names-btn-${postId}`);
     if (btn) btn.disabled = true;
 
-    const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
+    const joined = post.spinNamesJoined 
+        ? Object.entries(post.spinNamesJoined).map(([uid, data]) => ({ ...data, uid: data.uid || uid }))
+        : [];
     const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
     const winnerUids = existingWinners.map(w => w.uid);
 
@@ -1358,7 +1371,7 @@ window.startSpinNamesWheel = async (postId) => {
         }
     }
 
-    await update(ref(db, `community_posts/${postId}`), updates);
+    await updateDoc(doc(fsdb, 'community_posts', postId), updates);
 };
 
 // ===================== SPIN NAMES CANVAS DRAWING =====================

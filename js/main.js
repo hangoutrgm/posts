@@ -1,21 +1,70 @@
 // main.js
-import { app, auth, db } from "./firebase-config.js";
+import { app, auth, db, fsdb } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, push, onValue, get, set, update, remove, serverTimestamp, increment, onDisconnect, query, limitToLast, orderByKey, endBefore, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-import "./globals.js";
+import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
 import "./helpers.js";
 import "./renderers.js";
 
+let presenceInterval = null;
+let serverTimeOffset = 0;
+onValue(ref(db, '.info/serverTimeOffset'), snap => {
+    serverTimeOffset = snap.val() || 0;
+});
+
 const presenceSessionId = `posts_${crypto.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
 const presenceSessionRef = (uid) => ref(db, `presence/${uid}/${presenceSessionId}`);
+
 function startOwnPresence(user = auth.currentUser) {
     if (!user) return;
     const sessionRef = presenceSessionRef(user.uid);
     onDisconnect(sessionRef).remove();
-    set(sessionRef, true);
+    
+    set(sessionRef, serverTimestamp());
+    
+    if (presenceInterval) clearInterval(presenceInterval);
+    
+    presenceInterval = setInterval(async () => {
+        try {
+            await set(sessionRef, serverTimestamp());
+            
+            const snap = await get(ref(db, `presence/${user.uid}`));
+            if (snap.exists()) {
+                const sessions = snap.val();
+                const now = Date.now() + serverTimeOffset;
+                const updates = {};
+                let hasChanges = false;
+                
+                Object.entries(sessions).forEach(([key, val]) => {
+                    if (key.startsWith('posts_') && typeof val === 'number') {
+                        // Estimate server time difference roughly, 3 minutes is safe
+                        if (now - val > 3 * 60000) {
+                            updates[key] = null;
+                            hasChanges = true;
+                        }
+                    }
+                });
+                
+                if (hasChanges) {
+                    await update(ref(db, `presence/${user.uid}`), updates);
+                }
+            }
+        } catch(e) {}
+    }, 60000);
 }
+
 function stopOwnPresence(user = auth.currentUser) {
-    if (user) remove(presenceSessionRef(user.uid));
+    if (presenceInterval) {
+        clearInterval(presenceInterval);
+        presenceInterval = null;
+    }
+    if (user) {
+        const sessionRef = presenceSessionRef(user.uid);
+        onDisconnect(sessionRef).cancel();
+        return remove(sessionRef);
+    }
+    return Promise.resolve();
 }
 
 // ==========================================
@@ -383,9 +432,9 @@ window.ensureIndividualPinnedListeners = (posts) => {
     window.pinnedFreshData = window.pinnedFreshData || {};
     posts.forEach(p => {
         if (!window.individualPinnedUnsubscribes[p.id]) {
-            window.individualPinnedUnsubscribes[p.id] = onValue(ref(db, `community_posts/${p.id}`), (snapshot) => {
+            window.individualPinnedUnsubscribes[p.id] = onSnapshot(doc(fsdb, 'community_posts', p.id), (snapshot) => {
                 if (snapshot.exists()) {
-                    const updatedPost = { id: snapshot.key, ...snapshot.val() };
+                    const updatedPost = { id: snapshot.id, ...snapshot.data() };
                     window.pinnedFreshData[p.id] = updatedPost;
                     
                     let needsRender = false;
@@ -425,8 +474,8 @@ window.listenPinnedPosts = () => {
     window.pinnedUnsubscribes = [];
 
     // Listen for global feed pinned posts
-    const feedPinnedQuery = query(ref(db, 'community_posts'), orderByChild('feedPinned'), equalTo(true));
-    window.pinnedUnsubscribes.push(onValue(feedPinnedQuery, (snapshot) => {
+    const feedPinnedQuery = query(collection(fsdb, 'community_posts'), where('feedPinned', '==', true));
+    window.pinnedUnsubscribes.push(onSnapshot(feedPinnedQuery, (snapshot) => {
         const postsMap = new Map();
         // 1. Inject all actively monitored pinned posts to survive unindexed SDK drops
         if (window.pinnedFreshData) {
@@ -436,7 +485,7 @@ window.listenPinnedPosts = () => {
         }
         // 2. Add anything from the snapshot
         snapshot.forEach(child => {
-            const p = { id: child.key, ...child.val() };
+            const p = { id: child.id, ...child.data() };
             postsMap.set(p.id, p);
         });
         
@@ -449,8 +498,8 @@ window.listenPinnedPosts = () => {
     }));
 
     // Listen for profile pinned posts
-    const profilePinnedQuery = query(ref(db, 'community_posts'), orderByChild('profilePinned'), equalTo(true));
-    window.pinnedUnsubscribes.push(onValue(profilePinnedQuery, (snapshot) => {
+    const profilePinnedQuery = query(collection(fsdb, 'community_posts'), where('profilePinned', '==', true));
+    window.pinnedUnsubscribes.push(onSnapshot(profilePinnedQuery, (snapshot) => {
         const postsMap = new Map();
         if (window.pinnedFreshData) {
             Object.values(window.pinnedFreshData).forEach(p => {
@@ -458,7 +507,7 @@ window.listenPinnedPosts = () => {
             });
         }
         snapshot.forEach(child => {
-            const p = { id: child.key, ...child.val() };
+            const p = { id: child.id, ...child.data() };
             postsMap.set(p.id, p);
         });
         
@@ -473,24 +522,26 @@ window.listenPinnedPosts = () => {
 
 window.listenPosts = () => {
     if (window.postsUnsubscribe) window.postsUnsubscribe();
-    
-    let dbQuery;
-    const postsRef = ref(db, 'community_posts');
+      let dbQuery;
+    const postsRef = collection(fsdb, 'community_posts');
     if (window.activeProfileUid) {
-        dbQuery = query(postsRef, orderByChild('authorId'), equalTo(window.activeProfileUid), limitToLast(window.postLimit));
+        dbQuery = query(postsRef, where('authorId', '==', window.activeProfileUid), orderBy('timestamp', 'desc'), limit(window.postLimit));
     } else if (window.currentFilter === 'My Posts' && window.currentUser) {
-        dbQuery = query(postsRef, orderByChild('authorId'), equalTo(window.currentUser.uid), limitToLast(window.postLimit));
+        dbQuery = query(postsRef, where('authorId', '==', window.currentUser.uid), orderBy('timestamp', 'desc'), limit(window.postLimit));
     } else if (window.currentFilter && window.currentFilter !== 'All') {
-        dbQuery = query(postsRef, orderByChild('category'), equalTo(window.currentFilter), limitToLast(window.postLimit));
+        dbQuery = query(postsRef, where('category', '==', window.currentFilter), orderBy('timestamp', 'desc'), limit(window.postLimit));
     } else {
-        dbQuery = query(postsRef, limitToLast(window.postLimit));
+        dbQuery = query(postsRef, orderBy('timestamp', 'desc'), limit(window.postLimit));
     }
 
-    window.postsUnsubscribe = onValue(dbQuery, (snapshot) => {
-        if(window.checkGameTimers) window.checkGameTimers(snapshot.val());
+    window.postsUnsubscribe = onSnapshot(dbQuery, (snapshot) => {
+        const rawDocs = {};
+        snapshot.forEach(child => rawDocs[child.id] = child.data());
+        if(window.checkGameTimers) window.checkGameTimers(rawDocs);
+        
         const newPosts = [];
         snapshot.forEach(child => {
-            const p = { id: child.key, ...child.val() };
+            const p = { id: child.id, ...child.data() };
             // For the main query, just overlay fresh data if it exists
             if (window.pinnedFreshData && window.pinnedFreshData[p.id]) {
                 newPosts.push(window.pinnedFreshData[p.id]);
@@ -498,11 +549,6 @@ window.listenPosts = () => {
                 newPosts.push(p);
             }
         });
-
-        const oldData = JSON.stringify(window.allPosts);
-        const newData = JSON.stringify(newPosts);
-        if (oldData === newData) return;
-
         if (newPosts.length < window.postLimit && window.postLimit > 15) {
             window.hasMorePosts = false;
         }
@@ -678,17 +724,16 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
             }
         }
 
-        const postRef = push(ref(db, 'community_posts'));
-        await set(postRef, {
+        const newPostRef = await addDoc(collection(fsdb, 'community_posts'), {
             authorId: window.currentUser.uid, text: text, image: finalImage,
             category: document.getElementById('post-category').value,
-            timestamp: serverTimestamp(), pinned: false, edited: false, locked: false, reactions: {},
+            timestamp: Date.now(), pinned: false, edited: false, locked: false, reactions: {},
             visibility: window.postVisibility || 'public' 
         });
         
         const pointsToAdd = window.siteSettings.starsPerPost ?? 10;
         update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
-        window.notifyMentions(text, postRef.key);
+        window.notifyMentions(text, newPostRef.id);
         window.logActivity("posted a new update");
         
         document.getElementById('post-text').value = '';
@@ -751,12 +796,15 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
 
     input.focus();
 
-    await push(ref(db, `community_posts/${postId}/comments`), { 
-        uid: window.currentUser.uid, 
-        text: text, 
-        image: finalImage,
-        timestamp: Date.now(), 
-        edited: false 
+    const commentId = doc(collection(fsdb, 'community_posts')).id;
+    await updateDoc(doc(fsdb, 'community_posts', postId), { 
+        [`comments.${commentId}`]: {
+            uid: window.currentUser.uid, 
+            text: text, 
+            image: finalImage,
+            timestamp: Date.now(), 
+            edited: false 
+        }
     });
     const pointsToAdd = window.siteSettings.starsPerLike ?? 1;
     update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
@@ -772,7 +820,7 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     if(btn) { btn.innerText = "Send"; btn.disabled = false; }
 };
 
-window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
+window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
     const input = document.getElementById(`reply-input-${prefix}-${commentId}`); 
@@ -780,7 +828,10 @@ window.submitReply = (postId, commentId, prefix, commentAuthorId) => {
     
     input.value = '';
     
-    push(ref(db, `community_posts/${postId}/comments/${commentId}/replies`), { uid: window.currentUser.uid, text: text, timestamp: Date.now(), edited: false });
+    const replyId = doc(collection(fsdb, 'community_posts')).id;
+    await updateDoc(doc(fsdb, 'community_posts', postId), {
+        [`comments.${commentId}.replies.${replyId}`]: { uid: window.currentUser.uid, text: text, timestamp: Date.now(), edited: false }
+    });
     const pointsToAdd = window.siteSettings.starsPerComment ?? 1;
     update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
     window.logActivity(`commented on a post by ${commentAuthorId}`);
@@ -810,7 +861,9 @@ window.react = (postId, postAuthorId, type) => {
     
     const hasReacted = post.reactions && post.reactions[type] && post.reactions[type][window.currentUser.uid];
     if(hasReacted) {
-        remove(ref(db, `community_posts/${postId}/reactions/${type}/${window.currentUser.uid}`));
+        updateDoc(doc(fsdb, 'community_posts', postId), {
+            [`reactions.${type}.${window.currentUser.uid}`]: deleteField()
+        });
         const likePoints = window.siteSettings.starsPerLike ?? 1;
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") update(ref(db, `users/${postAuthorId}`), { points: increment(-likePoints) });
     } else {
@@ -818,7 +871,9 @@ window.react = (postId, postAuthorId, type) => {
             window.showAlert("You can only have up to 3 simultaneous reactions on a post.");
             return;
         }
-        set(ref(db, `community_posts/${postId}/reactions/${type}/${window.currentUser.uid}`), true);
+        updateDoc(doc(fsdb, 'community_posts', postId), {
+            [`reactions.${type}.${window.currentUser.uid}`]: true
+        });
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
         const likePoints = window.siteSettings.starsPerLike ?? 1;
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
@@ -847,7 +902,9 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
     
     const hasReacted = comment.reactions && comment.reactions[type] && comment.reactions[type][window.currentUser.uid];
     if(hasReacted) {
-        remove(ref(db, `community_posts/${postId}/comments/${commentId}/reactions/${type}/${window.currentUser.uid}`));
+        updateDoc(doc(fsdb, 'community_posts', postId), {
+            [`comments.${commentId}.reactions.${type}.${window.currentUser.uid}`]: deleteField()
+        });
         const likePoints = window.siteSettings.starsPerLike ?? 1;
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") update(ref(db, `users/${commentAuthorId}`), { points: increment(-likePoints) });
     } else {
@@ -855,7 +912,9 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
             window.showAlert("You can only have up to 3 simultaneous reactions on a comment.");
             return;
         }
-        set(ref(db, `community_posts/${postId}/comments/${commentId}/reactions/${type}/${window.currentUser.uid}`), true);
+        updateDoc(doc(fsdb, 'community_posts', postId), {
+            [`comments.${commentId}.reactions.${type}.${window.currentUser.uid}`]: true
+        });
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${commentAuthorId}`), { points: increment(likePoints) });
@@ -883,7 +942,9 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
     
     const hasReacted = reply.reactions && reply.reactions[type] && reply.reactions[type][window.currentUser.uid];
     if(hasReacted) {
-        remove(ref(db, `community_posts/${postId}/comments/${commentId}/replies/${replyId}/reactions/${type}/${window.currentUser.uid}`));
+        updateDoc(doc(fsdb, 'community_posts', postId), {
+            [`comments.${commentId}.replies.${replyId}.reactions.${type}.${window.currentUser.uid}`]: deleteField()
+        });
         const likePoints = window.siteSettings.starsPerLike ?? 1;
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") update(ref(db, `users/${replyAuthorId}`), { points: increment(-likePoints) });
     } else {
@@ -891,7 +952,9 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
             window.showAlert("You can only have up to 3 simultaneous reactions on a reply.");
             return;
         }
-        set(ref(db, `community_posts/${postId}/comments/${commentId}/replies/${replyId}/reactions/${type}/${window.currentUser.uid}`), true);
+        updateDoc(doc(fsdb, 'community_posts', postId), {
+            [`comments.${commentId}.replies.${replyId}.reactions.${type}.${window.currentUser.uid}`]: true
+        });
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${replyAuthorId}`), { points: increment(likePoints) });
@@ -990,7 +1053,30 @@ document.getElementById('save-edit-btn').addEventListener('click', () => {
     if (!window.activeEditTarget) return;
     const newText = document.getElementById('edit-content-input').value.trim();
     if (newText !== "") {
-        update(ref(db, window.activeEditTarget.path), { text: newText, edited: true });
+        const dbPath = window.activeEditTarget.path;
+        if (dbPath.startsWith('community_posts/')) {
+            const parts = dbPath.split('/');
+            const postId = parts[1];
+            if (parts.length === 2) {
+                updateDoc(doc(fsdb, 'community_posts', postId), { text: newText, edited: true });
+            } else if (parts.length === 4 && parts[2] === 'comments') {
+                const cId = parts[3];
+                updateDoc(doc(fsdb, 'community_posts', postId), {
+                    [`comments.${cId}.text`]: newText,
+                    [`comments.${cId}.edited`]: true
+                });
+            } else if (parts.length === 6 && parts[2] === 'comments' && parts[4] === 'replies') {
+                const cId = parts[3];
+                const rId = parts[5];
+                updateDoc(doc(fsdb, 'community_posts', postId), {
+                    [`comments.${cId}.replies.${rId}.text`]: newText,
+                    [`comments.${cId}.replies.${rId}.edited`]: true
+                });
+            }
+        } else {
+            // Fallback for RTDB (if any)
+            update(ref(db, window.activeEditTarget.path), { text: newText, edited: true });
+        }
         window.notifyMentions(newText, window.activeEditTarget.postId);
     }
     document.getElementById('edit-modal').classList.add('hidden');
@@ -1021,7 +1107,7 @@ window.editReply = (postId, cId, rId) => {
 
 window.togglePostVisibility = (postId, currentVis) => {
     const newVis = currentVis === 'private' ? 'public' : 'private';
-    update(ref(db, `community_posts/${postId}`), { visibility: newVis });
+    updateDoc(doc(fsdb, 'community_posts', postId), { visibility: newVis });
     if(window.showAlert) window.showAlert(`Post updated to ${newVis === 'private' ? 'Private' : 'Public'}`);
 };
 
@@ -1188,10 +1274,10 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
     }
 });
 
-document.getElementById('logout-btn').addEventListener('click', () => { 
-    stopOwnPresence(window.currentUser); 
+document.getElementById('logout-btn').addEventListener('click', async () => { 
+    try { await stopOwnPresence(window.currentUser); } catch(e) {}
     window.logActivity("logged out");
-    signOut(auth); 
+    await signOut(auth); 
     window.showAlert("Logged out successfully!");
 });
 

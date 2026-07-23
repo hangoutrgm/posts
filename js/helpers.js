@@ -1,6 +1,59 @@
-import { db } from "./firebase-config.js";
+import { db, fsdb } from "./firebase-config.js";
 import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
+// State Variables attached to window to preserve inline HTML function functionality
+window.currentUser = null;
+window.currentFilter = "All";
+window.currentMemberFilter = "All";
+window.allPosts = [];
+window.globalPinnedPosts = window.globalPinnedPosts || [];
+window.globalUsersCache = {};
+window.onlineUsers = {};
+window.isSignUpMode = false;
+window.activeProfileUid = null;
+window.commentSortState = {};
+window.initialLinkDone = false;
+window.openComments = new Set();
+window.openReplies = new Set();
+window.openRepliesList = new Set();
+window.isolatedPostId = null;
+
+// Pagination Core States
+window.feedRenderLimit = 15;
+window.profileRenderLimit = 15;
+window.membersRenderLimit = 20;
+window.feedObserver = null;
+window.profileObserver = null;
+window.membersObserver = null;
+
+window.deviceId = localStorage.getItem('hangout_device_id') || ('dev_' + Math.random().toString(36).substring(2, 15));
+localStorage.setItem('hangout_device_id', window.deviceId);
+window.activeEditTarget = null;
+
+// ==========================================
+// V6.1 NEW STATES
+// ==========================================
+window.postVisibility = 'public'; // Can be 'public' or 'private'
+window.currentMentionMatch = null;
+
+// Typing protection (v6.3)
+window.isUserTyping = false;
+window.typingTimer = null;
+
+// Dynamic Settings (loaded from Firebase /settings)
+window.siteSettings = {
+    starsPerPost: 10,
+    starsPerComment: 1,
+    starsPerReply: 1,
+    starsPerLike: 1,
+    starsPerPoked: 5,
+    lbPointsPerWin: 5,
+    maxLbPointsPrize: 100,
+    imageUploadLimit: 10,
+    videoUploadLimit: 3,
+    videoSizeLimitMB: 20
+};
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;
     document.getElementById('custom-alert-modal').classList.remove('hidden');
@@ -84,7 +137,8 @@ window.checkBan = function() {
 
 window.timeAgo = (timestamp) => {
     if (!timestamp) return 'now';
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    const ts = timestamp?.toMillis ? timestamp.toMillis() : timestamp;
+    const seconds = Math.floor((Date.now() - ts) / 1000);
     if (seconds < 60) return "now";
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return minutes + "m";
@@ -108,10 +162,10 @@ window.repostPost = function(postId) {
 
     window.showConfirm("Are you sure you want to repost this to your profile and bump it in the feed?", async () => {
         try {
-            const snap = await get(ref(db, `community_posts/${postId}`));
+            const snap = await getDoc(doc(fsdb, 'community_posts', postId));
             if (!snap.exists()) return window.showAlert("Post not found.");
             
-            const originalPost = snap.val();
+            const originalPost = snap.data();
 
 
             // Prevent reposting a repost
@@ -120,13 +174,12 @@ window.repostPost = function(postId) {
 
             const isRepostedGame = originalPost.isGame || originalPost.category === 'Games';
 
-            const postRef = push(ref(db, 'community_posts'));
-            await set(postRef, {
+            await addDoc(collection(fsdb, 'community_posts'), {
                 authorId: window.currentUser.uid,
                 text: originalPost.text || "",
                 image: originalPost.image || "",
                 category: originalPost.category || "General",
-                timestamp: serverTimestamp(),
+                timestamp: fsServerTimestamp(),
                 pinned: false,
                 edited: false,
                 locked: false,
@@ -139,8 +192,7 @@ window.repostPost = function(postId) {
             });
             window.showAlert("Post reposted successfully!");
         } catch (error) {
-            console.error("Error reposting:", error);
-            window.showAlert("Failed to repost. Please try again.");
+            window.showAlert("Failed to repost: " + error.message);
         }
     });
 };
@@ -382,8 +434,36 @@ window.isPostPinned = (post, filterContext) => {
 // API Interactions & Toggles
 window.deleteItem = (dbPath, targetUid) => {
     if(!window.canDelete(targetUid)) return window.showAlert("Permission denied");
-    window.showConfirm("Are you sure you want to permanently delete this?", () => {
-        remove(ref(db, dbPath));
+    window.showConfirm("Are you sure you want to permanently delete this?", async () => {
+        try {
+            if (dbPath.startsWith('community_posts/')) {
+                const parts = dbPath.split('/');
+                const postId = parts[1];
+                if (parts.length === 2) {
+                    // It's a post deletion
+                    await deleteDoc(doc(fsdb, 'community_posts', postId));
+                } else if (parts.length === 4 && parts[2] === 'comments') {
+                    // It's a comment deletion
+                    const cId = parts[3];
+                    await updateDoc(doc(fsdb, 'community_posts', postId), {
+                        [`comments.${cId}`]: deleteField()
+                    });
+                } else if (parts.length === 6 && parts[2] === 'comments' && parts[4] === 'replies') {
+                    // It's a reply deletion
+                    const cId = parts[3];
+                    const rId = parts[5];
+                    await updateDoc(doc(fsdb, 'community_posts', postId), {
+                        [`comments.${cId}.replies.${rId}`]: deleteField()
+                    });
+                }
+            } else {
+                // Fallback for any RTDB paths (if any remain)
+                await remove(ref(db, dbPath));
+            }
+        } catch(e) {
+            console.error("Delete error:", e);
+            window.showAlert("Failed to delete.");
+        }
     });
 }
 
@@ -392,9 +472,9 @@ window.refreshSinglePost = async (postId) => {
         const btn = document.querySelector(`#post-main-${postId} .fa-arrows-rotate`) || document.querySelector(`#post-profile-${postId} .fa-arrows-rotate`);
         if (btn) btn.classList.add('fa-spin');
         
-        const snap = await get(ref(db, `community_posts/${postId}`));
+        const snap = await getDoc(doc(fsdb, 'community_posts', postId));
         if (snap.exists()) {
-            const updatedPost = { id: postId, ...snap.val() };
+            const updatedPost = { id: postId, ...snap.data() };
             const indexAll = window.allPosts.findIndex(p => p.id === postId);
             if (indexAll !== -1) window.allPosts[indexAll] = updatedPost;
             
@@ -464,7 +544,7 @@ window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
 };
 
 window.executePin = (postId, pinType, targetStatus) => {
-    update(ref(db, `community_posts/${postId}`), { [pinType]: targetStatus }).then(() => {
+    updateDoc(doc(fsdb, 'community_posts', postId), { [pinType]: targetStatus }).then(() => {
         if (window.listenPinnedPosts) {
             setTimeout(() => window.listenPinnedPosts(), 500); // Give Firebase a moment to sync before re-fetching
         }
@@ -482,7 +562,7 @@ window.toggleLock = (postId, currentStatus) => {
         return window.showAlert("Mods cannot lock or unlock Game posts.");
     }
     if (roleLevel >= 2 || isAuthor) {
-        update(ref(db, `community_posts/${postId}`), { locked: !currentStatus });
+        updateDoc(doc(fsdb, 'community_posts', postId), { locked: !currentStatus });
     }
 };
 
