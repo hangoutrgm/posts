@@ -320,6 +320,12 @@ window.renderFeed = (resetLimit = true) => {
             </div>`;
         }
 
+        // Guard against the race condition: don't render if users cache isn't loaded yet
+        if (!window.usersReady) {
+            window._pendingPostRender = true;
+            return;
+        }
+
         window.renderPostList(feed, [singlePost], 'main', 'isolated');
         if (window.processBingoAnimations) window.processBingoAnimations();
         return;
