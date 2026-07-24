@@ -436,103 +436,58 @@ window.postLimit = 15;
 window.postsUnsubscribe = null;
 window.usersReady = false;   // Gate: don't render posts until users cache is loaded
 window._pendingPostRender = false; // Was a render requested before users were ready?
-window.pinnedUnsubscribes = [];
-
-window.ensureIndividualPinnedListeners = (posts) => {
-    window.individualPinnedUnsubscribes = window.individualPinnedUnsubscribes || {};
-    window.pinnedFreshData = window.pinnedFreshData || {};
-    posts.forEach(p => {
-        if (!window.individualPinnedUnsubscribes[p.id]) {
-            window.individualPinnedUnsubscribes[p.id] = onSnapshot(doc(fsdb, 'community_posts', p.id), (snapshot) => {
-                if (snapshot.exists()) {
-                    const updatedPost = { id: snapshot.id, ...snapshot.data() };
-                    window.pinnedFreshData[p.id] = updatedPost;
-                    
-                    let needsRender = false;
-                    const idxAll = window.allPosts.findIndex(x => x.id === p.id);
-                    const idxGlobal = window.globalPinnedPosts.findIndex(x => x.id === p.id);
-                    const idxProfile = window.profilePinnedPosts ? window.profilePinnedPosts.findIndex(x => x.id === p.id) : -1;
-                    
-                    if (!updatedPost.feedPinned && !updatedPost.profilePinned && !updatedPost.pinned) {
-                        // It was unpinned. Clean up listener and authoritative data.
-                        window.individualPinnedUnsubscribes[p.id]();
-                        delete window.individualPinnedUnsubscribes[p.id];
-                        delete window.pinnedFreshData[p.id];
-                        
-                        // Remove from caches
-                        if (idxAll !== -1) { window.allPosts.splice(idxAll, 1); needsRender = true; }
-                        if (idxGlobal !== -1) { window.globalPinnedPosts.splice(idxGlobal, 1); needsRender = true; }
-                        if (idxProfile !== -1) { window.profilePinnedPosts.splice(idxProfile, 1); needsRender = true; }
-                    } else {
-                        // Update caches with fresh data
-                        if (idxAll !== -1) { window.allPosts[idxAll] = updatedPost; needsRender = true; }
-                        if (idxGlobal !== -1) { window.globalPinnedPosts[idxGlobal] = updatedPost; needsRender = true; }
-                        if (idxProfile !== -1) { window.profilePinnedPosts[idxProfile] = updatedPost; needsRender = true; }
-                    }
-                    
-                    if (needsRender && !window.isUserTyping && !window._bingoGlobalSpinning) {
-                        if (window.activeProfileUid) window.renderProfileData(false);
-                        else window.renderFeed(false);
-                    }
-                }
-            });
-        }
+window.loadPinnedPosts = () => {
+    onSnapshot(doc(fsdb, 'settings', 'pinned'), (docSnap) => {
+        if (!docSnap.exists()) return;
+        const data = docSnap.data();
+        window._applyPinnedIds(data.feedPinnedIds || [], 'feedPinned');
+        window._applyPinnedIds(data.profilePinnedIds || [], 'profilePinned');
     });
 };
 
-window.listenPinnedPosts = () => {
-    window.pinnedUnsubscribes.forEach(unsub => unsub());
-    window.pinnedUnsubscribes = [];
-
-    // Listen for global feed pinned posts
-    const feedPinnedQuery = query(collection(fsdb, 'community_posts'), where('feedPinned', '==', true));
-    window.pinnedUnsubscribes.push(onSnapshot(feedPinnedQuery, (snapshot) => {
-        const postsMap = new Map();
-        // 1. Inject all actively monitored pinned posts to survive unindexed SDK drops
-        if (window.pinnedFreshData) {
-            Object.values(window.pinnedFreshData).forEach(p => {
-                if (!!p.feedPinned || !!p.pinned) postsMap.set(p.id, p);
-            });
-        }
-        // 2. Add anything from the snapshot
-        snapshot.forEach(child => {
-            const p = { id: child.id, ...child.data() };
-            postsMap.set(p.id, p);
-        });
-        
-        const posts = Array.from(postsMap.values());
-        window.globalPinnedPosts = posts;
-        window.ensureIndividualPinnedListeners(posts);
-        if (!window.isUserTyping && !window._bingoGlobalSpinning) {
-            if (!window.usersReady) {
-                window._pendingPostRender = true;
+window._applyPinnedIds = (ids, pinType) => {
+    ids.forEach(id => {
+        if (!window.allPosts.find(p => p.id === id)) {
+            // Need to fetch missing pinned post
+            import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js")
+                .then(({ getDoc, doc }) => getDoc(doc(fsdb, 'community_posts', id)))
+                .then(snap => {
+                    if (snap.exists()) {
+                        const post = { id: snap.id, ...snap.data() };
+                        post[pinType] = true;
+                        window.allPosts.push(post);
+                        if (pinType === 'feedPinned') {
+                            if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(post);
+                        } else {
+                            if (!window.profilePinnedPosts.find(p => p.id === id)) window.profilePinnedPosts.push(post);
+                        }
+                        if (typeof window.renderFeed === 'function') {
+                            if (!window.usersReady) window._pendingPostRender = true;
+                            else window.renderFeed(false);
+                        }
+                    }
+                });
+        } else {
+            const post = window.allPosts.find(p => p.id === id);
+            post[pinType] = true;
+            if (pinType === 'feedPinned') {
+                if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(post);
             } else {
-                window.renderFeed(false);
+                if (!window.profilePinnedPosts.find(p => p.id === id)) window.profilePinnedPosts.push(post);
             }
         }
-    }));
+    });
 
-    // Listen for profile pinned posts
-    const profilePinnedQuery = query(collection(fsdb, 'community_posts'), where('profilePinned', '==', true));
-    window.pinnedUnsubscribes.push(onSnapshot(profilePinnedQuery, (snapshot) => {
-        const postsMap = new Map();
-        if (window.pinnedFreshData) {
-            Object.values(window.pinnedFreshData).forEach(p => {
-                if (!!p.profilePinned || !!p.pinned) postsMap.set(p.id, p);
-            });
-        }
-        snapshot.forEach(child => {
-            const p = { id: child.id, ...child.data() };
-            postsMap.set(p.id, p);
-        });
-        
-        const posts = Array.from(postsMap.values());
-        window.profilePinnedPosts = posts;
-        window.ensureIndividualPinnedListeners(posts);
-        if (!window.isUserTyping && !window._bingoGlobalSpinning && window.activeProfileUid) {
-            if (window.usersReady) window.renderProfileData(false);
-        }
-    }));
+    // Cleanup unpinned
+    if (pinType === 'feedPinned') {
+        window.globalPinnedPosts = window.globalPinnedPosts.filter(p => ids.includes(p.id));
+    } else {
+        window.profilePinnedPosts = window.profilePinnedPosts.filter(p => ids.includes(p.id));
+    }
+    if (typeof window.renderFeed === 'function') {
+        if (!window.usersReady) window._pendingPostRender = true;
+        else window.renderFeed(false);
+    }
 };
 
 // Build a base Firestore query with optional filter/author constraints (no limit yet)
@@ -567,11 +522,7 @@ window.listenPosts = () => {
         const livePosts = [];
         snapshot.forEach(child => {
             const p = { id: child.id, ...child.data() };
-            if (window.pinnedFreshData && window.pinnedFreshData[p.id]) {
-                livePosts.push(window.pinnedFreshData[p.id]);
-            } else {
-                livePosts.push(p);
-            }
+            livePosts.push(p);
         });
 
         // Store the last doc from the live batch so history pagination knows where to start
@@ -587,20 +538,6 @@ window.listenPosts = () => {
         const historyIds = new Set((window._historyPosts || []).map(p => p.id));
         const mergedLive = livePosts.filter(p => !historyIds.has(p.id));
         window.allPosts = [...mergedLive, ...(window._historyPosts || [])];
-
-        // Preserve pinned posts
-        const previousPinned = window.allPosts.filter(p => !!p.feedPinned || !!p.profilePinned || !!p.pinned);
-        window.individualPinnedUnsubscribes = window.individualPinnedUnsubscribes || {};
-        previousPinned.forEach(p => {
-            if (!window.allPosts.find(np => np.id === p.id)) window.allPosts.push(p);
-        });
-        window.ensureIndividualPinnedListeners(previousPinned);
-        window.allPosts.forEach(p => {
-            if (window.individualPinnedUnsubscribes[p.id]) {
-                window.individualPinnedUnsubscribes[p.id]();
-                delete window.individualPinnedUnsubscribes[p.id];
-            }
-        });
 
         if (!window.isUserTyping && !window._bingoGlobalSpinning) {
             if (!window.usersReady) {
@@ -674,7 +611,7 @@ window.loadMorePosts = async () => {
     }
 };
 
-window.listenPinnedPosts();
+window.loadPinnedPosts();
 window.listenPosts();
 
 // ==========================================

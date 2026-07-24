@@ -62,7 +62,7 @@ window.renderNotifications = () => {
 
             return `
             <div class="flex items-center p-2.5 rounded-lg mb-1 border border-gray-100 dark:border-slate-700/50 ${n.read ? 'bg-gray-50 dark:bg-slate-900/50 opacity-80' : 'bg-blue-50 dark:bg-blue-900/20'} hover:opacity-100 cursor-pointer transition shadow-sm" ${linkAction}>
-                <img src="${u.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover mr-3 shrink-0 border border-gray-200 dark:border-slate-600" onclick="event.stopPropagation(); window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');">
+                <img src="${u.pic || window.generateAvatar(n.sourceUid)}" loading="lazy" class="w-8 h-8 rounded-full object-cover mr-3 shrink-0 border border-gray-200 dark:border-slate-600" onclick="event.stopPropagation(); window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');">
                 <div class="flex-1 text-[11px] leading-tight min-w-0">
                     <div>
                         <span class="font-bold text-gray-900 dark:text-white hover:underline" onclick="event.stopPropagation(); window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');">${u.name}</span>
@@ -466,7 +466,7 @@ window.renderProfileData = (resetLimit = true) => {
         followersHtml = '<div class="flex space-x-3 overflow-x-auto py-2 scrollbar-hide">';
         followerIds.forEach(fid => {
             const fData = window.globalUsersCache[fid] || { name: "User", pic: window.generateAvatar(fid) };
-            followersHtml += `<div class="shrink-0 text-center w-12"><img src="${fData.pic}" loading="lazy" class="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 mx-auto" onclick="window.openProfile('${fid}')" title="${fData.name}"><p class="text-[9px] mt-1 text-gray-500 truncate text-center">${fData.name}</p></div>`;
+            followersHtml += `<div class="shrink-0 text-center w-12"><img src="${fData.pic || window.generateAvatar(fid)}" loading="lazy" class="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 mx-auto" onclick="window.openProfile('${fid}')" title="${fData.name}"><p class="text-[9px] mt-1 text-gray-500 truncate text-center">${fData.name}</p></div>`;
         });
         followersHtml += '</div>';
     } else {
@@ -504,7 +504,7 @@ window.renderProfileData = (resetLimit = true) => {
             <button onclick="window.copyProfileLink('${window.activeProfileUid}')" class="absolute top-4 right-4 text-gray-400 hover:text-blue-500 transition bg-gray-50 dark:bg-slate-900 rounded-full w-8 h-8 flex items-center justify-center border border-gray-100 dark:border-slate-700 shadow-sm"><i class="fa-solid fa-share"></i></button>
             
             <div class="relative mt-2">
-                <img src="${uData.pic}" loading="lazy" class="w-20 h-20 rounded-full object-cover border-4 ${isBanned ? 'border-red-500 grayscale' : 'border-gray-50 dark:border-slate-700'}">
+                <img src="${uData.pic || window.generateAvatar(window.activeProfileUid)}" loading="lazy" class="w-20 h-20 rounded-full object-cover border-4 ${isBanned ? 'border-red-500 grayscale' : 'border-gray-50 dark:border-slate-700'}">
                 <div class="absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 ${isOnline ? 'bg-green-500' : 'bg-gray-400'}"></div>
             </div>
             
@@ -833,7 +833,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
 
                 repliesHtml += `
                     <div class="flex items-start space-x-2 mt-2 ml-6 reply-line pl-2 relative group">
-                        <img src="${rAuth.pic}" loading="lazy" class="w-5 h-5 rounded-full object-cover cursor-pointer hover:opacity-80 transition" onclick="window.openProfile('${r.uid}')">
+                        <img src="${rAuth.pic || window.generateAvatar(r.uid)}" loading="lazy" class="w-5 h-5 rounded-full object-cover cursor-pointer hover:opacity-80 transition" onclick="window.openProfile('${r.uid}')">
                         <div class="flex-1 bg-gray-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-gray-100 dark:border-slate-800 text-xs w-full overflow-hidden">
                             <div class="flex justify-between items-start">
                                 <p class="font-bold text-gray-700 dark:text-gray-300 text-[10px] cursor-pointer hover:underline flex items-center" onclick="window.openProfile('${r.uid}')">
@@ -873,7 +873,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         commentsHtml += `
             <div class="mt-2 relative group">
                 <div class="flex items-start space-x-2">
-                    <img src="${cAuth.pic}" loading="lazy" class="w-6 h-6 rounded-full object-cover cursor-pointer hover:opacity-80 transition" onclick="window.openProfile('${c.uid}')">
+                    <img src="${cAuth.pic || window.generateAvatar(c.uid)}" loading="lazy" class="w-6 h-6 rounded-full object-cover cursor-pointer hover:opacity-80 transition" onclick="window.openProfile('${c.uid}')">
                     <div class="flex-1 bg-gray-50 dark:bg-slate-900 p-2 rounded-lg border border-gray-100 dark:border-slate-700/50 text-xs w-full overflow-hidden">
                         <div class="flex justify-between items-start">
                             <p class="font-bold text-gray-700 dark:text-gray-300 text-[11px] cursor-pointer hover:underline flex items-center" onclick="window.openProfile('${c.uid}')">
@@ -1422,7 +1422,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             ${repostBanner}
             <div class="flex justify-between items-start">
                 <div class="flex items-center space-x-2 min-w-0">
-                    <img src="${authorInfo.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition shrink-0 ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${displayAuthorId}')">
+                    <img src="${authorInfo.pic || window.generateAvatar(displayAuthorId)}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 transition shrink-0 ${isBannedAuthor ? 'grayscale' : ''}" onclick="window.openProfile('${displayAuthorId}')">
                     <div class="leading-tight min-w-0 flex-1 overflow-hidden">
                         <div class="flex items-center overflow-x-auto scrollbar-hide space-x-1 pb-0.5">
                             <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100 cursor-pointer hover:underline shrink-0 whitespace-nowrap ${isBannedAuthor ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${displayAuthorId}')">${authorInfo.name}</h3>
@@ -1544,7 +1544,7 @@ window.renderMembers = (resetLimit = true) => {
         el.innerHTML = `
             <div class="flex items-center space-x-3 overflow-hidden">
                 <div class="relative shrink-0">
-                    <img src="${u.pic}" loading="lazy" class="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 ${u.isBanned ? 'grayscale' : ''}" onclick="window.openProfile('${u.uid}')">
+                    <img src="${u.pic || window.generateAvatar(u.uid)}" loading="lazy" class="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 ${u.isBanned ? 'grayscale' : ''}" onclick="window.openProfile('${u.uid}')">
                     <div class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white dark:border-slate-900 ${isOnline ? 'bg-green-500' : 'bg-gray-400'}"></div>
                 </div>
                 <div class="leading-tight truncate pr-2">
@@ -1620,7 +1620,7 @@ window.showReactors = (postId, commentId = null) => {
             return `
             <div class="flex items-center justify-between p-2 rounded-lg mb-1 border border-gray-100 dark:border-slate-700/50 bg-gray-50 dark:bg-slate-900/50 hover:opacity-80 cursor-pointer transition" onclick="window.openProfile('${r.uid}'); document.getElementById('reactors-modal').classList.add('hidden');">
                 <div class="flex items-center space-x-2">
-                    <img src="${u.pic}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600">
+                    <img src="${u.pic || window.generateAvatar(r.uid)}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600">
                     <span class="font-bold text-[13px] text-gray-900 dark:text-white">${u.name}</span>
                 </div>
                 <div class="text-base bg-white dark:bg-slate-800 min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center shadow-sm border border-gray-100 dark:border-slate-700 shrink-0">${icons[r.type] || `<span class="text-sm">${r.type}</span>`}</div>
@@ -1961,7 +1961,7 @@ window.renderRankings = async (resetLimit = true) => {
                 <div class="flex items-center space-x-3 overflow-hidden">
                     ${rankHtml}
                     <div class="relative shrink-0">
-                        <img src="${u.pic}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
+                        <img src="${u.pic || window.generateAvatar(u.uid)}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
                     </div>
                     <div class="leading-tight truncate pr-2">
                         <div class="flex items-center">

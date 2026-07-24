@@ -1,6 +1,6 @@
 import { db, fsdb } from "./firebase-config.js";
 import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 // State Variables attached to window to preserve inline HTML function functionality
 window.currentUser = null;
@@ -442,6 +442,14 @@ window.deleteItem = (dbPath, targetUid) => {
                 if (parts.length === 2) {
                     // It's a post deletion
                     await deleteDoc(doc(fsdb, 'community_posts', postId));
+                    // Clean up pinned settings just in case
+                    try {
+                        const settingsRef = doc(fsdb, 'settings', 'pinned');
+                        await updateDoc(settingsRef, {
+                            feedPinnedIds: arrayRemove(postId),
+                            profilePinnedIds: arrayRemove(postId)
+                        });
+                    } catch(e) { /* ignore if doc doesn't exist */ }
                 } else if (parts.length === 4 && parts[2] === 'comments') {
                     // It's a comment deletion
                     const cId = parts[3];
@@ -544,11 +552,40 @@ window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
 };
 
 window.executePin = (postId, pinType, targetStatus) => {
-    updateDoc(doc(fsdb, 'community_posts', postId), { [pinType]: targetStatus }).then(() => {
-        if (window.listenPinnedPosts) {
-            setTimeout(() => window.listenPinnedPosts(), 500); // Give Firebase a moment to sync before re-fetching
-        }
+    // 1. We still optionally flag it on the post itself for older queries, but we don't listen to it globally.
+    updateDoc(doc(fsdb, 'community_posts', postId), { [pinType]: targetStatus }).catch(() => {});
+
+    // 2. The single source of truth for the active feed listeners is the `settings/pinned` document.
+    const settingsRef = doc(fsdb, 'settings', 'pinned');
+    const field = pinType === 'feedPinned' ? 'feedPinnedIds' : 'profilePinnedIds';
+    const change = targetStatus ? arrayUnion(postId) : arrayRemove(postId);
+    updateDoc(settingsRef, { [field]: change }).catch(() => {
+        // Document may not exist yet — create it
+        import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js")
+            .then(({ setDoc }) => setDoc(settingsRef, { [field]: targetStatus ? [postId] : [] }, { merge: true }));
     });
+
+    // 3. Optimistically update local state so UI reflects immediately (no need to wait for listener)
+    if (targetStatus) {
+        const post = window.allPosts.find(p => p.id === postId);
+        if (post) {
+            post[pinType] = true;
+            if (pinType === 'feedPinned' && !window.globalPinnedPosts.find(p => p.id === postId)) {
+                window.globalPinnedPosts.push(post);
+            } else if (pinType === 'profilePinned' && !window.profilePinnedPosts.find(p => p.id === postId)) {
+                window.profilePinnedPosts.push(post);
+            }
+        }
+    } else {
+        const post = window.allPosts.find(p => p.id === postId);
+        if (post) post[pinType] = false;
+        if (pinType === 'feedPinned') {
+            window.globalPinnedPosts = window.globalPinnedPosts.filter(p => p.id !== postId);
+        } else {
+            window.profilePinnedPosts = (window.profilePinnedPosts || []).filter(p => p.id !== postId);
+        }
+    }
+    if (typeof window.renderFeed === 'function') window.renderFeed(false);
 };
 
 window.toggleLock = (postId, currentStatus) => {
