@@ -1330,6 +1330,24 @@ onAuthStateChanged(auth, (user) => {
         // Start the dedicated notifications listener for this user
         if (window._startNotifListener) window._startNotifListener(user.uid);
 
+        // Auto-cleanup: keep only the latest 100 notifications in the database
+        setTimeout(() => {
+            get(ref(db, `notifications/${user.uid}`)).then(snap => {
+                const allNotifs = snap.val();
+                if (allNotifs) {
+                    const keys = Object.keys(allNotifs);
+                    if (keys.length > 100) {
+                        // Sort by timestamp (oldest first)
+                        keys.sort((a, b) => (allNotifs[a].timestamp || 0) - (allNotifs[b].timestamp || 0));
+                        const keysToDelete = keys.slice(0, keys.length - 100);
+                        const updates = {};
+                        keysToDelete.forEach(k => updates[k] = null);
+                        update(ref(db, `notifications/${user.uid}`), updates).catch(e => console.warn("Failed to prune notifications", e));
+                    }
+                }
+            }).catch(e => console.warn("Failed to fetch notifications for pruning", e));
+        }, 5000); // Wait 5 seconds after load to not block initial rendering
+
         if (window.chatInboxUnsubscribe) window.chatInboxUnsubscribe();
         window.chatInboxUnsubscribe = onValue(ref(db, `chatInboxes/${user.uid}`), (snap) => {
             const inbox = snap.val() || {};
