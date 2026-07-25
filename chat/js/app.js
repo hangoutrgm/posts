@@ -207,7 +207,14 @@ function updateChatHeader() {
   }
 }
 
-function replyPreview(replyTo = {}) { return replyTo.text || (replyTo.hasImage ? 'Photo' : 'Message'); }
+function replyPreview(replyTo = {}) { 
+  if (replyTo.text) return replyTo.text;
+  if (replyTo.image) {
+    if (replyTo.image.includes('/video/upload/') || replyTo.image.match(/\\.(mp4|webm|mov|ogg)$/i)) return 'Video';
+    return 'Photo';
+  }
+  return replyTo.hasImage ? 'Photo' : 'Message'; 
+}
 function visibleMessages(rawMessages = state.messages) {
   const clearTime = Number(state.clears[state.activeThreadId] || 0);
   return Object.entries(rawMessages || {}).map(([id, message]) => ({ id, ...message })).filter((message) => Number(message.timestamp || 0) > clearTime).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
@@ -216,9 +223,14 @@ function visibleMessages(rawMessages = state.messages) {
 function renderMessages(rawMessages, jumpToLatest = false) {
   if (rawMessages !== undefined) state.messages = rawMessages || {};
   const list = $('message-list');
-  const wasNearLatest = list.scrollHeight - list.scrollTop - list.clientHeight < 90;
+  const wasNearLatest = list ? (list.scrollHeight - list.scrollTop - list.clientHeight < 250) : false;
   const rows = visibleMessages();
   if (!rows.length) { list.innerHTML = '<p class="list-empty messages-empty">No messages yet. Say hello!</p>'; return; }
+  
+  const lastMsg = rows[rows.length - 1];
+  const isNewArrival = window._lastRenderedMsgId && window._lastRenderedMsgId !== lastMsg.id;
+  window._lastRenderedMsgId = lastMsg.id;
+  
   const latestSeenMessageId = [...rows].reverse().find((message) => message.senderId === state.user?.uid && Number(message.timestamp || 0) <= state.peerSeenAt)?.id;
   const groupLatestSeen = {};
   if (state.activeInboxItem?.isGroup) {
@@ -235,9 +247,30 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     if (message.isSystem) return `<div class="message-row system" style="text-align:center; font-size:12px; color:var(--muted); margin: 8px 0; width: 100%; max-width: 100%; justify-content: center;">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
-    let quote = message.replyTo ? `<div class="reply-quote">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: ${escapeHtml(replyPreview(message.replyTo))}</div>` : '';
-    let image = message.image ? (message.image.includes('/video/upload/') || message.image.match(/\.(mp4|webm|mov|ogg)$/i) ? `<video class="message-image" src="${escapeHtml(message.image)}" controls style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`) : '';
+    let quote = '';
+    if (message.replyTo) {
+      let mediaPreview = '';
+      if (message.replyTo.image) {
+        if (message.replyTo.image.includes('/video/upload/') || message.replyTo.image.match(/\\.(mp4|webm|mov|ogg)$/i)) {
+          mediaPreview = `<video src="${escapeHtml(message.replyTo.image)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;"></video>`;
+        } else {
+          mediaPreview = `<img src="${escapeHtml(message.replyTo.image)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
+        }
+      } else if (message.replyTo.hasImage) {
+        mediaPreview = `📷 `;
+      }
+      quote = `<div class="reply-quote" onclick="const e = document.getElementById('message-${message.replyTo.id}'); if(e) e.scrollIntoView({behavior:'smooth', block:'center'});">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: <br/> ${mediaPreview}${escapeHtml(replyPreview(message.replyTo))}</div>`;
+    }
+    let isVid = false;
+    let image = '';
+    if (message.image) {
+      isVid = message.image.includes('/video/upload/') || message.image.match(/\\.(mp4|webm|mov|ogg)$/i);
+      image = isVid ? `<video class="message-image" src="${escapeHtml(message.image)}" style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`;
+    }
     let messageText = linkifyText(message.text || '');
+    if (!messageText && image) {
+      messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
+    }
     
     if (message.isDeleted) {
       quote = '';
@@ -275,7 +308,13 @@ function renderMessages(rawMessages, jumpToLatest = false) {
   }
 
   wireMessageGestures(rows);
-  if (jumpToLatest || wasNearLatest) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+  if (jumpToLatest || wasNearLatest || window._jumpToLatest || isNewArrival) {
+    requestAnimationFrame(() => { 
+      list.scrollTop = list.scrollHeight; 
+      setTimeout(() => list.scrollTop = list.scrollHeight, 100);
+    });
+    window._jumpToLatest = false;
+  }
 }
 
 function closeMessageMenu() { $('message-action-menu').classList.add('hidden'); $('message-action-menu').innerHTML = ''; }
@@ -314,6 +353,7 @@ function openImageViewer(src) {
     img.src = '';
     vid.style.display = '';
     vid.src = src;
+    vid.play().catch(()=>{}); // Autoplay on open
   } else {
     vid.style.display = 'none';
     vid.src = '';
@@ -385,7 +425,10 @@ function wireMessageGestures(rows) {
   });
   // Wire video tap-to-fullview
   $('message-list').querySelectorAll('video.message-image').forEach((vid) => {
-    vid.addEventListener('click', (e) => { e.stopPropagation(); openImageViewer(vid.src); });
+    vid.addEventListener('click', (e) => { 
+      e.stopPropagation(); 
+      openImageViewer(vid.src); // Most reliable across all mobile browsers
+    });
   });
 }
 
@@ -614,9 +657,9 @@ async function updateConversationSummaries(preview, timestamp) {
 // ==========================================
 // STREAK SYSTEM (v4.8)
 // ==========================================
-function todayStr() { return new Date().toISOString().slice(0, 10); }
-function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
-function thisMonthStr() { return new Date().toISOString().slice(0, 7); }
+function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function thisMonthStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 
 async function loadStreak(threadId) {
   if (!state.user || !threadId) return;
@@ -718,7 +761,8 @@ async function sendMessage(event) {
     button.innerHTML = originalButtonHtml;
     const timestamp = Date.now(); const payload = { senderId: state.user.uid, text, timestamp };
     if (image) payload.image = image;
-    if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image) };
+    if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image), image: state.replyTo.image || null };
+    window._jumpToLatest = true;
     await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
     resetComposer();
     updateStreak(state.activeThreadId);
@@ -737,7 +781,18 @@ async function toggleReaction(messageId, reaction) {
   const updates = Object.fromEntries(Object.keys(reactions).map((type) => [`${type}/${state.user.uid}`, current || type !== reaction ? null : true]));
   try { await update(ref(db, `chatMessages/${state.activeThreadId}/${messageId}/reactions`), updates); } catch (error) { showToast(`Could not react: ${error.message.replace('Firebase: ', '')}`); }
 }
-function setReply(message) { if (!message) return; state.replyTo = message; $('reply-banner-text').textContent = `Replying to ${getNickname(message.senderId)}: ${replyPreview(message)}`; $('reply-banner').classList.remove('hidden'); $('message-input').focus(); }
+function setReply(message) { 
+  if (!message) return; 
+  state.replyTo = message; 
+  let mediaHtml = '';
+  if (message.image) {
+    if (message.image.includes('/video/upload/') || message.image.match(/\\.(mp4|webm|mov|ogg)$/i)) mediaHtml = `<video src="${escapeHtml(message.image)}" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;"></video>`;
+    else mediaHtml = `<img src="${escapeHtml(message.image)}" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
+  }
+  $('reply-banner-text').innerHTML = `Replying to ${getNickname(message.senderId)}: <br/> ${mediaHtml}${escapeHtml(replyPreview(message))}`; 
+  $('reply-banner').classList.remove('hidden'); 
+  $('message-input').focus(); 
+}
 function clearReply() { state.replyTo = null; $('reply-banner').classList.add('hidden'); }
 async function editMessage(message) {
   if (!state.user || !state.activeThreadId || message.senderId !== state.user.uid) return;
@@ -913,7 +968,26 @@ onAuthStateChanged(auth, (user) => {
 $('new-chat-button').addEventListener('click', () => state.user ? $('people-dialog').showModal() : showAuth()); $('empty-new-chat-button').addEventListener('click', () => state.user ? $('people-dialog').showModal() : showAuth()); $('show-auth-button').addEventListener('click', showAuth);
 $('theme-toggle').addEventListener('click', () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'));
 $('conversation-search').addEventListener('input', renderConversations); $('people-search').addEventListener('input', renderPeople); $('message-form').addEventListener('submit', sendMessage);
-$('message-input').addEventListener('input', (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`; if (event.target.value.trim()) noteTyping(); else setTyping(false); });
+$('message-input').addEventListener('input', (event) => { 
+  const list = $('message-list');
+  const wasNearLatest = list ? list.scrollHeight - list.scrollTop - list.clientHeight < 90 : false;
+  event.target.style.height = 'auto'; 
+  event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`; 
+  if (wasNearLatest) list.scrollTop = list.scrollHeight;
+  if (event.target.value.trim()) noteTyping(); else setTyping(false); 
+});
+
+// Mobile keyboard auto-scroll fix
+const resizeObserver = new ResizeObserver(() => {
+  const list = $('message-list');
+  if (list && list.lastElementChild && !$('chat-view').classList.contains('hidden')) {
+    // If we are near the bottom, stay at the bottom when keyboard opens
+    if (list.scrollHeight - list.scrollTop - list.clientHeight < 150) {
+      list.scrollTop = list.scrollHeight;
+    }
+  }
+});
+if ($('message-list')) resizeObserver.observe($('message-list'));
 $('message-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { 
   if (window.innerWidth < 768 || matchMedia('(pointer: coarse)').matches) return;
   event.preventDefault(); $('message-form').requestSubmit(); 
@@ -1120,6 +1194,7 @@ if (window.visualViewport) {
 // Image viewer close handlers (v4.4)
 $('image-viewer-close').addEventListener('click', closeImageViewer);
 $('image-viewer-backdrop').addEventListener('click', closeImageViewer);
+
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeImageViewer(); });
 // Streak restore button (v4.8)
 $('streak-restore-btn')?.addEventListener('click', restoreStreak);
