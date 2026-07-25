@@ -5,7 +5,7 @@ import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/fireb
 // Notifications
 window.updateNotifBadge = () => {
     if(!window.currentUser) return;
-    const myNotifs = window.globalUsersCache[window.currentUser.uid]?.notifications || {};
+    const myNotifs = window.myNotifications || {};
     let unreadCount = Object.values(myNotifs).filter(n => !n.read).length;
     const badge = document.getElementById('notif-badge');
     
@@ -20,7 +20,7 @@ window.updateNotifBadge = () => {
 window.renderNotifications = () => {
     if (window.requestNotificationPermission) window.requestNotificationPermission();
     
-    const myNotifs = window.globalUsersCache[window.currentUser.uid]?.notifications || {};
+    const myNotifs = window.myNotifications || {};
     const content = document.getElementById('notif-content');
     
     const notifsArray = Object.keys(myNotifs).map(key => ({ id: key, ...myNotifs[key] }));

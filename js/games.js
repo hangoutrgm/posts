@@ -564,7 +564,7 @@ window.submitGame = async () => {
         // Send notification separately so failures here don't show a fake error
         if (targetUserUid) {
             try {
-                const notifRef = push(ref(db, `users/${targetUserUid}/notifications`));
+                const notifRef = push(ref(db, `notifications/${targetUserUid}`));
                 await set(notifRef, {
                     type: 'game_challenge',
                     fromUid: window.currentUser.uid,

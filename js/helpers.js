@@ -223,7 +223,7 @@ window.pokeUser = async function(targetUid) {
         }
 
         // Always send a notification
-        push(ref(db, `users/${targetUid}/notifications`), {
+        push(ref(db, `notifications/${targetUid}`), {
             type: 'poke', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false
         });
 
@@ -418,7 +418,7 @@ window.notifyMentions = (text, postId) => {
     });
     
     uids.forEach(uid => {
-        push(ref(db, `users/${uid}/notifications`), { 
+        push(ref(db, `notifications/${uid}`), { 
             type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
     });
@@ -633,7 +633,7 @@ window.toggleFollow = (targetUid) => {
         update(ref(db, `users/${targetUid}`), { points: increment(starsPerFollow) });
         
         if(targetUid !== window.currentUser.uid) {
-            push(ref(db, `users/${targetUid}/notifications`), { 
+            push(ref(db, `notifications/${targetUid}`), { 
                 type: 'follow', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false 
             });
         }
@@ -642,17 +642,17 @@ window.toggleFollow = (targetUid) => {
 
 window.markNotifRead = (notifId) => {
     if (!window.currentUser) return;
-    update(ref(db, `users/${window.currentUser.uid}/notifications/${notifId}`), { read: true });
+    update(ref(db, `notifications/${window.currentUser.uid}/${notifId}`), { read: true });
 };
 
 window.clearNotifications = () => {
-    const myNotifs = window.globalUsersCache[window.currentUser.uid]?.notifications || {};
+    const myNotifs = window.myNotifications || {};
     let updates = {};
     for(let key in myNotifs) {
         if(!myNotifs[key].read) updates[`${key}/read`] = true;
     }
     if(Object.keys(updates).length > 0) {
-        update(ref(db, `users/${window.currentUser.uid}/notifications`), updates);
+        update(ref(db, `notifications/${window.currentUser.uid}`), updates);
     }
     document.getElementById('notif-modal').classList.add('hidden');
 };

@@ -1,7 +1,7 @@
 // main.js
 import { app, auth, db, fsdb } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp, query as dbQuery, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
@@ -135,7 +135,7 @@ window.notifyMentions = (text, postId) => {
             const u = window.globalUsersCache[uid];
             // Skip self and guests
             if (uid !== window.currentUser.uid && !u.isGuest && !(u.name && u.name.startsWith("Guest_"))) {
-                push(ref(db, `users/${uid}/notifications`), {
+                push(ref(db, `notifications/${uid}`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
                 notifiedUids.add(uid);
@@ -148,7 +148,7 @@ window.notifyMentions = (text, postId) => {
         Object.keys(window.globalUsersCache).forEach(uid => {
             // Notify if user is Mod/Admin, not self, and not already notified
             if (uid !== window.currentUser.uid && !notifiedUids.has(uid) && window.getRole(uid).level >= 2) {
-                push(ref(db, `users/${uid}/notifications`), {
+                push(ref(db, `notifications/${uid}`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
                 notifiedUids.add(uid);
@@ -163,7 +163,7 @@ window.notifyMentions = (text, postId) => {
             const name = match.substring(1).toLowerCase();
             const targetUser = Object.values(window.globalUsersCache).find(u => u.name && u.name.toLowerCase() === name);
             if(targetUser && targetUser.uid !== window.currentUser.uid && !notifiedUids.has(targetUser.uid)) {
-                push(ref(db, `users/${targetUser.uid}/notifications`), {
+                push(ref(db, `notifications/${targetUser.uid}`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
                 notifiedUids.add(targetUser.uid);
@@ -397,15 +397,28 @@ onValue(ref(db, 'users'), (snap) => {
         });
         const catSelect = document.getElementById('post-category');
         if (role.level === 1 && (catSelect.value === 'Announcements' || catSelect.value === 'Rules')) catSelect.value = 'General';
-        
-        // Local Push Notifications Check
-        const myNotifs = window.globalUsersCache[window.currentUser.uid].notifications || {};
+    }
+    
+    window.handleDeepLinks();
+});
+
+// Dedicated notifications listener — only for the logged-in user, limited to last 100.
+// Kept separate from /users so that notification changes don't re-download all user profiles.
+window._notifUnsubscribe = null;
+window._startNotifListener = (uid) => {
+    if (window._notifUnsubscribe) window._notifUnsubscribe();
+    const notifQuery = dbQuery(ref(db, `notifications/${uid}`), limitToLast(100));
+    window._notifUnsubscribe = onValue(notifQuery, (snap) => {
+        window.myNotifications = snap.val() || {};
+        window.updateNotifBadge();
+
+        // Local push notification check
         let maxTime = window.lastNotifTime || Date.now();
-        Object.values(myNotifs).forEach(n => {
+        Object.values(window.myNotifications).forEach(n => {
             if (!n.read && n.timestamp > (window.lastNotifTime || Date.now())) {
                 if ("Notification" in window && Notification.permission === "granted") {
                     const sourceUser = window.globalUsersCache[n.sourceUid];
-                    const msg = n.type === 'mention' ? `${sourceUser?.name || 'Someone'} mentioned you!` : 
+                    const msg = n.type === 'mention' ? `${sourceUser?.name || 'Someone'} mentioned you!` :
                                 n.type === 'comment' ? `${sourceUser?.name || 'Someone'} commented on your post!` :
                                 `You have a new notification`;
                     const iconUrl = sourceUser?.pic || './icon-192.png';
@@ -421,11 +434,8 @@ onValue(ref(db, 'users'), (snap) => {
             }
         });
         window.lastNotifTime = maxTime;
-    }
-    
-    window.updateNotifBadge();
-    window.handleDeepLinks();
-});
+    });
+};
 
 window.allPosts = [];
 window.globalPinnedPosts = [];
@@ -824,7 +834,7 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     
     if(window.currentUser.uid !== postAuthorId && postAuthorId !== "undefined") {
         update(ref(db, `users/${postAuthorId}`), { points: increment(pointsToAdd) });
-        push(ref(db, `users/${postAuthorId}/notifications`), { 
+        push(ref(db, `notifications/${postAuthorId}`), { 
             type: 'comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
     }
@@ -850,7 +860,7 @@ window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
     window.logActivity(`commented on a post by ${commentAuthorId}`);
     
     if(window.currentUser.uid !== commentAuthorId && commentAuthorId !== "undefined") {
-        push(ref(db, `users/${commentAuthorId}/notifications`), { 
+        push(ref(db, `notifications/${commentAuthorId}`), { 
             type: 'reply', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
     }
@@ -892,7 +902,7 @@ window.react = (postId, postAuthorId, type) => {
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
             update(ref(db, `users/${postAuthorId}`), { points: increment(likePoints) });
         }
-            push(ref(db, `users/${postAuthorId}/notifications`), { 
+            push(ref(db, `notifications/${postAuthorId}`), { 
                 type: 'react_post', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
@@ -931,7 +941,7 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${commentAuthorId}`), { points: increment(likePoints) });
-            push(ref(db, `users/${commentAuthorId}/notifications`), { 
+            push(ref(db, `notifications/${commentAuthorId}`), { 
                 type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
@@ -971,7 +981,7 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${replyAuthorId}`), { points: increment(likePoints) });
-            push(ref(db, `users/${replyAuthorId}/notifications`), { 
+            push(ref(db, `notifications/${replyAuthorId}`), { 
                 type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
@@ -1317,6 +1327,9 @@ onAuthStateChanged(auth, (user) => {
 
         window.updateNotifBadge();
 
+        // Start the dedicated notifications listener for this user
+        if (window._startNotifListener) window._startNotifListener(user.uid);
+
         if (window.chatInboxUnsubscribe) window.chatInboxUnsubscribe();
         window.chatInboxUnsubscribe = onValue(ref(db, `chatInboxes/${user.uid}`), (snap) => {
             const inbox = snap.val() || {};
@@ -1339,6 +1352,8 @@ onAuthStateChanged(auth, (user) => {
         document.getElementById('user-info').classList.add('hidden');
         document.getElementById('create-post-box').classList.add('hidden');
         if (window.chatInboxUnsubscribe) { window.chatInboxUnsubscribe(); window.chatInboxUnsubscribe = null; }
+        if (window._notifUnsubscribe) { window._notifUnsubscribe(); window._notifUnsubscribe = null; }
+        window.myNotifications = {};
     }
     if(!window.activeProfileUid) window.renderFeed(false);
 });
