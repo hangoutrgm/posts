@@ -1187,10 +1187,7 @@ $('auth-toggle').addEventListener('click', () => { state.signUp = !state.signUp;
 $('auth-form').addEventListener('submit', async (event) => { event.preventDefault(); const email = $('auth-email').value.trim(); const password = $('auth-password').value; const error = $('auth-error'); error.classList.add('hidden'); try { const result = state.signUp ? await createUserWithEmailAndPassword(auth, email, password) : await signInWithEmailAndPassword(auth, email, password); if (state.signUp) { const name = `User_${Math.floor(Math.random() * 999)}`; const pic = fallbackAvatar(result.user.uid); await updateProfile(result.user, { displayName: name, photoURL: pic }); await update(ref(db, `users/${result.user.uid}`), { uid: result.user.uid, name, pic }); } $('auth-dialog').close(); } catch (err) { error.textContent = err.message.replace('Firebase: ', ''); error.classList.remove('hidden'); } });
 document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); });
 window.addEventListener('pagehide', () => setTyping(false));
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => { document.body.style.height = `${window.visualViewport.height}px`; });
-  document.body.style.height = `${window.visualViewport.height}px`;
-}
+// visualViewport listener removed to prevent mobile keyboard white-space overscroll glitch
 // Image viewer close handlers (v4.4)
 $('image-viewer-close').addEventListener('click', closeImageViewer);
 $('image-viewer-backdrop').addEventListener('click', closeImageViewer);
