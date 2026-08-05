@@ -79,6 +79,10 @@
       </label>
       <div id="people-list" class="people-list"></div>
       <div id="group-action-bar" class="hidden" style="padding-top: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; cursor: pointer; color: var(--text-muted);">
+          <input type="checkbox" id="make-public-group" style="accent-color: var(--primary);">
+          <span>Make this a Public Group (anyone with link can join)</span>
+        </label>
         <button id="start-group-btn" class="button primary-button" type="button" style="width:100%">Start Group Chat</button>
       </div>
     </form>
@@ -120,6 +124,7 @@
       <button id="kick-member-button" class="conversation-action hidden" type="button"><span>Kick Member</span><small>Remove someone from the group.</small></button>
       <button id="transfer-ownership-button" class="conversation-action hidden" type="button"><span>Transfer Ownership</span><small>Make someone else the group creator.</small></button>
       <button id="leave-group-button" class="conversation-action danger hidden" type="button"><span>Leave Group</span><small>Leave this group chat. You can rejoin if re-added.</small></button>
+      <button id="copy-invite-link-button" class="conversation-action hidden" type="button"><span>Copy Invite Link</span><small>Share this link so anyone can join.</small></button>
       <!-- Common -->
       <button id="clear-chat-button" class="conversation-action" type="button"><span>Clear messages for me</span><small>Hides this chat's existing messages only on this account.</small></button>
       <button id="remove-conversation-button" class="conversation-action danger" type="button"><span>Remove conversation</span><small>Removes it from your inbox. Other members keep their copy.</small></button>

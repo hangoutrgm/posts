@@ -1,5 +1,5 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
-import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
+import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 const $ = (id) => document.getElementById(id);
@@ -567,8 +567,9 @@ async function startGroupConversation(peerIds) {
     const members = { [state.user.uid]: true };
     peerIds.forEach(id => members[id] = true);
     const now = Date.now();
-    await set(ref(db, `chatThreads/${threadId}`), { members, isGroup: true, creatorId: state.user.uid, createdAt: now, lastMessage: 'Group created', lastTimestamp: now, lastSenderId: state.user.uid });
-    const summary = { isGroup: true, members, lastMessage: 'Group created', lastTimestamp: now, lastSenderId: state.user.uid, unreadCount: 0, creatorId: state.user.uid };
+    const isPublic = $('make-public-group').checked;
+    await set(ref(db, `chatThreads/${threadId}`), { members, isGroup: true, isPublic, creatorId: state.user.uid, createdAt: now, lastMessage: 'Group created', lastTimestamp: now, lastSenderId: state.user.uid });
+    const summary = { isGroup: true, isPublic, members, lastMessage: 'Group created', lastTimestamp: now, lastSenderId: state.user.uid, unreadCount: 0, creatorId: state.user.uid };
     await set(ref(db, `chatInboxes/${state.user.uid}/${threadId}`), summary);
     peerIds.forEach(id => runTransaction(ref(db, `chatInboxes/${id}/${threadId}`), (current) => current || summary).catch(()=>{}));
     
@@ -984,9 +985,51 @@ function handleInbox(snapshot) {
 onValue(ref(db, 'users'), (snapshot) => { const raw = snapshot.val() || {}; state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }])); renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('member list', error));
 onValue(ref(db, 'presence'), (snapshot) => { state.online = snapshot.val() || {}; renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('presence', error));
 onValue(ref(db, '.info/connected'), (snapshot) => { state.connected = snapshot.val() === true; if (state.connected) startOwnPresence(); });
-onAuthStateChanged(auth, (user) => {
+let checkedInvite = false;
+onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
   state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
+  
+  if (!checkedInvite) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteThreadId = urlParams.get('invite');
+    if (inviteThreadId) {
+      if (!user) {
+        const choice = await showAppModal({ title: 'Group Invite', message: 'You have been invited to a group chat. Would you like to sign in to your account or continue as a Guest?', confirmText: 'Continue as Guest', cancelText: 'Sign in' });
+        if (choice) {
+          try { await signInAnonymously(auth); } catch (e) { showToast('Guest sign-in failed'); }
+        } else {
+          $('auth-dialog').showModal();
+        }
+        return; // wait for next auth state change
+      } else {
+        checkedInvite = true;
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+        try {
+          if (user.isAnonymous && !state.users[user.uid]) {
+             const name = `Guest_${Math.floor(Math.random() * 9999)}`;
+             const pic = fallbackAvatar(user.uid);
+             await update(ref(db, `users/${user.uid}`), { uid: user.uid, name, pic });
+             state.users[user.uid] = { uid: user.uid, name, pic };
+          }
+          const snapshot = await get(ref(db, `chatThreads/${inviteThreadId}`));
+          const thread = snapshot.val();
+          if (!thread || !thread.isGroup || !thread.isPublic) {
+            showToast('Invalid or expired invite link.');
+          } else {
+            await set(ref(db, `chatThreads/${inviteThreadId}/members/${user.uid}`), true);
+            const summary = { isGroup: true, isPublic: true, members: { ...thread.members, [user.uid]: true }, lastMessage: thread.lastMessage || 'Joined via invite', lastTimestamp: thread.lastTimestamp || Date.now(), lastSenderId: thread.lastSenderId || user.uid, unreadCount: 0, creatorId: thread.creatorId, name: thread.name || '' };
+            await set(ref(db, `chatInboxes/${user.uid}/${inviteThreadId}`), summary);
+            await push(ref(db, `chatMessages/${inviteThreadId}`), { senderId: user.uid, text: 'joined via invite link.', timestamp: Date.now(), isSystem: true });
+            setTimeout(() => openThread(inviteThreadId, summary), 500); // give time for inbox listener to catch up
+            showToast('Joined the group chat!');
+          }
+        } catch (err) { showToast(`Could not join: ${err.message}`); }
+      }
+    } else {
+      checkedInvite = true;
+    }
+  }
   if (user) {
     startOwnPresence();
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
@@ -1097,6 +1140,7 @@ $('conversation-options-button').addEventListener('click', () => {
   $('kick-member-button').classList.toggle('hidden', !isModerator);
   $('transfer-ownership-button').classList.toggle('hidden', !isCreator);
   $('leave-group-button').classList.toggle('hidden', !isGroup);
+  $('copy-invite-link-button').classList.toggle('hidden', !state.activeInboxItem?.isPublic);
   $('conversation-dialog').showModal();
 });
 $('close-conversation-dialog').addEventListener('click', () => $('conversation-dialog').close());
@@ -1109,6 +1153,11 @@ $('kick-member-button')?.addEventListener('click', kickMember);
 $('manage-moderators-button')?.addEventListener('click', manageModerators);
 $('transfer-ownership-button')?.addEventListener('click', transferOwnership);
 $('leave-group-button')?.addEventListener('click', leaveGroup);
+$('copy-invite-link-button')?.addEventListener('click', () => {
+  const link = `${window.location.origin}${window.location.pathname}?invite=${state.activeThreadId}`;
+  navigator.clipboard.writeText(link).then(() => showToast('Invite link copied to clipboard!')).catch(() => showToast('Failed to copy link.'));
+  $('conversation-dialog').close();
+});
 $('close-auth-button').addEventListener('click', () => $('auth-dialog').close());
 
 $('toggle-group-mode')?.addEventListener('click', () => {
