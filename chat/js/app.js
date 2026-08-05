@@ -54,9 +54,15 @@ function renderAvatarHtml(peerIds, item = null) {
   return `<div class="avatar-collage count-${count}">${imgs}</div>`;
 }
 function applyTheme(theme) {
-  const dark = theme === 'dark'; document.documentElement.classList.toggle('dark', dark); localStorage.setItem('hangout-chat-theme', dark ? 'dark' : 'light');
-  const toggle = $('theme-toggle'); if (toggle) { toggle.textContent = dark ? '☀' : '☾'; toggle.title = dark ? 'Switch to light theme' : 'Switch to dark theme'; toggle.setAttribute('aria-label', toggle.title); }
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b1320' : '#1877f2');
+  const dark = theme === 'dark';
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('hangout-chat-theme', dark ? 'dark' : 'light');
+  const toggle = $('theme-toggle');
+  if (toggle) {
+    toggle.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    toggle.setAttribute('aria-label', toggle.title);
+  }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d0f1a' : '#6c63ff');
 }
 applyTheme(localStorage.getItem('hangout-chat-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
@@ -258,7 +264,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     });
   }
   list.innerHTML = rows.map((message) => {
-    if (message.isSystem) return `<div class="message-row system" style="text-align:center; font-size:12px; color:var(--muted); margin: 8px 0; width: 100%; max-width: 100%; justify-content: center;">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</div>`;
+    if (message.isSystem) return `<div class="system-message-row"><span class="system-message-bubble">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</span></div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
     let quote = '';
@@ -303,7 +309,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       seen = mine && message.id === latestSeenMessageId ? '<span class="seen-label">Seen</span>' : '';
     }
     
-    const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10px; color:var(--muted); margin-bottom:2px; margin-left:4px;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
+    const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10.5px; color:var(--ink-muted); margin-bottom:2px; margin-left:6px; font-weight:600;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
     return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${messageText}${image}</div><div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
   }).join('');
   // Prepend load-more header
@@ -1409,10 +1415,17 @@ $('auth-form').addEventListener('submit', async (event) => { event.preventDefaul
 document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); });
 window.addEventListener('pagehide', () => setTyping(false));
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => {
-    document.querySelector('.app-shell').style.height = `${window.visualViewport.height}px`;
-    window.scrollTo(0, 0);
-  });
+  const applyViewport = () => {
+    const vv = window.visualViewport;
+    const shell = document.querySelector('.app-shell');
+    if (!shell) return;
+    // Clamp the shell to the exact visible height and shift it to follow the visual viewport
+    shell.style.height = `${vv.height}px`;
+    // On Android Chrome the layout viewport doesn't shrink; offsetTop accounts for any scroll
+    shell.style.transform = `translateY(${vv.offsetTop}px)`;
+  };
+  window.visualViewport.addEventListener('resize', applyViewport);
+  window.visualViewport.addEventListener('scroll', applyViewport);
 }
 // Image viewer close handlers (v4.4)
 $('image-viewer-close').addEventListener('click', closeImageViewer);
