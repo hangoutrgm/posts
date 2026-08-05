@@ -128,7 +128,10 @@ function renderConversations() {
     const peerIds = getThreadPeers(item);
     const name = getThreadName(item, peerIds).toLowerCase();
     return !term || `${name} ${item.lastMessage || ''}`.toLowerCase().includes(term);
-  }).sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
+  }).sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return (b.lastTimestamp || 0) - (a.lastTimestamp || 0);
+  });
   if (!state.user) { list.innerHTML = ''; return; }
   if (!Object.keys(state.inbox).length && !state.inboxReady) {
     list.innerHTML = `<div class="conv-skeleton-list">${Array.from({length:6}, () =>
@@ -145,7 +148,7 @@ function renderConversations() {
     const presenceHtml = !item.isGroup && peerIds.length === 1 ? `<i class="conversation-presence${isOnline(peerIds[0]) ? ' online' : ''}" aria-label="${isOnline(peerIds[0]) ? 'Online' : 'Offline'}"></i>` : '';
     const streak = state.streaks[item.id];
     const streakHtml = streak && streak.count >= 1 ? `<span class="conv-streak-badge">🔥${streak.count}</span>` : '';
-    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds, item)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(name)}</span>${streakHtml}<span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
+    return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds, item)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${item.pinned ? '📌 ' : ''}${escapeHtml(name)}</span>${streakHtml}<span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
   }).join('');
   list.querySelectorAll('.conversation').forEach((button) => button.addEventListener('click', () => {
     const threadId = button.dataset.thread;
@@ -682,7 +685,9 @@ function thisMonthStr() { const d = new Date(); return d.getFullYear() + '-' + S
 
 async function loadStreak(threadId) {
   if (!state.user || !threadId) return;
-  const snap = await get(ref(db, `chatStreaks/${threadId}/${state.user.uid}`)).catch(() => null);
+  const isGroup = state.inbox[threadId]?.isGroup;
+  const streakRef = ref(db, isGroup ? `chatStreaks/${threadId}/groupStreak` : `chatStreaks/${threadId}/${state.user.uid}`);
+  const snap = await get(streakRef).catch(() => null);
   state.streakData = snap?.val() || null;
   state.streaks[threadId] = state.streakData; // also update list cache
   renderStreakBadge();
@@ -701,10 +706,12 @@ function renderStreakBadge() {
   }
   badge.textContent = `🔥 ${data.count}`;
   badge.classList.remove('hidden');
-  // Show restore button if streak was broken (lastDate is not today or yesterday)
   const today = todayStr(); const yesterday = yesterdayStr();
   const lastDate = data.lastDate || '';
-  const broken = lastDate !== today && lastDate !== yesterday;
+  // Streak is "restorable" if it just broke today (previousCount saved) OR if lastDate is stale (missed yesterday)
+  const justBroke = data.brokenDate === today && data.previousCount > 1;
+  const stale = lastDate !== today && lastDate !== yesterday;
+  const broken = justBroke || stale;
   const month = thisMonthStr();
   const restoresLeft = (data.restoreMonth === month ? (3 - (data.restoreCount || 0)) : 3);
   if (restoreBtn) {
@@ -720,19 +727,28 @@ function renderStreakBadge() {
 
 async function updateStreak(threadId) {
   if (!state.user || !threadId) return;
-  const streakRef = ref(db, `chatStreaks/${threadId}/${state.user.uid}`);
+  const isGroup = state.inbox[threadId]?.isGroup;
+  const streakRef = ref(db, isGroup ? `chatStreaks/${threadId}/groupStreak` : `chatStreaks/${threadId}/${state.user.uid}`);
   const snap = await get(streakRef).catch(() => null);
   const data = snap?.val() || {};
   const today = todayStr(); const yesterday = yesterdayStr();
   const lastDate = data.lastDate || '';
   let count = data.count || 0;
   if (lastDate === today) return; // Already counted today
+  
+  const update_data = { lastDate: today };
   if (lastDate === yesterday) {
     count += 1; // Extend streak
   } else {
-    count = 1; // Reset streak
+    // Reset streak, but save previous if > 1
+    if (count > 1) {
+      update_data.previousCount = count;
+      update_data.brokenDate = today;
+    }
+    count = 1; 
   }
-  const update_data = { count, lastDate: today };
+  update_data.count = count;
+  
   await set(streakRef, { ...data, ...update_data }).catch(() => {});
   state.streakData = { ...data, ...update_data };
   state.streaks[threadId] = state.streakData; // update list cache
@@ -748,10 +764,19 @@ async function restoreStreak() {
   if (restoreCount >= 3) return showToast('You have used all 3 streak restores for this month.');
   const confirmed = await showAppModal({ title: 'Restore Streak 🔥', message: `Restore your streak? You have ${3 - restoreCount} restore${3 - restoreCount === 1 ? '' : 's'} left this month.`, confirmText: 'Restore', danger: false });
   if (!confirmed) return;
-  const streakRef = ref(db, `chatStreaks/${state.activeThreadId}/${state.user.uid}`);
+  const isGroup = state.activeInboxItem?.isGroup;
+  const streakRef = ref(db, isGroup ? `chatStreaks/${state.activeThreadId}/groupStreak` : `chatStreaks/${state.activeThreadId}/${state.user.uid}`);
   const newData = { ...data, lastDate: today, restoreCount: restoreCount + 1, restoreMonth: month };
+  
+  if (newData.previousCount) {
+    newData.count = newData.previousCount;
+    delete newData.previousCount;
+    delete newData.brokenDate;
+  }
+  
   await set(streakRef, newData).catch(() => {});
   state.streakData = newData;
+  state.streaks[state.activeThreadId] = newData;
   renderStreakBadge();
   showToast('🔥 Streak restored!');
 }
@@ -933,11 +958,13 @@ async function loadAllStreaks() {
   if (!state.user) return;
   const threadIds = Object.keys(state.inbox);
   const results = await Promise.all(
-    threadIds.map(tid =>
-      get(ref(db, `chatStreaks/${tid}/${state.user.uid}`))
+    threadIds.map(tid => {
+      const isGroup = state.inbox[tid]?.isGroup;
+      const refPath = isGroup ? `chatStreaks/${tid}/groupStreak` : `chatStreaks/${tid}/${state.user.uid}`;
+      return get(ref(db, refPath))
         .then(snap => ({ tid, data: snap.val() }))
-        .catch(() => ({ tid, data: null }))
-    )
+        .catch(() => ({ tid, data: null }));
+    })
   );
   results.forEach(({ tid, data }) => { if (data) state.streaks[tid] = data; });
   renderConversations();
@@ -1034,8 +1061,8 @@ onAuthStateChanged(auth, async (user) => {
     startOwnPresence();
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
-    // Feature 3: Mirror Hangout Posts notification badge on the back button
-    state.stopPostsNotif = onValue(ref(db, `users/${user.uid}/notifications`), (snapshot) => {
+    // Mirror Hangout Posts notification badge on the back button
+    state.stopPostsNotif = onValue(ref(db, `notifications/${user.uid}`), (snapshot) => {
       const notifs = snapshot.val() || {};
       const unread = Object.values(notifs).filter(n => !n.read).length;
       const badge = $('back-notif-badge');
@@ -1141,11 +1168,21 @@ $('conversation-options-button').addEventListener('click', () => {
   $('transfer-ownership-button').classList.toggle('hidden', !isCreator);
   $('leave-group-button').classList.toggle('hidden', !isGroup);
   $('copy-invite-link-button').classList.toggle('hidden', !state.activeInboxItem?.isPublic);
+  $('pin-conversation-text').textContent = state.activeInboxItem?.pinned ? 'Unpin Conversation' : 'Pin Conversation';
   $('conversation-dialog').showModal();
 });
 $('close-conversation-dialog').addEventListener('click', () => $('conversation-dialog').close());
 $('clear-chat-button').addEventListener('click', clearChatForMe);
 $('remove-conversation-button').addEventListener('click', removeConversation);
+$('pin-conversation-button').addEventListener('click', async () => {
+  if (!state.user || !state.activeThreadId) return;
+  const current = !!state.activeInboxItem?.pinned;
+  try {
+    await update(ref(db, `chatInboxes/${state.user.uid}/${state.activeThreadId}`), { pinned: !current });
+    $('conversation-dialog').close();
+    showToast(current ? 'Conversation unpinned.' : 'Conversation pinned.');
+  } catch (err) { showToast('Could not pin conversation.'); }
+});
 $('rename-group-button')?.addEventListener('click', renameGroup);
 $('add-member-button')?.addEventListener('click', addMember);
 $('show-members-button')?.addEventListener('click', showMembers);
@@ -1371,7 +1408,12 @@ $('auth-toggle').addEventListener('click', () => { state.signUp = !state.signUp;
 $('auth-form').addEventListener('submit', async (event) => { event.preventDefault(); const email = $('auth-email').value.trim(); const password = $('auth-password').value; const error = $('auth-error'); error.classList.add('hidden'); try { const result = state.signUp ? await createUserWithEmailAndPassword(auth, email, password) : await signInWithEmailAndPassword(auth, email, password); if (state.signUp) { const name = `User_${Math.floor(Math.random() * 999)}`; const pic = fallbackAvatar(result.user.uid); await updateProfile(result.user, { displayName: name, photoURL: pic }); await update(ref(db, `users/${result.user.uid}`), { uid: result.user.uid, name, pic }); } $('auth-dialog').close(); } catch (err) { error.textContent = err.message.replace('Firebase: ', ''); error.classList.remove('hidden'); } });
 document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); });
 window.addEventListener('pagehide', () => setTyping(false));
-// visualViewport listener removed to prevent mobile keyboard white-space overscroll glitch
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    document.querySelector('.app-shell').style.height = `${window.visualViewport.height}px`;
+    window.scrollTo(0, 0);
+  });
+}
 // Image viewer close handlers (v4.4)
 $('image-viewer-close').addEventListener('click', closeImageViewer);
 $('image-viewer-backdrop').addEventListener('click', closeImageViewer);
