@@ -1149,8 +1149,10 @@ window.processBingoAnimations = () => {
             if (!canvas) return;
             const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
             const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
-            const winnerUids = existingWinners.map(w => w.uid);
-            const remaining = joined.filter(u => !winnerUids.includes(u.uid));
+            // Use allPickedUids so eliminated (non-prize) players are also removed from the wheel visually
+            const allPickedUids = Array.isArray(post.spinNamesAllPicked) ? post.spinNamesAllPicked
+                : existingWinners.map(w => w.uid);
+            const remaining = joined.filter(u => !allPickedUids.includes(u.uid));
 
             const spin = post.spinNamesLastSpin;
             const isSpinActive = spin && (Date.now() - spin.startTime < 4000);
@@ -1290,7 +1292,17 @@ window.closeSpinNames = async (postId) => {
     if (post.authorId !== window.currentUser.uid) return;
     const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
     if (joined.length < 2) return window.showAlert('Need at least 2 players to start the draw.');
-    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
+
+    // Warn host if the last prize spin is unreachable with current participants
+    const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
+    if (prizes.length > 0) {
+        const maxTargetSpin = Math.max(...prizes.map(p => p.target));
+        if (maxTargetSpin > joined.length) {
+            return window.showAlert(`Cannot start: the last prize is set for Spin #${maxTargetSpin}, but there are only ${joined.length} participant(s). Each spin eliminates no one but picks from the full pool — you need at least ${maxTargetSpin} participant(s), or reduce your last prize spin number.`);
+        }
+    }
+
+    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [], spinNamesSpinCount: 0, spinNamesAllPicked: [], spinNamesSpinHistory: [] });
 };
 
 window.startSpinNamesWheel = async (postId) => {
@@ -1301,7 +1313,17 @@ window.startSpinNamesWheel = async (postId) => {
     
     if (!post.spinNamesJoined || Object.keys(post.spinNamesJoined).length === 0) return window.showAlert("No players have joined yet.");
 
-    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [] });
+    // Warn host if the last prize spin is unreachable with current participants
+    const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
+    if (prizes.length > 0) {
+        const joined = Object.values(post.spinNamesJoined);
+        const maxTargetSpin = Math.max(...prizes.map(p => p.target));
+        if (maxTargetSpin > joined.length) {
+            return window.showAlert(`Cannot start: the last prize is set for Spin #${maxTargetSpin}, but there are only ${joined.length} participant(s). Each spin picks from the full pool — you need at least ${maxTargetSpin} participant(s), or reduce your last prize spin number.`);
+        }
+    }
+
+    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [], spinNamesSpinCount: 0, spinNamesAllPicked: [], spinNamesSpinHistory: [] });
 };
 
 window.drawSpinNamesItem = async (postId) => {
@@ -1319,25 +1341,64 @@ window.drawSpinNamesItem = async (postId) => {
         ? Object.entries(post.spinNamesJoined).map(([uid, data]) => ({ ...data, uid: data.uid || uid }))
         : [];
     const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
-    const winnerUids = existingWinners.map(w => w.uid);
+    const spinHistory = Array.isArray(post.spinNamesSpinHistory) ? post.spinNamesSpinHistory : [];
+    
+    // ALL previously picked UIDs — prize winners + non-prize picks (both are eliminated from pool)
+    const allPickedUids = Array.isArray(post.spinNamesAllPicked) ? post.spinNamesAllPicked
+        : existingWinners.map(w => w.uid); // fallback for old games
 
-    // Players still in the wheel (remove previous winners)
-    const remaining = joined.filter(u => !winnerUids.includes(u.uid));
+    const remaining = joined.filter(u => !allPickedUids.includes(u.uid));
     if (!remaining.length) return window.showAlert('No remaining players.');
 
-    // Pick a random player from remaining
-    const winner = remaining[Math.floor(Math.random() * remaining.length)];
-
-    // Which spin is this?
     const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
-    const currentSpinNumber = existingWinners.length + 1;
+    const currentSpinNumber = (post.spinNamesSpinCount || 0) + 1;
     const matchingPrize = prizes.find(p => p.target === currentSpinNumber);
 
+    // --- Auto-declare: if only 1 player left and this spin has a prize, skip the spin animation ---
+    if (remaining.length === 1 && matchingPrize) {
+        const autoWinner = remaining[0];
+        const newWinners = [...existingWinners, {
+            uid: autoWinner.uid,
+            name: autoWinner.name,
+            prize: matchingPrize.prize,
+            target: currentSpinNumber
+        }];
+        const newHistory = [...spinHistory, { spinNumber: currentSpinNumber, name: autoWinner.name, uid: autoWinner.uid, prize: matchingPrize.prize }];
+        const autoUpdates = {
+            spinNamesSpinCount: currentSpinNumber,
+            spinNamesWinners: newWinners,
+            spinNamesAllPicked: [...allPickedUids, autoWinner.uid],
+            spinNamesSpinHistory: newHistory,
+            spinNamesLastSpin: { item: autoWinner.name, startTime: Date.now() }
+        };
+        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 0;
+        if (lbPoints > 0) update(ref(db, `users/${autoWinner.uid}`), { lbPoints: increment(lbPoints) });
+        window.logEarnings(autoWinner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, lbPoints);
+        if (post.authorId) window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, autoWinner.uid, autoWinner.name);
+        if (newWinners.length >= prizes.length) {
+            autoUpdates.spinNamesPhase = 'ended';
+            autoUpdates.gameStatus = 'ended';
+            autoUpdates.gameWinner = autoWinner.uid;
+            autoUpdates.locked = true;
+            const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId) update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+        }
+        await updateDoc(doc(fsdb, 'community_posts', postId), autoUpdates);
+        return;
+    }
+
+    // Normal spin — pick randomly from remaining pool
+    const winner = remaining[Math.floor(Math.random() * remaining.length)];
+    const newAllPicked = [...allPickedUids, winner.uid];
+    const newHistory = [...spinHistory, { spinNumber: currentSpinNumber, name: winner.name, uid: winner.uid, prize: matchingPrize ? matchingPrize.prize : null }];
+
     const updates = {
-        spinNamesLastSpin: { item: winner.name, startTime: Date.now() }
+        spinNamesLastSpin: { item: winner.name, startTime: Date.now() },
+        spinNamesSpinCount: currentSpinNumber,
+        spinNamesAllPicked: newAllPicked,
+        spinNamesSpinHistory: newHistory
     };
 
-    // If this spin number is a winning spin, record the winner
     if (matchingPrize) {
         const newWinners = [...existingWinners, {
             uid: winner.uid,
@@ -1347,28 +1408,23 @@ window.drawSpinNamesItem = async (postId) => {
         }];
         updates.spinNamesWinners = newWinners;
 
-        // Award LB points if any (split from post gameLbPoints across winners, or just award per win)
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 0;
-        if (lbPoints > 0) {
-            update(ref(db, `users/${winner.uid}`), { lbPoints: increment(lbPoints) });
-        }
+        if (lbPoints > 0) update(ref(db, `users/${winner.uid}`), { lbPoints: increment(lbPoints) });
         window.logEarnings(winner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, lbPoints);
-        if (post.authorId) {
-            window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, winner.uid, winner.name);
-        }
+        if (post.authorId) window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, winner.uid, winner.name);
 
-
-        // Check if all prizes have been awarded
         if (newWinners.length >= prizes.length) {
             updates.spinNamesPhase = 'ended';
             updates.gameStatus = 'ended';
             updates.gameWinner = winner.uid;
             updates.locked = true;
             const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
-            if (hostLbReward > 0 && post.authorId) {
-                update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
-            }
+            if (hostLbReward > 0 && post.authorId) update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
         }
+    } else {
+        // Non-prize spin: check if the only remaining player (after this pick) is the next prize winner
+        // If so, auto-award them on the next spin immediately after this animation
+        // (The auto-declare logic above handles this on the next drawSpinNamesItem call)
     }
 
     await updateDoc(doc(fsdb, 'community_posts', postId), updates);
