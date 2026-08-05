@@ -953,8 +953,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     let adminControls = '';
     if(window.currentUser) {
         if(window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === post.authorId) {
-            const isProfilePinned = !!post.profilePinned || !!post.pinned;
-            const isFeedPinned = !!post.feedPinned || (!!post.pinned && window.getRole(post.authorId).level >= 2);
+            const isProfilePinned = (window.profilePinnedPosts || []).some(p => p.id === post.id);
+            const isFeedPinned = (window.globalPinnedPosts || []).some(p => p.id === post.id);
             const isAnyPinned = isProfilePinned || isFeedPinned;
             adminControls += `<button onclick="window.openPinModal('${post.id}', ${isProfilePinned}, ${isFeedPinned}, '${post.authorId}')" class="text-gray-400 hover:text-green-500 mr-2 text-xs" title="Pin Post Options"><i class="fa-solid fa-thumbtack ${isAnyPinned ? 'text-green-500' : ''}"></i></button>`;
         }
@@ -1464,7 +1464,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             </div>
             
             <div class="flex items-center space-x-1 shrink-0 ml-auto">
-                <button onclick="window.refreshSinglePost('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Refresh Post">
+                <button onclick="window.refreshSinglePost('${post.id}')" class="refresh-btn flex items-center ${window._postLiveListeners && window._postLiveListeners[post.id] ? 'text-green-500' : 'text-gray-400'} hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="${window._postLiveListeners && window._postLiveListeners[post.id] ? 'Live (click to stop)' : 'Refresh Post'}">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
                 <button onclick="window.repostPost('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Repost">

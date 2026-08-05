@@ -457,15 +457,19 @@ window.loadPinnedPosts = () => {
 
 window._applyPinnedIds = (ids, pinType) => {
     ids.forEach(id => {
-        if (!window.allPosts.find(p => p.id === id)) {
-            // Need to fetch missing pinned post
+        // Check if this post is already somewhere in memory
+        let existingPost = window.allPosts.find(p => p.id === id)
+            || window.globalPinnedPosts.find(p => p.id === id)
+            || window.profilePinnedPosts.find(p => p.id === id);
+
+        if (!existingPost) {
+            // Fetch the pinned post but do NOT push it into window.allPosts —
+            // that would corrupt the chronological timeline with an out-of-order old post.
             import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js")
                 .then(({ getDoc, doc }) => getDoc(doc(fsdb, 'community_posts', id)))
                 .then(snap => {
                     if (snap.exists()) {
                         const post = { id: snap.id, ...snap.data() };
-                        post[pinType] = true;
-                        window.allPosts.push(post);
                         if (pinType === 'feedPinned') {
                             if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(post);
                         } else {
@@ -478,21 +482,32 @@ window._applyPinnedIds = (ids, pinType) => {
                     }
                 });
         } else {
-            const post = window.allPosts.find(p => p.id === id);
-            post[pinType] = true;
             if (pinType === 'feedPinned') {
-                if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(post);
+                if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(existingPost);
             } else {
-                if (!window.profilePinnedPosts.find(p => p.id === id)) window.profilePinnedPosts.push(post);
+                if (!window.profilePinnedPosts.find(p => p.id === id)) window.profilePinnedPosts.push(existingPost);
             }
         }
     });
 
-    // Cleanup unpinned
+    // Cleanup posts that are no longer pinned
     if (pinType === 'feedPinned') {
+        const removed = window.globalPinnedPosts.filter(p => !ids.includes(p.id));
         window.globalPinnedPosts = window.globalPinnedPosts.filter(p => ids.includes(p.id));
+        // If a previously-pinned post was fetched out-of-band into allPosts, remove it
+        // so it doesn't appear as an orphan at the bottom of every paginated batch.
+        removed.forEach(rp => {
+            // Only remove if it was injected purely for pinning (i.e., it's not in _historyPosts from normal pagination)
+            const inHistory = (window._historyPosts || []).some(p => p.id === rp.id);
+            if (!inHistory) window.allPosts = window.allPosts.filter(p => p.id !== rp.id);
+        });
     } else {
+        const removed = window.profilePinnedPosts.filter(p => !ids.includes(p.id));
         window.profilePinnedPosts = window.profilePinnedPosts.filter(p => ids.includes(p.id));
+        removed.forEach(rp => {
+            const inHistory = (window._historyPosts || []).some(p => p.id === rp.id);
+            if (!inHistory) window.allPosts = window.allPosts.filter(p => p.id !== rp.id);
+        });
     }
     if (typeof window.renderFeed === 'function') {
         if (!window.usersReady) window._pendingPostRender = true;
