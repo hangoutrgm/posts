@@ -40,11 +40,13 @@ function getThreadPeers(item) {
 }
 function getThreadName(item, peerIds) {
   if (item.isGroup && item.name) return item.name;
+  if (!item.isGroup && item.peerId === state.user?.uid) return 'Notes (Me)';
   if (!peerIds.length) return 'Empty Group';
   return peerIds.map(uid => (item.nicknames && item.nicknames[uid]) || state.users[uid]?.name || 'Member').join(', ');
 }
 function renderAvatarHtml(peerIds, item = null) {
   if (item && item.isGroup && item.pic) return `<img class="avatar" src="${escapeHtml(item.pic)}" alt="">`;
+  if (item && !item.isGroup && item.peerId === state.user?.uid) return `<div class="avatar" style="background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-size:16px;">📝</div>`;
   if (!peerIds || peerIds.length === 0) return `<img class="avatar" src="${escapeHtml(fallbackAvatar('group'))}" alt="">`;
   if (peerIds.length === 1) return `<img class="avatar" src="${escapeHtml(avatarUrl(state.users[peerIds[0]]))}" alt="">`;
   const count = Math.min(peerIds.length, 4);
@@ -77,7 +79,7 @@ function showAppModal(options = {}) {
       html += `<div id="app-modal-member-list" class="member-select-list"></div>`;
     }
     $('app-modal-body').innerHTML = html;
-    let selected = [];
+    let selected = options.selectedList ? [...options.selectedList] : [];
     if (options.memberList) {
       const render = (term = '') => {
         const el = $('app-modal-member-list');
@@ -155,11 +157,20 @@ function renderPeople() {
   const list = $('people-list');
   const term = $('people-search').value.trim().toLowerCase();
   const people = Object.values(state.users).filter((person) => person.uid && person.uid !== state.user?.uid && (!term || `${person.name || ''}`.toLowerCase().includes(term))).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  if (!people.length) { list.innerHTML = '<p class="list-empty">No matching members found.</p>'; return; }
-  list.innerHTML = people.map((person) => {
+  
+  let html = '';
+  if (!state.groupMode && (!term || 'notes (me)'.includes(term))) {
+    html += `<button class="person" data-user="${escapeHtml(state.user.uid)}"><div class="avatar" style="background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-size:16px;">📝</div><span class="person-copy"><span class="person-name">Notes (Me)</span><span class="person-status">Saved Messages</span></span></button>`;
+  }
+  
+  if (!people.length && !html) { list.innerHTML = '<p class="list-empty">No matching members found.</p>'; return; }
+  
+  html += people.map((person) => {
     const isSelected = state.groupSelection?.includes(person.uid);
     return `<button class="person${isSelected ? ' selected' : ''}" data-user="${escapeHtml(person.uid)}"><img class="avatar" src="${escapeHtml(avatarUrl(person))}" alt=""><span class="person-copy"><span class="person-name">${escapeHtml(person.name || 'Hangout member')}</span><span class="person-status"><i class="online-dot${isOnline(person.uid) ? ' online' : ''}"></i>${person.isBanned ? 'Unavailable' : isOnline(person.uid) ? 'Online' : 'Offline'}</span></span>${state.groupMode ? `<input type="checkbox" style="pointer-events:none; margin-left:auto;" ${isSelected ? 'checked' : ''}>` : ''}</button>`;
   }).join('');
+  
+  list.innerHTML = html;
   list.querySelectorAll('.person').forEach((button) => button.addEventListener('click', () => {
     if (state.groupMode) {
       const uid = button.dataset.user;
@@ -526,7 +537,14 @@ function openThread(threadId, inboxItem) {
   list._scrollHandler = () => { if (list.scrollTop < 80) loadOlderMessages(); };
   list.addEventListener('scroll', list._scrollHandler);
   loadStreak(threadId);
-  watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); $('message-input').focus();
+  watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); 
+  
+  if (threadId === 'global_announcements' && !state.users[state.user.uid]?.isAdmin && !state.users[state.user.uid]?.isCreator) {
+    $('message-form').classList.add('hidden');
+  } else {
+    $('message-form').classList.remove('hidden');
+    $('message-input').focus();
+  }
 }
 
 async function startConversation(peerId) {
@@ -739,6 +757,15 @@ async function restoreStreak() {
 
 async function sendMessage(event) {
   event.preventDefault(); if (!state.user || !state.activeThreadId) return;
+  
+  if (state.activeThreadId === 'global_announcements') {
+    // If the user's uid is not the 'admin' or whatever role allows sending announcements, block it.
+    // For now we'll allow it only if state.users[state.user.uid].isAdmin is true, or similar logic.
+    // Since we don't have a strict admin flag, we'll allow sending only if the user is designated as admin.
+    if (!state.users[state.user.uid]?.isAdmin && !state.users[state.user.uid]?.isCreator) {
+      return showToast('Only admins can send messages in Global Announcements.');
+    }
+  }
   const input = $('message-input'); const text = input.value.trim(); const file = state.pendingImageFile; if (!text && !file) return;
   const button = $('send-button'); 
   button.disabled = true;
@@ -927,6 +954,18 @@ function handleInbox(snapshot) {
       if (previous[id].metadataLoaded !== undefined) next[id].metadataLoaded = previous[id].metadataLoaded;
     }
   });
+  if (!next['global_announcements']) {
+    next['global_announcements'] = {
+      isGroup: true,
+      name: '📢 Global Announcements',
+      pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=announcements&backgroundColor=transparent',
+      lastMessage: 'Welcome to Announcements',
+      lastTimestamp: 0,
+      unreadCount: 0,
+      members: {},
+      creatorId: 'admin' // Placeholder, normally you would set your actual admin UID here
+    };
+  }
   state.inbox = next;
   saveInboxCache();
   if (state.inboxReady && state.user) Object.entries(next).forEach(([threadId, item]) => {
@@ -1046,13 +1085,17 @@ $('mobile-back-button').addEventListener('click', closeActiveChat);
 $('conversation-options-button').addEventListener('click', () => {
   const isGroup = state.activeInboxItem?.isGroup;
   const isCreator = isGroup && state.activeInboxItem?.creatorId === state.user?.uid;
+  const isModerator = isCreator || (isGroup && !!state.activeInboxItem?.moderators?.[state.user?.uid]);
+  
   $('set-nickname-button').classList.toggle('hidden', !!isGroup);
   $('set-my-nickname-button').classList.toggle('hidden', !isGroup);
   $('rename-group-button').classList.toggle('hidden', !isCreator);
   $('set-group-photo-button').classList.toggle('hidden', !isCreator);
-  $('add-member-button').classList.toggle('hidden', !isCreator);
+  $('add-member-button').classList.toggle('hidden', !isModerator);
   $('show-members-button').classList.toggle('hidden', !isGroup);
-  $('kick-member-button').classList.toggle('hidden', !isCreator);
+  $('manage-moderators-button').classList.toggle('hidden', !isCreator);
+  $('kick-member-button').classList.toggle('hidden', !isModerator);
+  $('transfer-ownership-button').classList.toggle('hidden', !isCreator);
   $('leave-group-button').classList.toggle('hidden', !isGroup);
   $('conversation-dialog').showModal();
 });
@@ -1063,6 +1106,8 @@ $('rename-group-button')?.addEventListener('click', renameGroup);
 $('add-member-button')?.addEventListener('click', addMember);
 $('show-members-button')?.addEventListener('click', showMembers);
 $('kick-member-button')?.addEventListener('click', kickMember);
+$('manage-moderators-button')?.addEventListener('click', manageModerators);
+$('transfer-ownership-button')?.addEventListener('click', transferOwnership);
 $('leave-group-button')?.addEventListener('click', leaveGroup);
 $('close-auth-button').addEventListener('click', () => $('auth-dialog').close());
 
@@ -1125,10 +1170,25 @@ async function showMembers() {
 
 async function kickMember() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
-  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can kick members.');
+  const isCreator = state.activeInboxItem.creatorId === state.user.uid;
+  const isModerator = isCreator || !!state.activeInboxItem.moderators?.[state.user.uid];
+  if (!isModerator) return showToast('Only the group creator or a moderator can kick members.');
   const allIds = Object.keys(state.activeInboxItem.members || {});
   if (allIds.length <= 1) return showToast('No other members to kick.');
-  const memberList = allIds.map(id => ({ uid: id, name: state.users[id]?.name || 'Member', avatar: avatarUrl(state.users[id]), isCreator: id === state.activeInboxItem.creatorId }));
+  
+  // Exclude creator from being kicked. If current user is only a moderator, also exclude other moderators.
+  const mods = state.activeInboxItem.moderators || {};
+  let memberList = allIds.map(id => ({ uid: id, name: state.users[id]?.name || 'Member', avatar: avatarUrl(state.users[id]), isCreator: id === state.activeInboxItem.creatorId, isMod: !!mods[id] }));
+  
+  // Filter out creator and, if not creator, other moderators.
+  memberList = memberList.filter(m => {
+    if (m.isCreator) return false; // Never kick creator
+    if (!isCreator && m.isMod) return false; // Mods can't kick other mods
+    return true;
+  });
+  
+  if (!memberList.length) return showToast('No eligible members to kick.');
+  
   $('conversation-dialog').close();
   const selected = await showAppModal({ title: 'Kick Member', message: 'Select a member to remove from this group.', memberList, disabledUid: state.user.uid, multiSelect: false, confirmText: 'Kick', danger: true });
   if (!selected || !selected.length) return;
@@ -1136,7 +1196,9 @@ async function kickMember() {
   const confirmed = await showAppModal({ title: 'Confirm Kick', message: `Are you sure you want to kick ${targetName} from the group?`, confirmText: 'Kick', danger: true });
   if (!confirmed) return;
   try {
-    await remove(ref(db, `chatThreads/${state.activeThreadId}/members/${targetUid}`));
+    const updates = { [`chatThreads/${state.activeThreadId}/members/${targetUid}`]: null };
+    if (mods[targetUid]) updates[`chatThreads/${state.activeThreadId}/moderators/${targetUid}`] = null;
+    await update(ref(db), updates);
   } catch (err) { return showToast(`Failed to remove member: ${err.message}`); }
   
   remove(ref(db, `chatInboxes/${targetUid}/${state.activeThreadId}`)).catch(e => console.warn('Ignored inbox remove error:', e));
@@ -1150,7 +1212,9 @@ async function kickMember() {
 
 async function addMember() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
-  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can add members.');
+  const isCreator = state.activeInboxItem.creatorId === state.user.uid;
+  const isModerator = isCreator || !!state.activeInboxItem.moderators?.[state.user.uid];
+  if (!isModerator) return showToast('Only the group creator or a moderator can add members.');
   const currentMembers = Object.keys(state.activeInboxItem.members || {});
   const nonMembers = Object.values(state.users).filter(u => u.uid && !currentMembers.includes(u.uid) && !u.isBanned);
   if (!nonMembers.length) return showToast('No available members to add.');
@@ -1162,12 +1226,83 @@ async function addMember() {
     await Promise.all(selected.map(uid => set(ref(db, `chatThreads/${state.activeThreadId}/members/${uid}`), true)));
     const updatedMembers = { ...(state.activeInboxItem.members || {}) };
     selected.forEach(uid => updatedMembers[uid] = true);
-    const summary = { isGroup: true, members: updatedMembers, lastMessage: state.activeInboxItem.lastMessage || 'Added to group', lastTimestamp: state.activeInboxItem.lastTimestamp || Date.now(), lastSenderId: state.activeInboxItem.lastSenderId || state.user.uid, unreadCount: 1, name: state.activeInboxItem.name || '', creatorId: state.activeInboxItem.creatorId || state.user.uid };
+    const summary = { isGroup: true, members: updatedMembers, lastMessage: state.activeInboxItem.lastMessage || 'Added to group', lastTimestamp: state.activeInboxItem.lastTimestamp || Date.now(), lastSenderId: state.activeInboxItem.lastSenderId || state.user.uid, unreadCount: 1, name: state.activeInboxItem.name || '', creatorId: state.activeInboxItem.creatorId || state.user.uid, moderators: state.activeInboxItem.moderators || null };
     for (const uid of selected) { await runTransaction(ref(db, `chatInboxes/${uid}/${state.activeThreadId}`), (current) => current || summary).catch(() => {}); }
     const addedNames = selected.map(uid => state.users[uid]?.name || 'a member').join(', ');
     await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `added ${addedNames}.`, timestamp: Date.now(), isSystem: true });
     showToast(`${selected.length} member${selected.length > 1 ? 's' : ''} added.`);
   } catch (err) { showToast(`Could not add members: ${err.message}`); }
+}
+
+async function manageModerators() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can manage moderators.');
+  const allIds = Object.keys(state.activeInboxItem.members || {}).filter(id => id !== state.user.uid);
+  if (!allIds.length) return showToast('No other members to manage.');
+  const currentMods = state.activeInboxItem.moderators || {};
+  const memberList = allIds.map(id => ({ uid: id, name: getNickname(id), avatar: avatarUrl(state.users[id]), isCreator: false }));
+  $('conversation-dialog').close();
+  const selected = await showAppModal({ title: 'Manage Moderators', message: 'Select members to make them moderators. Uncheck to remove moderator status.', memberList, multiSelect: true, confirmText: 'Save', selectedList: Object.keys(currentMods) });
+  if (!selected) return; // cancelled
+  const newMods = {};
+  selected.forEach(uid => newMods[uid] = true);
+  const modsValue = Object.keys(newMods).length ? newMods : null;
+  try {
+    await update(ref(db, `chatThreads/${state.activeThreadId}`), { moderators: modsValue });
+    
+    const addedMods = selected.filter(uid => !currentMods[uid]);
+    const removedMods = Object.keys(currentMods).filter(uid => !newMods[uid]);
+    
+    if (addedMods.length > 0) {
+      const addedNames = addedMods.map(uid => state.users[uid]?.name || 'a member').join(', ');
+      await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `made ${addedNames} a moderator.`, timestamp: Date.now(), isSystem: true });
+    }
+    if (removedMods.length > 0) {
+      const removedNames = removedMods.map(uid => state.users[uid]?.name || 'a member').join(', ');
+      await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `removed moderator status from ${removedNames}.`, timestamp: Date.now(), isSystem: true });
+    }
+    
+    const memberIds = Object.keys(state.activeInboxItem.members || {});
+    memberIds.forEach(uid => {
+      runTransaction(ref(db, `chatInboxes/${uid}/${state.activeThreadId}`), (current) => {
+        if (!current) return current;
+        current.moderators = modsValue;
+        return current;
+      }).catch(()=>{});
+    });
+    
+    showToast('Moderators updated.');
+  } catch (err) { showToast(`Could not update moderators: ${err.message}`); }
+}
+
+async function transferOwnership() {
+  if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can transfer ownership.');
+  const allIds = Object.keys(state.activeInboxItem.members || {}).filter(id => id !== state.user.uid);
+  if (!allIds.length) return showToast('No other members to transfer to.');
+  const memberList = allIds.map(id => ({ uid: id, name: getNickname(id), avatar: avatarUrl(state.users[id]), isCreator: false }));
+  $('conversation-dialog').close();
+  const selected = await showAppModal({ title: 'Transfer Ownership', message: 'Select a member to become the new group creator. You will lose creator privileges.', memberList, multiSelect: false, confirmText: 'Transfer', danger: true });
+  if (!selected || !selected.length) return;
+  const targetUid = selected[0];
+  const targetName = state.users[targetUid]?.name || 'a member';
+  const confirmed = await showAppModal({ title: 'Confirm Transfer', message: `Are you sure you want to make ${targetName} the new creator? You will no longer be able to manage this group as the creator.`, confirmText: 'Confirm', danger: true });
+  if (!confirmed) return;
+  try {
+    await update(ref(db, `chatThreads/${state.activeThreadId}`), { creatorId: targetUid });
+    await push(ref(db, `chatMessages/${state.activeThreadId}`), { senderId: state.user.uid, text: `transferred group ownership to ${targetName}.`, timestamp: Date.now(), isSystem: true });
+    
+    const memberIds = Object.keys(state.activeInboxItem.members || {});
+    memberIds.forEach(uid => {
+      runTransaction(ref(db, `chatInboxes/${uid}/${state.activeThreadId}`), (current) => {
+        if (!current) return current;
+        current.creatorId = targetUid;
+        return current;
+      }).catch(()=>{});
+    });
+    
+    showToast(`Ownership transferred to ${targetName}.`);
+  } catch (err) { showToast(`Transfer failed: ${err.message}`); }
 }
 
 async function leaveGroup() {
