@@ -505,6 +505,11 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   max-height: 130px;
   transition: background var(--transition);
   border: 1.5px solid transparent;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.composer textarea::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
 }
 .composer textarea:focus {
   background: var(--surface);

@@ -1086,8 +1086,15 @@ $('conversation-search').addEventListener('input', renderConversations); $('peop
 $('message-input').addEventListener('input', (event) => { 
   const list = $('message-list');
   const wasNearLatest = list ? list.scrollHeight - list.scrollTop - list.clientHeight < 90 : false;
-  event.target.style.height = 'auto'; 
-  event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`; 
+  
+  const composer = event.target.closest('.composer');
+  if (composer) composer.style.minHeight = `${composer.offsetHeight}px`;
+
+  event.target.style.height = '1px'; 
+  event.target.style.height = `${Math.min(event.target.scrollHeight, 130)}px`; 
+
+  if (composer) composer.style.minHeight = '';
+
   if (wasNearLatest) list.scrollTop = list.scrollHeight;
   if (event.target.value.trim()) noteTyping(); else setTyping(false); 
 });
