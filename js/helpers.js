@@ -69,9 +69,12 @@ window.showConfirm = (msg, onConfirm) => {
 window.logActivity = (actionText) => {
     if (!window.currentUser) return;
     try {
-        const userName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Unknown User';
+        const userName = window.globalUsersCache?.[window.currentUser.uid]?.name 
+                      || window.currentUser.displayName 
+                      || (window.currentUser.email ? window.currentUser.email.split('@')[0] : 'Unknown User');
         push(ref(db, 'activity_log'), {
             user: userName,
+            userId: window.currentUser.uid,
             action: actionText,
             timestamp: Date.now()
         });

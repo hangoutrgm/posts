@@ -2,6 +2,17 @@ import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
+// Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
+const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVideoSizeLimitMB: 20 };
+onValue(ref(db, 'settings'), (snap) => {
+  if (snap.exists()) {
+    const s = snap.val();
+    chatSettings.chatImageLimit = s.chatImageLimit ?? 10;
+    chatSettings.chatVideoLimit = s.chatVideoLimit ?? 3;
+    chatSettings.chatVideoSizeLimitMB = s.chatVideoSizeLimitMB ?? 20;
+  }
+});
+
 const $ = (id) => document.getElementById(id);
 const state = {
   user: null, users: {}, inbox: {}, online: {}, clears: {}, typing: {}, messages: {}, activeThreadId: null, activeInboxItem: null,
@@ -310,7 +321,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10.5px; color:var(--ink-muted); margin-bottom:2px; margin-left:6px; font-weight:600;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
-    return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${messageText}${image}</div><div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}</div></div>`;
+    return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${messageText}${image}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div></div></div>`;
   }).join('');
   // Prepend load-more header
   let header = list.querySelector('.load-more-header');
@@ -429,11 +440,8 @@ function wireMessageGestures(rows) {
     });
     bubble.addEventListener('click', (event) => {
       if (event.target.closest('.message-link') || event.target.classList.contains('message-image')) return;
-      const meta = bubble.nextElementSibling;
-      if (meta && meta.classList.contains('message-meta')) {
-        const time = meta.querySelector('.message-time');
-        if (time) time.classList.toggle('hidden');
-      }
+      const time = bubble.parentElement?.querySelector('.message-time');
+      if (time) time.classList.toggle('hidden');
     });
     bubble.addEventListener('pointerup', cancel); bubble.addEventListener('pointercancel', cancel); bubble.addEventListener('pointerleave', cancel);
     bubble.addEventListener('contextmenu', (event) => { event.preventDefault(); cancel(); showMessageMenu(message, event.clientX, event.clientY); });
@@ -550,8 +558,23 @@ function openThread(threadId, inboxItem) {
   
   if (threadId === 'global_announcements' && !state.users[state.user.uid]?.isAdmin && !state.users[state.user.uid]?.isCreator) {
     $('message-form').classList.add('hidden');
+  } else if (state.users[state.user.uid]?.isBanned) {
+    // Show ban bar instead of the normal composer
+    $('message-form').classList.add('hidden');
+    let banBar = $('chat-ban-bar');
+    if (!banBar) {
+      banBar = document.createElement('div');
+      banBar.id = 'chat-ban-bar';
+      banBar.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;background:rgba(239,68,68,0.1);border-top:1px solid rgba(239,68,68,0.3);color:#ef4444;font-size:13px;font-weight:600;';
+      banBar.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> You are banned from Hangout Chat.';
+      $('message-form').parentNode.appendChild(banBar);
+    }
+    banBar.style.display = 'flex';
   } else {
     $('message-form').classList.remove('hidden');
+    // Hide ban bar if it exists and user is no longer banned
+    const banBar = $('chat-ban-bar');
+    if (banBar) banBar.style.display = 'none';
     $('message-input').focus();
   }
 }
@@ -646,12 +669,14 @@ function uploadToCloudinary(fileOrBase64, onProgress, folder = null) {
 }
 
 async function useUploadQuota() {
-  const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= 10 ? undefined : Number(count || 0) + 1));
-  if (!result.committed) throw new Error('Daily photo limit reached (10 uploads). Try again tomorrow.');
+  const limit = chatSettings.chatImageLimit;
+  const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= limit ? undefined : Number(count || 0) + 1));
+  if (!result.committed) throw new Error(`Daily photo limit reached (${limit} uploads). Try again tomorrow.`);
 }
 async function useVideoUploadQuota() {
-  const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatVideoUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= 3 ? undefined : Number(count || 0) + 1));
-  if (!result.committed) throw new Error('Daily video limit reached (3 uploads). Try again tomorrow.');
+  const limit = chatSettings.chatVideoLimit;
+  const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatVideoUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= limit ? undefined : Number(count || 0) + 1));
+  if (!result.committed) throw new Error(`Daily video limit reached (${limit} uploads). Try again tomorrow.`);
 }
 
 function clearAttachment() { 
@@ -789,7 +814,12 @@ async function restoreStreak() {
 
 async function sendMessage(event) {
   event.preventDefault(); if (!state.user || !state.activeThreadId) return;
-  
+
+  // Ban check — blocked users cannot send messages
+  if (state.users[state.user.uid]?.isBanned) {
+    return showToast('You are banned from using Hangout Chat.');
+  }
+
   if (state.activeThreadId === 'global_announcements') {
     // If the user's uid is not the 'admin' or whatever role allows sending announcements, block it.
     // For now we'll allow it only if state.users[state.user.uid].isAdmin is true, or similar logic.
@@ -1118,9 +1148,16 @@ $('send-button').addEventListener('mousedown', e => e.preventDefault());
 $('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
 $('image-input').addEventListener('change', (event) => { 
   const file = event.target.files[0]; 
-  
-  if (file && file.type.startsWith('video/') && file.size > 20 * 1024 * 1024) {
-    showToast("Video is too large. Max size is 20MB.");
+
+  // Ban check — banned users cannot attach media
+  if (state.users[state.user?.uid]?.isBanned) {
+    showToast('You are banned from using Hangout Chat.');
+    event.target.value = '';
+    return;
+  }
+
+  if (file && file.type.startsWith('video/') && file.size > chatSettings.chatVideoSizeLimitMB * 1024 * 1024) {
+    showToast(`Video is too large. Max size is ${chatSettings.chatVideoSizeLimitMB}MB.`);
     event.target.value = '';
     return;
   }
@@ -1128,7 +1165,7 @@ $('image-input').addEventListener('change', (event) => {
   state.pendingImageFile = file || null; 
   
   if (file) {
-    showToast(`Media ready: ${file.name}. Limit: 10 images or 3 videos daily.`);
+    showToast(`Media ready: ${file.name}. Limit: ${chatSettings.chatImageLimit} images or ${chatSettings.chatVideoLimit} videos daily.`);
     
     $('media-preview-content').innerHTML = '';
     if (file.type.startsWith('video/')) {

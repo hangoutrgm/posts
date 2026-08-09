@@ -61,16 +61,48 @@
     <!-- MAIN CHAT AREA -->
     <main class="chat-panel">
       <section id="empty-state" class="empty-state">
-        <div class="empty-illustration">
-          <svg viewBox="0 0 120 120" fill="none">
-            <circle cx="60" cy="60" r="60" fill="url(#grad1)"/>
-            <defs><linearGradient id="grad1" x1="0" y1="0" x2="120" y2="120"><stop offset="0%" stop-color="#6c63ff" stop-opacity=".15"/><stop offset="100%" stop-color="#a78bfa" stop-opacity=".3"/></linearGradient></defs>
-            <rect x="28" y="35" width="64" height="42" rx="10" fill="url(#grad2)"/>
-            <defs><linearGradient id="grad2" x1="28" y1="35" x2="92" y2="77"><stop offset="0%" stop-color="#6c63ff"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
-            <circle cx="46" cy="56" r="4" fill="white" opacity=".9"/>
-            <circle cx="60" cy="56" r="4" fill="white" opacity=".9"/>
-            <circle cx="74" cy="56" r="4" fill="white" opacity=".9"/>
-            <path d="M38 77l4-10h-14a6 6 0 0 1-6-6v-2a6 6 0 0 1 6-6" stroke="#6c63ff" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <div class="empty-icon-wrap" style="width: 120px; height: 120px; margin: 0 auto 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+          <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+            <defs>
+              <linearGradient id="bgGrad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.2"/>
+                <stop offset="100%" stop-color="#a855f7" stop-opacity="0.05"/>
+              </linearGradient>
+              <linearGradient id="bubbleGradMain" x1="20" y1="25" x2="90" y2="85" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
+              </linearGradient>
+              <linearGradient id="bubbleGradSub" x1="50" y1="45" x2="105" y2="95" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#ec4899"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
+              </linearGradient>
+              <filter id="softShadow" x="-10%" y="-10%" width="130%" height="130%">
+                <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#4338ca" flood-opacity="0.25"/>
+              </filter>
+            </defs>
+
+            <!-- Background Soft Circle -->
+            <circle cx="60" cy="60" r="54" fill="url(#bgGrad)"/>
+
+            <!-- Back Chat Bubble (Purple/Pink Gradient) -->
+            <g filter="url(#softShadow)">
+              <path d="M50 42 C50 35.3726 55.3726 30 62 30 H92 C98.6274 30 104 35.3726 104 42 V64 C104 70.6274 98.6274 76 92 76 H80 L68 86 V76 H62 C55.3726 76 50 70.6274 50 64 V42 Z" fill="url(#bubbleGradSub)" opacity="0.85"/>
+            </g>
+
+            <!-- Front Chat Bubble (Indigo/Purple Gradient) -->
+            <g filter="url(#softShadow)">
+              <path d="M16 48 C16 39.1634 23.1634 32 32 32 H68 C76.8366 32 84 39.1634 84 48 V68 C84 76.8366 76.8366 84 68 84 H44 L28 96 V84 H32 C23.1634 84 16 76.8366 16 68 V48 Z" fill="url(#bubbleGradMain)"/>
+            </g>
+
+            <!-- Typing Dots in Front Bubble -->
+            <circle cx="38" cy="58" r="4" fill="white" opacity="0.95"/>
+            <circle cx="50" cy="58" r="4" fill="white" opacity="0.95"/>
+            <circle cx="62" cy="58" r="4" fill="white" opacity="0.95"/>
+
+            <!-- Sparkles / Floating Accents -->
+            <path d="M26 22 L27.5 25.5 L31 27 L27.5 28.5 L26 32 L24.5 28.5 L21 27 L24.5 25.5 Z" fill="#6366f1" opacity="0.9"/>
+            <path d="M96 24 L97 26 L99 27 L97 28 L96 30 L95 28 L93 27 L95 26 Z" fill="#ec4899" opacity="0.8"/>
+            <circle cx="92" cy="92" r="3" fill="#a855f7" opacity="0.7"/>
           </svg>
         </div>
         <h2>Start a Conversation</h2>

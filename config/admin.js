@@ -1,7 +1,8 @@
 // admin.js
-import { app, auth, db } from "../js/firebase-config.js";
+import { app, auth, db, fsdb } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import "../js/globals.js";
 import "../js/helpers.js";
 
@@ -61,23 +62,61 @@ function initAdminDashboard() {
     }
 
     // 0. Listen for Activity Log
-    const activityQuery = query(ref(db, 'activity_log'), limitToLast(50));
-    onValue(activityQuery, (snap) => {
+    let cachedActivities = [];
+
+    function renderActivityList() {
         const listEl = document.getElementById('admin-activity-list');
+        if (!listEl) return;
         listEl.innerHTML = '';
-        if (snap.exists()) {
-            const activities = [];
-            snap.forEach(child => { activities.push(child.val()); });
-            activities.reverse().forEach(act => {
+        if (cachedActivities.length > 0) {
+            cachedActivities.forEach(act => {
+                let displayUser = act.user || 'Unknown User';
+                let displayAction = act.action || '';
+
+                // Try resolving Unknown User or raw UID in act.user / act.userId
+                if (globalUsers) {
+                    if (act.userId && globalUsers[act.userId]?.name) {
+                        displayUser = globalUsers[act.userId].name;
+                    } else if (globalUsers[displayUser]?.name) {
+                        displayUser = globalUsers[displayUser].name;
+                    }
+                }
+
+                // Try resolving raw UIDs inside displayAction
+                if (globalUsers && displayAction) {
+                    Object.entries(globalUsers).forEach(([uid, uData]) => {
+                        if (uid && uData.name && displayAction.includes(uid)) {
+                            displayAction = displayAction.replaceAll(uid, uData.name);
+                        }
+                    });
+                }
+
                 const div = document.createElement('div');
-                div.className = "text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-slate-900 p-2 rounded border border-gray-100 dark:border-slate-800";
+                div.className = "flex flex-col bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700/50";
                 const time = new Date(act.timestamp).toLocaleString();
-                div.innerHTML = `<span class="text-blue-500 font-bold">${act.user}</span> ${act.action} <span class="text-xs text-gray-500 block mt-1">${time}</span>`;
+                div.innerHTML = `
+                    <div class="text-[11px] text-slate-700 dark:text-slate-300">
+                        <span class="font-bold text-indigo-600 dark:text-indigo-400">${displayUser}</span> ${displayAction}
+                    </div>
+                    <span class="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 flex items-center">
+                        <i class="fa-regular fa-clock mr-1"></i> ${time}
+                    </span>
+                `;
                 listEl.appendChild(div);
             });
         } else {
             listEl.innerHTML = '<p class="text-sm text-gray-500">No recent activity.</p>';
         }
+    }
+
+    const activityQuery = query(ref(db, 'activity_log'), limitToLast(50));
+    onValue(activityQuery, (snap) => {
+        cachedActivities = [];
+        if (snap.exists()) {
+            snap.forEach(child => { cachedActivities.push(child.val()); });
+            cachedActivities.reverse();
+        }
+        renderActivityList();
     });
 
     // 1. Listen for Online Users
@@ -91,16 +130,21 @@ function initAdminDashboard() {
             globalUsers = snap.val();
             document.getElementById('metric-users').innerText = Object.keys(globalUsers).length;
             renderUsersList();
+            renderActivityList();
         }
     });
 
-    // 3. Listen for Posts (to get count)
-    onValue(ref(db, 'community_posts'), (snap) => {
-        if (snap.exists()) {
-            allPostsCount = Object.keys(snap.val()).length;
+    // 3. Get Posts count from Firestore
+    async function fetchPostsCount() {
+        try {
+            const snap = await getCountFromServer(collection(fsdb, 'community_posts'));
+            allPostsCount = snap.data().count;
             document.getElementById('metric-posts').innerText = allPostsCount;
+        } catch (e) {
+            console.error("Error fetching post count", e);
         }
-    });
+    }
+    fetchPostsCount();
 
     // 4. Listen to Settings
     onValue(ref(db, 'settings'), (snap) => {
@@ -117,6 +161,9 @@ function initAdminDashboard() {
             document.getElementById('set-imageUploadLimit').value = settings.imageUploadLimit ?? '';
             document.getElementById('set-videoUploadLimit').value = settings.videoUploadLimit ?? '';
             document.getElementById('set-videoSizeLimitMB').value = settings.videoSizeLimitMB ?? '';
+            document.getElementById('set-chatImageLimit').value = settings.chatImageLimit ?? '';
+            document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
+            document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
         } else {
             document.getElementById('set-starsPerPost').value = '';
             document.getElementById('set-starsPerComment').value = '';
@@ -129,6 +176,9 @@ function initAdminDashboard() {
             document.getElementById('set-imageUploadLimit').value = '';
             document.getElementById('set-videoUploadLimit').value = '';
             document.getElementById('set-videoSizeLimitMB').value = '';
+            document.getElementById('set-chatImageLimit').value = '';
+            document.getElementById('set-chatVideoLimit').value = '';
+            document.getElementById('set-chatVideoSizeLimitMB').value = '';
         }
 
         // Set placeholders
@@ -160,6 +210,9 @@ function initAdminDashboard() {
             imageUploadLimit: parseInt(document.getElementById('set-imageUploadLimit').value) || 0,
             videoUploadLimit: parseInt(document.getElementById('set-videoUploadLimit').value) || 0,
             videoSizeLimitMB: parseInt(document.getElementById('set-videoSizeLimitMB').value) || 0,
+            chatImageLimit: parseInt(document.getElementById('set-chatImageLimit').value) || 10,
+            chatVideoLimit: parseInt(document.getElementById('set-chatVideoLimit').value) || 3,
+            chatVideoSizeLimitMB: parseInt(document.getElementById('set-chatVideoSizeLimitMB').value) || 20,
         };
 
         try {
@@ -173,6 +226,95 @@ function initAdminDashboard() {
 
     // 6. Handle Search
     document.getElementById('admin-user-search').addEventListener('input', renderUsersList);
+
+    // 7. Danger Zone: Reset Leaderboard Points
+    const confirmLbInput = document.getElementById('confirm-reset-lb');
+    const btnResetLb = document.getElementById('btn-reset-lb');
+    
+    confirmLbInput.addEventListener('input', (e) => {
+        if (e.target.value === 'wipe out leaderboard points') {
+            btnResetLb.removeAttribute('disabled');
+        } else {
+            btnResetLb.setAttribute('disabled', 'true');
+        }
+    });
+
+    btnResetLb.addEventListener('click', async () => {
+        if (confirm("Are you absolutely sure you want to reset all Leaderboard points to 0? This cannot be undone.")) {
+            btnResetLb.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Resetting...';
+            btnResetLb.setAttribute('disabled', 'true');
+            
+            try {
+                const updates = {};
+                for (const uid in globalUsers) {
+                    updates[`users/${uid}/lbPoints`] = null;
+                }
+                
+                await update(ref(db), updates);
+                
+                // Log activity
+                await push(ref(db, 'activity_log'), {
+                    user: 'Admin',
+                    action: 'wiped out all leaderboard points',
+                    timestamp: Date.now()
+                });
+                
+                alert('Leaderboard points successfully reset to 0 for all users.');
+                confirmLbInput.value = '';
+                btnResetLb.innerHTML = '<i class="fa-solid fa-trash-can mr-2"></i> Reset Leaderboard Points';
+            } catch (err) {
+                console.error(err);
+                alert('Error resetting leaderboard points: ' + err.message);
+                btnResetLb.innerHTML = '<i class="fa-solid fa-trash-can mr-2"></i> Reset Leaderboard Points';
+                btnResetLb.removeAttribute('disabled');
+            }
+        }
+    });
+
+    // 8. Danger Zone: Reset Earnings & Wins
+    const confirmEarningsInput = document.getElementById('confirm-reset-earnings');
+    const btnResetEarnings = document.getElementById('btn-reset-earnings');
+    
+    confirmEarningsInput.addEventListener('input', (e) => {
+        if (e.target.value === 'reset prizes, reset wins') {
+            btnResetEarnings.removeAttribute('disabled');
+        } else {
+            btnResetEarnings.setAttribute('disabled', 'true');
+        }
+    });
+
+    btnResetEarnings.addEventListener('click', async () => {
+        if (confirm("Are you absolutely sure you want to delete all earnings, prizes, and wins data? This cannot be undone.")) {
+            btnResetEarnings.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Resetting...';
+            btnResetEarnings.setAttribute('disabled', 'true');
+            
+            try {
+                const updates = {};
+                for (const uid in globalUsers) {
+                    updates[`users/${uid}/earnings`] = null;
+                    updates[`users/${uid}/wins`] = null; // Just in case it exists
+                }
+                
+                await update(ref(db), updates);
+                
+                // Log activity
+                await push(ref(db, 'activity_log'), {
+                    user: 'Admin',
+                    action: 'reset all earnings, prizes, and wins',
+                    timestamp: Date.now()
+                });
+                
+                alert('Earnings, prizes, and wins successfully deleted for all users.');
+                confirmEarningsInput.value = '';
+                btnResetEarnings.innerHTML = '<i class="fa-solid fa-trash-can mr-2"></i> Reset Earnings & Wins';
+            } catch (err) {
+                console.error(err);
+                alert('Error resetting earnings: ' + err.message);
+                btnResetEarnings.innerHTML = '<i class="fa-solid fa-trash-can mr-2"></i> Reset Earnings & Wins';
+                btnResetEarnings.removeAttribute('disabled');
+            }
+        }
+    });
 }
 
 function renderUsersList() {
@@ -196,19 +338,27 @@ function renderUsersList() {
         const role = window.getRole(u.uid);
 
         const div = document.createElement('div');
-        div.className = "flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-800";
+        div.className = "flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800 transition-colors group";
         div.innerHTML = `
-            <div class="flex items-center space-x-3 truncate">
-                <img src="${u.pic || window.generateAvatar(u.uid)}" class="w-10 h-10 rounded-full object-cover">
+            <div class="flex items-center space-x-2.5 truncate">
+                <div class="relative">
+                    <img src="${u.pic || window.generateAvatar(u.uid)}" class="w-8 h-8 rounded-full object-cover border border-slate-200 dark:border-slate-700 shadow-sm">
+                    ${role.badgeHtml ? `<div class="absolute -bottom-1 -right-1 bg-white dark:bg-slate-800 rounded-full p-0.5 shadow-sm scale-[0.6]">${role.badgeHtml}</div>` : ''}
+                </div>
                 <div class="truncate">
-                    <p class="font-bold text-sm truncate flex items-center">${u.name || 'Unknown'} ${role.badgeHtml}</p>
-                    <p class="text-xs text-gray-500">⭐ ${u.points || 0} | 🏆 ${u.lbPoints || 0}</p>
+                    <p class="font-bold text-[11px] text-slate-800 dark:text-slate-100 truncate">${u.name || 'Unknown'}</p>
+                    <div class="flex items-center space-x-1.5 mt-0.5">
+                        <span class="text-[10px] font-semibold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-1 py-0.5 rounded flex items-center"><i class="fa-solid fa-star mr-1 text-[8px]"></i> ${u.points || 0}</span>
+                        <span class="text-[10px] font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-1 py-0.5 rounded flex items-center"><i class="fa-solid fa-trophy mr-1 text-[8px]"></i> ${u.lbPoints || 0}</span>
+                    </div>
                 </div>
             </div>
-            <div class="text-xs text-gray-400 flex items-center">
-                ${u.uid.substring(0, 8)}...
-                <button onclick="navigator.clipboard.writeText('${u.uid}'); alert('Copied UID: ${u.uid}');" class="ml-2 text-gray-500 hover:text-blue-500 transition" title="Copy UID">
-                    <i class="fa-solid fa-copy"></i>
+            <div class="flex items-center">
+                <div class="text-[9px] font-mono text-slate-400 dark:text-slate-500 bg-slate-200/50 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                    ${u.uid.substring(0, 8)}...
+                </div>
+                <button onclick="navigator.clipboard.writeText('${u.uid}'); alert('Copied UID: ${u.uid}');" class="ml-1 w-5 h-5 rounded text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 flex items-center justify-center transition opacity-0 group-hover:opacity-100" title="Copy UID">
+                    <i class="fa-solid fa-copy text-[10px]"></i>
                 </button>
             </div>
         `;

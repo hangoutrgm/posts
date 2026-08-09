@@ -872,7 +872,8 @@ window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
     });
     const pointsToAdd = window.siteSettings.starsPerComment ?? 1;
     update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
-    window.logActivity(`commented on a post by ${commentAuthorId}`);
+    const commentAuthorName = window.globalUsersCache?.[commentAuthorId]?.name || commentAuthorId;
+    window.logActivity(`commented on a post by ${commentAuthorName}`);
     
     if(window.currentUser.uid !== commentAuthorId && commentAuthorId !== "undefined") {
         push(ref(db, `notifications/${commentAuthorId}`), { 
@@ -921,7 +922,8 @@ window.react = (postId, postAuthorId, type) => {
                 type: 'react_post', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
-        window.logActivity(`reacted to a post by ${postAuthorId}`);
+        const postAuthorName = window.globalUsersCache?.[postAuthorId]?.name || postAuthorId;
+        window.logActivity(`reacted to a post by ${postAuthorName}`);
     }
 };
 
@@ -960,7 +962,8 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
                 type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
             });
         }
-        window.logActivity(`reacted to a comment by ${commentAuthorId}`);
+        const commentAuthorName = window.globalUsersCache?.[commentAuthorId]?.name || commentAuthorId;
+        window.logActivity(`reacted to a comment by ${commentAuthorName}`);
     }
 };
 
