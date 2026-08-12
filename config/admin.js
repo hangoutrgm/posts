@@ -1,7 +1,7 @@
 // admin.js
 import { app, auth, db, fsdb } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, onValue, set, update, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, onValue, set, update, push, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import "../js/globals.js";
 import "../js/helpers.js";
@@ -293,6 +293,7 @@ function initAdminDashboard() {
                 for (const uid in globalUsers) {
                     updates[`users/${uid}/earnings`] = null;
                     updates[`users/${uid}/wins`] = null; // Just in case it exists
+                    updates[`users/${uid}/hostedGames`] = null;
                 }
                 
                 await update(ref(db), updates);
