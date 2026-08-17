@@ -20,7 +20,7 @@ const state = {
   replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
   groupMode: false, groupSelection: [],
   noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null,
-  streaks: {}
+  streaks: {}, stopStreak: null, pinnedMessage: null, stopPinnedMessage: null, mediaRecorder: null, audioChunks: [], recTimerInterval: null, recSeconds: 0
 };
 const reactions = { like: '👍', love: '❤️', laugh: '😂', wow: '😮', sad: '😢' };
 reactions.angry = '😡';
@@ -40,6 +40,10 @@ function showToast(message) { const toast = $('toast'); toast.textContent = mess
 function isOnline(uid) { const presence = state.online[uid]; return presence === true || Boolean(presence && typeof presence === 'object' && Object.keys(presence).length); }
 function threadIdFor(peerId) { return `dm_${[state.user.uid, peerId].sort().join('_')}`; }
 function normalStatus(uid) { return `<i class="online-dot${isOnline(uid) ? ' online' : ''}"></i>${isOnline(uid) ? 'Online' : 'Offline'}`; }
+function openUserProfile(uid) {
+  if (!uid) return;
+  window.location.href = `../?profile=${encodeURIComponent(uid)}`;
+}
 
 function getNickname(uid) {
   if (state.activeThreadId && state.inbox[state.activeThreadId]?.nicknames?.[uid]) return state.inbox[state.activeThreadId].nicknames[uid];
@@ -217,6 +221,7 @@ function updateChatHeader() {
   const wrap = $('chat-avatar-wrap');
   if (wrap) {
     wrap.innerHTML = avatarHtml;
+    wrap.title = item.isGroup ? 'Group options' : (peerIds[0] ? `View ${getNickname(peerIds[0])}'s profile` : 'View profile');
     const el = wrap.firstElementChild;
     if (el) { el.classList.add('large'); if (el.tagName === 'IMG') el.classList.add('avatar'); }
   }
@@ -240,6 +245,7 @@ function updateChatHeader() {
 
 function replyPreview(replyTo = {}) { 
   if (replyTo.text) return replyTo.text;
+  if (replyTo.audio) return 'Voice message';
   if (replyTo.image) {
     if (replyTo.image.includes('/video/upload/') || replyTo.image.match(/\\.(mp4|webm|mov|ogg)$/i)) return 'Video';
     return 'Photo';
@@ -275,7 +281,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     });
   }
   list.innerHTML = rows.map((message) => {
-    if (message.isSystem) return `<div class="system-message-row"><span class="system-message-bubble">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</span></div>`;
+    if (message.isSystem) return `<div id="message-${escapeHtml(message.id)}" class="system-message-row"><span class="system-message-bubble">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</span></div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || ''} ${Object.keys(people).length}</span>` : '').join('');
     let quote = '';
@@ -287,25 +293,35 @@ function renderMessages(rawMessages, jumpToLatest = false) {
         } else {
           mediaPreview = `<img src="${escapeHtml(message.replyTo.image)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
         }
+      } else if (message.replyTo.audio) {
+        mediaPreview = `🎤 `;
       } else if (message.replyTo.hasImage) {
         mediaPreview = `📷 `;
       }
       quote = `<div class="reply-quote" onclick="const e = document.getElementById('message-${message.replyTo.id}'); if(e) e.scrollIntoView({behavior:'smooth', block:'center'});">Reply to ${escapeHtml(getNickname(message.replyTo.senderId))}: <br/> ${mediaPreview}${escapeHtml(replyPreview(message.replyTo))}</div>`;
     }
+    const isVoice = Boolean(message.audio || (message.image && (message.image.match(/\.(mp3|wav|ogg|m4a|aac|opus)$/i) || message.image.includes('/video/upload/') && message.audio)));
     let isVid = false;
     let image = '';
-    if (message.image) {
+    let audioHtml = '';
+    if (isVoice) {
+      const audioSrc = message.audio || message.image;
+      audioHtml = `<audio class="message-audio" controls src="${escapeHtml(audioSrc)}"></audio>`;
+    } else if (message.image) {
       isVid = message.image.includes('/video/upload/') || message.image.match(/\\.(mp4|webm|mov|ogg)$/i);
       image = isVid ? `<video class="message-image" src="${escapeHtml(message.image)}" style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`;
     }
     let messageText = linkifyText(message.text || '');
     if (!messageText && image) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
+    } else if (!messageText && isVoice) {
+      messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Voice message</div>`;
     }
     
     if (message.isDeleted) {
       quote = '';
       image = '';
+      audioHtml = '';
       messageText = '<span style="font-style:italic; opacity:0.6;">🚫 Message deleted</span>';
     }
     
@@ -321,7 +337,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10.5px; color:var(--ink-muted); margin-bottom:2px; margin-left:6px; font-weight:600;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
-    return `<div class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}">${quote}${messageText}${image}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div></div></div>`;
+    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}"><span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>${quote}${messageText}${image}${audioHtml}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div></div></div>`;
   }).join('');
   // Prepend load-more header
   let header = list.querySelector('.load-more-header');
@@ -353,14 +369,27 @@ function showMessageMenu(message, x, y) {
   if (!message) return;
   const menu = $('message-action-menu');
   const reactionButtons = Object.entries(reactions).map(([type, emoji]) => `<button class="reaction-option" type="button" data-menu-action="react" data-reaction="${type}" aria-label="React ${type}">${emoji}</button>`).join('');
-  menu.innerHTML = `${reactionButtons}<span class="menu-separator"></span><button type="button" data-menu-action="reply">Reply</button><button type="button" data-menu-action="copy">Copy</button>${message.senderId === state.user?.uid ? '<button type="button" data-menu-action="edit">Edit</button><button type="button" data-menu-action="delete" style="color: #dc2626;">Delete</button>' : ''}`;
+  
+  const senderName = state.users[message.senderId]?.name || getNickname(message.senderId) || 'User';
+  const isGroup = state.activeInboxItem?.isGroup;
+  const canPin = !isGroup || state.activeInboxItem?.creatorId === state.user?.uid;
+  const isPinned = state.pinnedMessage?.id === message.id;
+  const pinButtonHtml = canPin && !message.isDeleted ? `<button type="button" data-menu-action="${isPinned ? 'unpin' : 'pin'}">${isPinned ? 'Unpin' : 'Pin'}</button>` : '';
+
+  // Requested order: username, reply, pin, copy (then edit, delete for author)
+  const profileButtonHtml = `<button type="button" data-menu-action="profile" class="menu-profile-btn" title="View ${escapeHtml(senderName)}'s profile">👤 ${escapeHtml(senderName)}</button>`;
+
+  menu.innerHTML = `${reactionButtons}<span class="menu-separator"></span>${profileButtonHtml}<button type="button" data-menu-action="reply">Reply</button>${pinButtonHtml}<button type="button" data-menu-action="copy">Copy</button>${message.senderId === state.user?.uid ? '<button type="button" data-menu-action="edit">Edit</button><button type="button" data-menu-action="delete" style="color: #dc2626;">Delete</button>' : ''}`;
   menu.classList.remove('hidden');
   menu.style.left = `${Math.max(12, Math.min(x, window.innerWidth - menu.offsetWidth - 12))}px`;
   menu.style.top = `${Math.max(12, Math.min(y, window.innerHeight - menu.offsetHeight - 12))}px`;
   menu.querySelectorAll('[data-menu-action]').forEach((button) => button.addEventListener('click', async () => {
     const action = button.dataset.menuAction;
     if (action === 'react') await toggleReaction(message.id, button.dataset.reaction);
+    if (action === 'profile') openUserProfile(message.senderId);
     if (action === 'reply') setReply(message);
+    if (action === 'pin') await pinMessage(message);
+    if (action === 'unpin') await unpinMessage();
     if (action === 'copy') {
       try {
         await navigator.clipboard.writeText(message.text || '');
@@ -371,6 +400,16 @@ function showMessageMenu(message, x, y) {
     if (action === 'delete') await deleteMessage(message);
     closeMessageMenu();
   }));
+}
+
+function showHeartAnimation(x, y) {
+  const heart = document.createElement('div');
+  heart.className = 'heart-tap-anim';
+  heart.textContent = '❤️';
+  heart.style.left = `${x}px`;
+  heart.style.top = `${y}px`;
+  document.body.appendChild(heart);
+  setTimeout(() => heart.remove(), 700);
 }
 
 function openImageViewer(src) {
@@ -432,21 +471,159 @@ function closeImageViewer() {
 
 function wireMessageGestures(rows) {
   $('message-list').querySelectorAll('.message-bubble').forEach((bubble) => {
-    const message = rows.find((row) => row.id === bubble.dataset.message); let pressTimer; let pressed = false;
-    const cancel = () => { clearTimeout(pressTimer); pressTimer = null; };
-    bubble.addEventListener('pointerdown', (event) => {
-      if (event.target.closest('.message-link') || event.target.classList.contains('message-image')) return;
-      pressed = true; pressTimer = setTimeout(() => { if (pressed) showMessageMenu(message, event.clientX, event.clientY); }, 500);
-    });
-    bubble.addEventListener('click', (event) => {
-      if (event.target.closest('.message-link') || event.target.classList.contains('message-image')) return;
+    const message = rows.find((row) => row.id === bubble.dataset.message);
+    if (!message) return;
+    let pressTimer = null;
+    let singleTapTimer = null;
+    let longPressed = false;
+    let isPointerDown = false;
+    let lastTapTime = 0;
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let currentY = 0;
+    let isSwiping = false;
+    let isPointerCaptured = false;
+    let swipeHint = bubble.querySelector('.swipe-reply-hint');
+
+    const cancelLongPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+
+    const toggleTimestamp = () => {
       const time = bubble.parentElement?.querySelector('.message-time');
       if (time) time.classList.toggle('hidden');
+    };
+
+    bubble.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('.message-link') || event.target.classList.contains('message-image') || event.target.tagName === 'AUDIO') return;
+      isPointerDown = true;
+      startX = event.clientX;
+      startY = event.clientY;
+      currentX = event.clientX;
+      currentY = event.clientY;
+      isSwiping = false;
+      longPressed = false;
+
+      cancelLongPress();
+      try {
+        bubble.setPointerCapture(event.pointerId);
+        isPointerCaptured = true;
+      } catch (_) {}
+
+      pressTimer = setTimeout(() => {
+        if (!isSwiping && isPointerDown) {
+          longPressed = true;
+          if (singleTapTimer) { clearTimeout(singleTapTimer); singleTapTimer = null; }
+          lastTapTime = 0;
+          showMessageMenu(message, event.clientX, event.clientY);
+        }
+      }, 500);
     });
-    bubble.addEventListener('pointerup', cancel); bubble.addEventListener('pointercancel', cancel); bubble.addEventListener('pointerleave', cancel);
-    bubble.addEventListener('contextmenu', (event) => { event.preventDefault(); cancel(); showMessageMenu(message, event.clientX, event.clientY); });
-    bubble.addEventListener('click', (event) => { if (pressed) event.preventDefault(); });
+
+    bubble.addEventListener('pointermove', (event) => {
+      if (!isPointerDown || longPressed) return;
+      currentX = event.clientX;
+      currentY = event.clientY;
+      const dx = event.clientX - startX;
+      const dy = event.clientY - startY;
+
+      // Detect horizontal drag to the right
+      if (dx > 8 && Math.abs(dx) > Math.abs(dy) * 0.7) {
+        isSwiping = true;
+        cancelLongPress();
+        if (singleTapTimer) { clearTimeout(singleTapTimer); singleTapTimer = null; }
+        const visualOffset = Math.min(dx * 0.65, 55);
+        bubble.style.transition = 'none';
+        bubble.style.transform = `translateX(${visualOffset}px)`;
+        if (swipeHint) {
+          swipeHint.classList.toggle('visible', visualOffset >= 22);
+        }
+      }
+    });
+
+    bubble.addEventListener('pointerup', (event) => {
+      if (!isPointerDown) return;
+      isPointerDown = false;
+      cancelLongPress();
+      if (isPointerCaptured) {
+        try { bubble.releasePointerCapture(event.pointerId); } catch (_) {}
+        isPointerCaptured = false;
+      }
+
+      bubble.style.transition = 'transform 0.18s ease-out';
+
+      if (isSwiping) {
+        const dx = (event.clientX || currentX) - startX;
+        if (dx >= 30) {
+          setReply(message);
+        }
+        bubble.style.transform = '';
+        if (swipeHint) swipeHint.classList.remove('visible');
+        setTimeout(() => { bubble.style.transition = ''; }, 200);
+        isSwiping = false;
+        return;
+      }
+
+      bubble.style.transform = '';
+      if (swipeHint) swipeHint.classList.remove('visible');
+      setTimeout(() => { bubble.style.transition = ''; }, 200);
+
+      if (longPressed) {
+        longPressed = false;
+        return;
+      }
+
+      // Check distance moved (must be a clean tap)
+      const dist = Math.hypot(event.clientX - startX, event.clientY - startY);
+      if (dist > 15) return;
+
+      const now = Date.now();
+      if (lastTapTime > 0 && (now - lastTapTime) < 320) {
+        // Double-tap confirmed -> Cancel single tap timestamp & React ❤️
+        if (singleTapTimer) {
+          clearTimeout(singleTapTimer);
+          singleTapTimer = null;
+        }
+        lastTapTime = 0;
+        toggleReaction(message.id, 'love');
+        showHeartAnimation(event.clientX, event.clientY);
+      } else {
+        // First tap -> start timer for single tap (toggle timestamp)
+        lastTapTime = now;
+        if (singleTapTimer) clearTimeout(singleTapTimer);
+        singleTapTimer = setTimeout(() => {
+          toggleTimestamp();
+          singleTapTimer = null;
+          lastTapTime = 0;
+        }, 320);
+      }
+    });
+
+    bubble.addEventListener('pointercancel', (event) => {
+      isPointerDown = false;
+      cancelLongPress();
+      if (singleTapTimer) { clearTimeout(singleTapTimer); singleTapTimer = null; }
+      if (isPointerCaptured) {
+        try { bubble.releasePointerCapture(event.pointerId); } catch (_) {}
+        isPointerCaptured = false;
+      }
+      bubble.style.transform = '';
+      if (swipeHint) swipeHint.classList.remove('visible');
+      isSwiping = false;
+    });
+
+    bubble.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      cancelLongPress();
+      if (singleTapTimer) { clearTimeout(singleTapTimer); singleTapTimer = null; }
+      showMessageMenu(message, event.clientX, event.clientY);
+    });
   });
+
   // Wire image tap-to-view
   $('message-list').querySelectorAll('img.message-image').forEach((img) => {
     img.addEventListener('click', (e) => { e.stopPropagation(); openImageViewer(img.src); });
@@ -455,7 +632,7 @@ function wireMessageGestures(rows) {
   $('message-list').querySelectorAll('video.message-image').forEach((vid) => {
     vid.addEventListener('click', (e) => { 
       e.stopPropagation(); 
-      openImageViewer(vid.src); // Most reliable across all mobile browsers
+      openImageViewer(vid.src);
     });
   });
 }
@@ -522,6 +699,239 @@ async function loadOlderMessages() {
   requestAnimationFrame(() => { list.scrollTop = list.scrollHeight - prevHeight + list.scrollTop; });
 }
 
+function watchPinnedMessage(threadId) {
+  if (state.stopPinnedMessage) {
+    state.stopPinnedMessage();
+    state.stopPinnedMessage = null;
+  }
+  state.pinnedMessage = null;
+  state.stopPinnedMessage = onValue(ref(db, `chatThreads/${threadId}/pinnedMessage`), (snapshot) => {
+    state.pinnedMessage = snapshot.val() || null;
+    renderPinnedBar();
+  });
+}
+
+function renderPinnedBar() {
+  const bar = $('pinned-message-bar');
+  if (!bar) return;
+  if (!state.pinnedMessage) {
+    bar.classList.add('hidden');
+    bar.innerHTML = '';
+    return;
+  }
+  const isGroup = state.activeInboxItem?.isGroup;
+  const canUnpin = !isGroup || state.activeInboxItem?.creatorId === state.user?.uid;
+  const senderName = getNickname(state.pinnedMessage.senderId);
+  const unpinHtml = canUnpin ? `<button id="pinned-bar-unpin-btn" class="pinned-bar-unpin" title="Unpin message" aria-label="Unpin message"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : '';
+
+  bar.innerHTML = `
+    <div class="pinned-bar-icon"><svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.76V6a3 3 0 0 0-6 0v4.76a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24V17z"/><line x1="9" y1="2" x2="15" y2="2"/></svg></div>
+    <div class="pinned-bar-content">
+      <span class="pinned-bar-title">Pinned Message</span>
+      <span class="pinned-bar-text"><strong>${escapeHtml(senderName)}:</strong> ${escapeHtml(state.pinnedMessage.text || 'Message')}</span>
+    </div>
+    ${unpinHtml}
+  `;
+  bar.classList.remove('hidden');
+
+  bar.onclick = (e) => {
+    if (e.target.closest('#pinned-bar-unpin-btn')) {
+      e.stopPropagation();
+      unpinMessage();
+      return;
+    }
+    const targetEl = $(`message-${state.pinnedMessage.id}`);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetEl.querySelector('.message-bubble')?.animate([
+        { boxShadow: '0 0 0 4px var(--accent)' },
+        { boxShadow: 'var(--shadow-sm)' }
+      ], { duration: 1200 });
+    } else {
+      showToast('Scroll up to load older messages to view this pinned message.');
+    }
+  };
+}
+
+async function pinMessage(message) {
+  if (!state.user || !state.activeThreadId) return;
+  const isGroup = state.activeInboxItem?.isGroup;
+  if (isGroup && state.activeInboxItem?.creatorId !== state.user.uid) {
+    return showToast('Only the group creator can pin messages.');
+  }
+  let previewText = message.text;
+  if (!previewText) {
+    if (message.audio) previewText = '🎤 Voice message';
+    else if (message.image) previewText = '📷 Photo/Video';
+    else previewText = 'Message';
+  }
+  const pinnedData = {
+    id: message.id,
+    senderId: message.senderId,
+    text: previewText.slice(0, 150),
+    timestamp: message.timestamp || Date.now()
+  };
+  try {
+    await set(ref(db, `chatThreads/${state.activeThreadId}/pinnedMessage`), pinnedData);
+    showToast('Message pinned.');
+  } catch (err) {
+    showToast(`Could not pin message: ${err.message}`);
+  }
+}
+
+async function unpinMessage() {
+  if (!state.user || !state.activeThreadId) return;
+  const isGroup = state.activeInboxItem?.isGroup;
+  if (isGroup && state.activeInboxItem?.creatorId !== state.user.uid) {
+    return showToast('Only the group creator can unpin messages.');
+  }
+  try {
+    await set(ref(db, `chatThreads/${state.activeThreadId}/pinnedMessage`), null);
+    showToast('Message unpinned.');
+  } catch (err) {
+    showToast(`Could not unpin message: ${err.message}`);
+  }
+}
+
+function resetVoiceRecorderUi() {
+  if (state.recTimerInterval) {
+    clearInterval(state.recTimerInterval);
+    state.recTimerInterval = null;
+  }
+  state.recSeconds = 0;
+  $('voice-recorder-bar')?.classList.add('hidden');
+  $('composer-input-row')?.classList.remove('hidden');
+  const timerEl = $('voice-rec-timer');
+  if (timerEl) timerEl.textContent = '00:00';
+}
+
+async function startVoiceRecording() {
+  if (!state.user || !state.activeThreadId) return;
+  if (state.users[state.user.uid]?.isBanned) return showToast('You are banned from using Hangout Chat.');
+  if (state.activeThreadId === 'global_announcements' && !state.users[state.user.uid]?.isAdmin && !state.users[state.user.uid]?.isCreator) {
+    return showToast('Only admins can send messages in Global Announcements.');
+  }
+
+  // Check if live MediaRecorder + getUserMedia is supported in this context (requires secure context https or localhost)
+  const hasGetUserMedia = Boolean(navigator.mediaDevices?.getUserMedia || navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia);
+  const hasMediaRecorder = typeof window.MediaRecorder !== 'undefined';
+
+  if (!hasGetUserMedia || !hasMediaRecorder) {
+    // Universal fallback for non-secure contexts (e.g. http:// IP access) or unsupported webviews:
+    // Open native audio recorder / file picker directly
+    showToast('Opening audio recorder…');
+    $('voice-file-input')?.click();
+    return;
+  }
+
+  try {
+    let stream;
+    if (navigator.mediaDevices?.getUserMedia) {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } else {
+      const legacyGetUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia).bind(navigator);
+      stream = await new Promise((resolve, reject) => legacyGetUserMedia({ audio: true }, resolve, reject));
+    }
+
+    state.audioChunks = [];
+    let options = {};
+    if (MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')) options = { mimeType: 'audio/webm;codecs=opus' };
+    else if (MediaRecorder.isTypeSupported?.('audio/webm')) options = { mimeType: 'audio/webm' };
+    else if (MediaRecorder.isTypeSupported?.('audio/mp4')) options = { mimeType: 'audio/mp4' };
+    else if (MediaRecorder.isTypeSupported?.('audio/ogg;codecs=opus')) options = { mimeType: 'audio/ogg;codecs=opus' };
+
+    state.mediaRecorder = new MediaRecorder(stream, options);
+    state.mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) state.audioChunks.push(e.data);
+    };
+
+    state.mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
+      if (state.audioChunks.length === 0) return;
+      const mimeType = state.mediaRecorder?.mimeType || 'audio/webm';
+      const audioBlob = new Blob(state.audioChunks, { type: mimeType });
+      state.audioChunks = [];
+      
+      if (state.recSeconds < 1) {
+        showToast('Voice message was too short.');
+        return;
+      }
+      
+      await sendVoiceMessage(audioBlob);
+    };
+
+    state.mediaRecorder.start(250);
+    state.recSeconds = 0;
+    $('composer-input-row')?.classList.add('hidden');
+    $('voice-recorder-bar')?.classList.remove('hidden');
+
+    state.recTimerInterval = setInterval(() => {
+      state.recSeconds++;
+      const mins = String(Math.floor(state.recSeconds / 60)).padStart(2, '0');
+      const secs = String(state.recSeconds % 60).padStart(2, '0');
+      const timerEl = $('voice-rec-timer');
+      if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+      if (state.recSeconds >= 300) {
+        stopVoiceRecording();
+      }
+    }, 1000);
+
+  } catch (err) {
+    console.warn('Live mic stream unavailable, falling back to audio input:', err);
+    $('voice-file-input')?.click();
+    resetVoiceRecorderUi();
+  }
+}
+
+function stopVoiceRecording() {
+  if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+    state.mediaRecorder.stop();
+  }
+  resetVoiceRecorderUi();
+}
+
+function cancelVoiceRecording() {
+  if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+    state.audioChunks = [];
+    state.mediaRecorder.stop();
+  }
+  resetVoiceRecorderUi();
+  showToast('Voice recording canceled.');
+}
+
+async function sendVoiceMessage(audioBlob) {
+  if (!state.user || !state.activeThreadId) return;
+  showToast('Uploading voice message…');
+  try {
+    const audioUrl = await uploadToCloudinary(audioBlob, null, state.user.uid);
+    const timestamp = Date.now();
+    const payload = {
+      senderId: state.user.uid,
+      timestamp,
+      text: '',
+      audio: audioUrl,
+      image: audioUrl
+    };
+    if (state.replyTo) {
+      payload.replyTo = {
+        id: state.replyTo.id,
+        senderId: state.replyTo.senderId,
+        text: (state.replyTo.text || '').slice(0, 120),
+        hasImage: Boolean(state.replyTo.image),
+        image: state.replyTo.image || null,
+        audio: state.replyTo.audio || null
+      };
+    }
+    window._jumpToLatest = true;
+    await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+    clearReply();
+    updateStreak(state.activeThreadId);
+    try { await updateConversationSummaries('🎤 Voice message', timestamp); } catch (err) { console.error('Summary update error:', err); }
+  } catch (err) {
+    showToast(`Could not send voice message: ${err.message}`);
+  }
+}
+
 function openThread(threadId, inboxItem) {
   if (!state.user) return showAuth();
   state.activeThreadId = threadId;
@@ -542,7 +952,6 @@ function openThread(threadId, inboxItem) {
   state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(30)), (snapshot) => {
     const firstLoad = !state.messagesLoaded;
     state.messagesLoaded = true;
-    // Merge new real-time data with any already-loaded older messages
     const fresh = snapshot.val() || {};
     state.messages = { ...state.messages, ...fresh };
     renderMessages(undefined, firstLoad);
@@ -553,13 +962,13 @@ function openThread(threadId, inboxItem) {
   list._scrollHandler && list.removeEventListener('scroll', list._scrollHandler);
   list._scrollHandler = () => { if (list.scrollTop < 80) loadOlderMessages(); };
   list.addEventListener('scroll', list._scrollHandler);
-  loadStreak(threadId);
+  watchStreak(threadId);
+  watchPinnedMessage(threadId);
   watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); 
   
   if (threadId === 'global_announcements' && !state.users[state.user.uid]?.isAdmin && !state.users[state.user.uid]?.isCreator) {
     $('message-form').classList.add('hidden');
   } else if (state.users[state.user.uid]?.isBanned) {
-    // Show ban bar instead of the normal composer
     $('message-form').classList.add('hidden');
     let banBar = $('chat-ban-bar');
     if (!banBar) {
@@ -572,7 +981,6 @@ function openThread(threadId, inboxItem) {
     banBar.style.display = 'flex';
   } else {
     $('message-form').classList.remove('hidden');
-    // Hide ban bar if it exists and user is no longer banned
     const banBar = $('chat-ban-bar');
     if (banBar) banBar.style.display = 'none';
     $('message-input').focus();
@@ -714,15 +1122,21 @@ function todayStr() { const d = new Date(); return d.getFullYear() + '-' + Strin
 function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function thisMonthStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 
-async function loadStreak(threadId) {
+function watchStreak(threadId) {
+  if (state.stopStreak) {
+    state.stopStreak();
+    state.stopStreak = null;
+  }
   if (!state.user || !threadId) return;
-  const isGroup = state.inbox[threadId]?.isGroup;
+  const isGroup = Boolean(state.activeInboxItem?.isGroup || state.inbox[threadId]?.isGroup || threadId.startsWith('group_') || threadId === 'global_announcements');
   const streakRef = ref(db, isGroup ? `chatStreaks/${threadId}/groupStreak` : `chatStreaks/${threadId}/${state.user.uid}`);
-  const snap = await get(streakRef).catch(() => null);
-  state.streakData = snap?.val() || null;
-  state.streaks[threadId] = state.streakData; // also update list cache
-  renderStreakBadge();
-  renderConversations(); // refresh list to show badge
+  
+  state.stopStreak = onValue(streakRef, (snap) => {
+    state.streakData = snap.val() || null;
+    state.streaks[threadId] = state.streakData;
+    renderStreakBadge();
+    renderConversations();
+  });
 }
 
 function renderStreakBadge() {
@@ -758,33 +1172,38 @@ function renderStreakBadge() {
 
 async function updateStreak(threadId) {
   if (!state.user || !threadId) return;
-  const isGroup = state.inbox[threadId]?.isGroup;
+  const isGroup = Boolean(state.activeInboxItem?.isGroup || state.inbox[threadId]?.isGroup || threadId.startsWith('group_') || threadId === 'global_announcements');
   const streakRef = ref(db, isGroup ? `chatStreaks/${threadId}/groupStreak` : `chatStreaks/${threadId}/${state.user.uid}`);
-  const snap = await get(streakRef).catch(() => null);
-  const data = snap?.val() || {};
-  const today = todayStr(); const yesterday = yesterdayStr();
-  const lastDate = data.lastDate || '';
-  let count = data.count || 0;
-  if (lastDate === today) return; // Already counted today
-  
-  const update_data = { lastDate: today };
-  if (lastDate === yesterday) {
-    count += 1; // Extend streak
-  } else {
-    // Reset streak, but save previous if > 1
-    if (count > 1) {
-      update_data.previousCount = count;
-      update_data.brokenDate = today;
+  try {
+    const snap = await get(streakRef);
+    const data = snap.val() || {};
+    const today = todayStr();
+    const yesterday = yesterdayStr();
+    const lastDate = data.lastDate || '';
+    let count = data.count || 0;
+    if (lastDate === today) return; // Already counted today for this group/conversation
+
+    const update_data = { lastDate: today, lastSenderId: state.user.uid };
+    if (lastDate === yesterday) {
+      count += 1; // Extend streak
+    } else {
+      // Reset streak, but save previous if > 1
+      if (count > 1) {
+        update_data.previousCount = count;
+        update_data.brokenDate = today;
+      }
+      count = 1; 
     }
-    count = 1; 
+    update_data.count = count;
+    
+    await set(streakRef, { ...data, ...update_data });
+    state.streakData = { ...data, ...update_data };
+    state.streaks[threadId] = state.streakData;
+    renderStreakBadge();
+    renderConversations();
+  } catch (err) {
+    console.warn('Could not update streak:', err);
   }
-  update_data.count = count;
-  
-  await set(streakRef, { ...data, ...update_data }).catch(() => {});
-  state.streakData = { ...data, ...update_data };
-  state.streaks[threadId] = state.streakData; // update list cache
-  renderStreakBadge();
-  renderConversations(); // refresh list badge
 }
 
 async function restoreStreak() {
@@ -795,7 +1214,7 @@ async function restoreStreak() {
   if (restoreCount >= 3) return showToast('You have used all 3 streak restores for this month.');
   const confirmed = await showAppModal({ title: 'Restore Streak 🔥', message: `Restore your streak? You have ${3 - restoreCount} restore${3 - restoreCount === 1 ? '' : 's'} left this month.`, confirmText: 'Restore', danger: false });
   if (!confirmed) return;
-  const isGroup = state.activeInboxItem?.isGroup;
+  const isGroup = Boolean(state.activeInboxItem?.isGroup || state.inbox[state.activeThreadId]?.isGroup || state.activeThreadId.startsWith('group_'));
   const streakRef = ref(db, isGroup ? `chatStreaks/${state.activeThreadId}/groupStreak` : `chatStreaks/${state.activeThreadId}/${state.user.uid}`);
   const newData = { ...data, lastDate: today, restoreCount: restoreCount + 1, restoreMonth: month };
   
@@ -920,6 +1339,14 @@ function noteTyping() { setTyping(true); clearTimeout(state.typingTimer); state.
 function closeActiveChat() {
   setTyping(false); clearTimeout(state.typingTimer); if (state.stopMessages) state.stopMessages(); if (state.stopTyping) state.stopTyping();
   state.stopMessages = null; state.stopTyping = null;
+  if (state.stopPinnedMessage) { state.stopPinnedMessage(); state.stopPinnedMessage = null; }
+  state.pinnedMessage = null;
+  if (state.stopStreak) { state.stopStreak(); state.stopStreak = null; }
+  const pinnedBar = $('pinned-message-bar');
+  if (pinnedBar) { pinnedBar.classList.add('hidden'); pinnedBar.innerHTML = ''; }
+  resetVoiceRecorderUi();
+  const attachMenu = $('attach-menu');
+  if (attachMenu) attachMenu.classList.add('hidden');
   if (state.stopSeen) {
     if (typeof state.stopSeen === 'function') state.stopSeen();
     else if (Array.isArray(state.stopSeen)) state.stopSeen.forEach(fn => fn());
@@ -1456,7 +1883,12 @@ async function leaveGroup() {
 }
 $('auth-toggle').addEventListener('click', () => { state.signUp = !state.signUp; $('auth-title').textContent = state.signUp ? 'Create account' : 'Sign in'; $('auth-submit').textContent = state.signUp ? 'Create account' : 'Sign in'; $('auth-toggle').textContent = state.signUp ? 'Already have an account? Sign in' : 'Need an account? Create one'; $('auth-password').autocomplete = state.signUp ? 'new-password' : 'current-password'; });
 $('auth-form').addEventListener('submit', async (event) => { event.preventDefault(); const email = $('auth-email').value.trim(); const password = $('auth-password').value; const error = $('auth-error'); error.classList.add('hidden'); try { const result = state.signUp ? await createUserWithEmailAndPassword(auth, email, password) : await signInWithEmailAndPassword(auth, email, password); if (state.signUp) { const name = `User_${Math.floor(Math.random() * 999)}`; const pic = fallbackAvatar(result.user.uid); await updateProfile(result.user, { displayName: name, photoURL: pic }); await update(ref(db, `users/${result.user.uid}`), { uid: result.user.uid, name, pic }); } $('auth-dialog').close(); } catch (err) { error.textContent = err.message.replace('Firebase: ', ''); error.classList.remove('hidden'); } });
-document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); });
+document.addEventListener('pointerdown', (event) => { 
+  if (!event.target.closest('#message-action-menu') && !event.target.closest('.message-bubble')) closeMessageMenu(); 
+  if (!event.target.closest('.attach-menu-wrap')) {
+    $('attach-menu')?.classList.add('hidden');
+  }
+});
 window.addEventListener('pagehide', () => setTyping(false));
 if (window.visualViewport) {
   const applyViewport = () => {
@@ -1478,3 +1910,46 @@ $('image-viewer-backdrop').addEventListener('click', closeImageViewer);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeImageViewer(); });
 // Streak restore button (v4.8)
 $('streak-restore-btn')?.addEventListener('click', restoreStreak);
+
+// Attach menu & voice recorder event listeners
+$('attach-plus-button')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('attach-menu')?.classList.toggle('hidden');
+});
+$('attach-media-item')?.addEventListener('click', () => {
+  $('attach-menu')?.classList.add('hidden');
+  $('image-input')?.click();
+});
+$('attach-voice-item')?.addEventListener('click', () => {
+  $('attach-menu')?.classList.add('hidden');
+  startVoiceRecording();
+});
+$('attach-game-item')?.addEventListener('click', () => {
+  $('attach-menu')?.classList.add('hidden');
+  showToast('🎮 Hangout Mini-Games are coming in the next update!');
+});
+
+$('voice-rec-stop')?.addEventListener('click', stopVoiceRecording);
+$('voice-rec-cancel')?.addEventListener('click', cancelVoiceRecording);
+
+$('voice-file-input')?.addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file || !state.user || !state.activeThreadId) return;
+  event.target.value = '';
+  await sendVoiceMessage(file);
+});
+
+// Header avatar click -> redirect to profile view
+$('chat-avatar-wrap')?.addEventListener('click', () => {
+  if (!state.activeInboxItem) return;
+  if (state.activeInboxItem.isGroup) {
+    $('conversation-options-button')?.click();
+    return;
+  }
+  const peerIds = getThreadPeers(state.activeInboxItem);
+  const peerId = peerIds[0] || (state.activeInboxItem.peerId === state.user?.uid ? state.user?.uid : state.activeInboxItem.peerId);
+  if (peerId) openUserProfile(peerId);
+});
+
+
+
