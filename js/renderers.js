@@ -1431,6 +1431,217 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${post.gamePrize}
                     </div>
                 </div>`;
+        } else if (post.gameType === 'count_dots') {
+            if (post.gameStatus === 'active') {
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-xl font-black text-indigo-600 dark:text-indigo-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+                const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+                const answerBtn = !isHost ? `<button onclick="window.openAnswerModal('${post.id}', 'Count the Dots', 'Enter exact number of dots (●)')" class="mt-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-8 rounded-full shadow-md transition transform hover:scale-105 active:scale-95 text-sm flex items-center gap-1.5"><i class="fa-solid fa-calculator"></i>Guess Dot Count</button>` : `<div class="text-xs text-gray-500 dark:text-gray-400 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full">You are the host (${post.gameDotsCount} dots)</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-indigo-50/70 dark:bg-slate-800 rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-indigo-900 dark:text-indigo-200 text-base mb-1">🔢 Count the Dots!</h4>
+                        <p class="text-xs text-gray-600 dark:text-gray-300 mb-2 text-center">How many dots (<span class="font-bold text-indigo-600 text-sm">●</span>) can you count in the scramble below?</p>
+                        <div class="w-full max-w-sm bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-700 rounded-xl p-3.5 shadow-inner">
+                            <pre class="font-mono text-xs md:text-sm tracking-widest text-center whitespace-pre-wrap leading-relaxed select-none text-slate-700 dark:text-indigo-200 font-bold">${post.gameDotsScrambled || ''}</pre>
+                        </div>
+                        ${timerHtml}
+                        ${answerBtn}
+                    </div>`;
+            } else {
+                const winnerName = post.gameWinner && post.gameWinner !== 'none'
+                    ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
+                    : 'No one';
+                const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
+                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} guessed correctly!</div>`
+                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No correct guess.</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🔢 Count the Dots Ended</h4>
+                        <div class="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 font-bold px-4 py-1.5 rounded-lg text-sm mb-1">
+                            Solution: <strong>${post.gameDotsCount || 0}</strong> dots
+                        </div>
+                        ${outcomeHtml}
+                    </div>`;
+            }
+        } else if (post.gameType === 'tictactoe') {
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            const playerX = post.tictactoePlayerX;
+            const playerO = post.tictactoePlayerO;
+            const nameX = (playerX ? (window.globalUsersCache[playerX]?.name || 'Host') : 'Host');
+            const nameO = (playerO ? (window.globalUsersCache[playerO]?.name || 'Challenger') : (post.tictactoeTargetUser ? (window.globalUsersCache[post.tictactoeTargetUser]?.name || 'Challenger') : 'Waiting...'));
+            const isTargeted = Boolean(post.tictactoeTargetUser);
+            const isEligibleChallenger = window.currentUser && !isHost && (!isTargeted || post.tictactoeTargetUser === window.currentUser.uid);
+
+            const board = post.tictactoeBoard || Array(9).fill('');
+            const turn = post.tictactoeTurn || 'X';
+            const isMyTurn = window.currentUser && (
+                (turn === 'X' && window.currentUser.uid === playerX) ||
+                (turn === 'O' && window.currentUser.uid === playerO)
+            );
+
+            if (post.gameStatus === 'active') {
+                if (post.tictactoeStatus === 'waiting') {
+                    const acceptBtn = isEligibleChallenger ? `
+                        <button onclick="window.acceptTicTacToeChallenge('${post.id}')" class="mt-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black py-2.5 px-8 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse text-sm">
+                            <i class="fa-solid fa-handshake mr-2"></i>Accept Challenge & Play (O)!
+                        </button>` : (isHost ? `<div class="mt-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full">Waiting for ${isTargeted ? `@${nameO}` : 'a challenger'} to accept...</div>` : `<div class="mt-2 text-xs text-gray-400">Waiting for @${nameO} to accept...</div>`);
+
+                    gameHtml = `
+                        <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-emerald-200 dark:border-emerald-900/50 flex flex-col items-center">
+                            ${prizeStr}
+                            <h4 class="font-black text-emerald-900 dark:text-emerald-200 text-base mb-1">⚔️ Tic Tac Toe Match</h4>
+                            <div class="flex items-center gap-3 my-2 text-xs font-bold">
+                                <span class="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-3 py-1 rounded-full">❌ @${nameX} (Host)</span>
+                                <span class="text-gray-400 font-extrabold">VS</span>
+                                <span class="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-3 py-1 rounded-full">⭕ ${isTargeted ? `@${nameO}` : 'Open Challenger'}</span>
+                            </div>
+                            ${acceptBtn}
+                        </div>`;
+                } else {
+                    const turnName = (turn === 'X' ? nameX : nameO);
+                    const turnBadge = isMyTurn
+                        ? `<div class="bg-emerald-500 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turn})!</div>`
+                        : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${turnName} (${turn})'s move...</div>`;
+
+                    let gridHtml = `<div class="grid grid-cols-3 gap-2 p-2 bg-white/80 dark:bg-slate-900/80 rounded-2xl border-2 border-emerald-300 dark:border-slate-700 shadow-inner w-56 h-56 mx-auto my-2">`;
+                    board.forEach((cell, idx) => {
+                        const canClick = isMyTurn && cell === '';
+                        let cellContent = '';
+                        if (cell === 'X') {
+                            cellContent = `<span class="text-rose-500 font-black text-3xl">✕</span>`;
+                        } else if (cell === 'O') {
+                            cellContent = `<span class="text-blue-500 font-black text-3xl">◯</span>`;
+                        }
+                        const clickHandler = canClick ? `onclick="window.makeTicTacToeMove('${post.id}', ${idx})"` : '';
+                        const hoverClass = canClick ? 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40 cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default';
+                        gridHtml += `
+                            <div ${clickHandler} class="w-full h-full rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition transform ${hoverClass}">
+                                ${cellContent}
+                            </div>`;
+                    });
+                    gridHtml += `</div>`;
+
+                    gameHtml = `
+                        <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-emerald-200 dark:border-emerald-900/50 flex flex-col items-center">
+                            ${prizeStr}
+                            <div class="flex items-center justify-between w-full max-w-xs text-xs font-bold mb-2">
+                                <span class="text-rose-600 dark:text-rose-400">❌ @${nameX}</span>
+                                <span class="text-gray-400">VS</span>
+                                <span class="text-blue-600 dark:text-blue-400">⭕ @${nameO}</span>
+                            </div>
+                            ${turnBadge}
+                            ${gridHtml}
+                        </div>`;
+                }
+            } else {
+                let outcomeHtml = '';
+                if (post.gameWinner === 'draw') {
+                    outcomeHtml = `<div class="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-handshake mr-1"></i> Match ended in a Draw!</div>`;
+                } else {
+                    const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone') : 'Someone';
+                    const winnerSymbol = post.gameWinner === playerX ? '❌' : '⭕';
+                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerSymbol} ${winnerName} won the match!</div>`;
+                }
+
+                let gridHtml = `<div class="grid grid-cols-3 gap-1.5 p-2 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 w-40 h-40 mx-auto my-2 opacity-80">`;
+                board.forEach((cell) => {
+                    let cellContent = '';
+                    if (cell === 'X') cellContent = `<span class="text-rose-500 font-black text-xl">✕</span>`;
+                    else if (cell === 'O') cellContent = `<span class="text-blue-500 font-black text-xl">◯</span>`;
+                    gridHtml += `<div class="w-full h-full rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700">${cellContent}</div>`;
+                });
+                gridHtml += `</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">⚔️ Tic Tac Toe Ended</h4>
+                        ${gridHtml}
+                        ${outcomeHtml}
+                    </div>`;
+            }
+        } else if (post.gameType === 'hangman') {
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            const secretWord = (post.hangmanWord || '').toUpperCase();
+            const guessedLetters = post.hangmanGuessedLetters || [];
+            const wrongLetters = post.hangmanWrongLetters || [];
+
+            const blanks = secretWord.split('').map(ch => {
+                if (ch === ' ') return '<span class="inline-block w-4"></span>';
+                if (guessedLetters.includes(ch)) return `<span class="inline-block w-7 h-9 text-lg font-black border-b-4 border-rose-500 text-rose-600 dark:text-rose-400 text-center">${ch}</span>`;
+                return `<span class="inline-block w-7 h-9 text-lg font-black border-b-4 border-gray-300 dark:border-slate-600 text-transparent text-center">_</span>`;
+            }).join(' ');
+
+            const wrongChips = wrongLetters.length > 0
+                ? wrongLetters.map(l => `<span class="inline-block px-2 py-0.5 rounded-md text-xs font-black bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-900/50">${l}</span>`).join(' ')
+                : '<span class="text-xs text-gray-400">None</span>';
+
+            if (post.gameStatus === 'active') {
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-xl font-black text-rose-600 dark:text-rose-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+
+                let playerControls = '';
+                if (isHost) {
+                    playerControls = `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — <span class="font-bold tracking-wider text-rose-600 dark:text-rose-400">${secretWord}</span></div>`;
+                } else if (window.currentUser) {
+                    const uid = window.currentUser.uid;
+                    const letterFailCount = Number(post.hangmanLetterWrong?.[uid] || 0);
+                    const wordFailCount = Number(post.hangmanWordWrong?.[uid] || 0);
+                    const letterFailed = letterFailCount >= 2;
+                    const wordFailed = wordFailCount >= 2;
+                    const letterRemaining = 2 - letterFailCount;
+                    const wordRemaining = 2 - wordFailCount;
+
+                    if (letterFailed && wordFailed) {
+                        playerControls = `<div class="mt-3 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 px-4 py-1.5 rounded-full"><i class="fa-solid fa-skull mr-1"></i>You used all guesses and are eliminated.</div>`;
+                    } else {
+                        const letterLabel = letterFailed ? '(0 left)' : `(${letterRemaining} left)`;
+                        const wordLabel = wordFailed ? '(0 left)' : `(${wordRemaining} left)`;
+                        const guessLetterBtn = `<button onclick="window.openHangmanGuessModal('${post.id}', 'letter')" ${letterFailed ? 'disabled' : ''} class="bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-xl shadow transition text-xs flex items-center gap-1.5"><i class="fa-solid fa-font"></i>Guess Letter ${letterLabel}</button>`;
+                        const guessWordBtn = `<button onclick="window.openHangmanGuessModal('${post.id}', 'word')" ${wordFailed ? 'disabled' : ''} class="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-xl shadow transition text-xs flex items-center gap-1.5"><i class="fa-solid fa-bullseye"></i>Guess Word ${wordLabel}</button>`;
+                        playerControls = `<div class="flex flex-wrap justify-center gap-2 mt-3">${guessLetterBtn}${guessWordBtn}</div>`;
+                    }
+                } else {
+                    playerControls = `<div class="mt-3 text-xs text-gray-400">Sign in to guess!</div>`;
+                }
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-rose-50 to-pink-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-rose-200 dark:border-rose-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-rose-900 dark:text-rose-200 text-base mb-1">🪓 Hangman Challenge</h4>
+                        <div class="flex flex-wrap justify-center gap-1.5 my-3 py-2 px-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-rose-100 dark:border-slate-700 shadow-inner">
+                            ${blanks}
+                        </div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            Wrong Letters: ${wrongChips}
+                        </div>
+                        ${timerHtml}
+                        ${playerControls}
+                    </div>`;
+            } else {
+                const winnerName = post.gameWinner && post.gameWinner !== 'none'
+                    ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
+                    : 'No one';
+                const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
+                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} solved the word!</div>`
+                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No one solved it.</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🪓 Hangman Ended</h4>
+                        <div class="bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 font-black px-4 py-2 rounded-lg text-base tracking-widest my-2">
+                            ${secretWord}
+                        </div>
+                        ${outcomeHtml}
+                    </div>`;
+            }
         }
     }
 

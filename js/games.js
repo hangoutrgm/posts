@@ -36,6 +36,9 @@ window.gameTypeLabel = (type) => {
         'last_comment': 'Last Comment',
         'challenge': 'Challenge',
         'quick_challenge': 'Quick Challenge',
+        'count_dots': 'Count the Dots',
+        'tictactoe': 'Tic Tac Toe',
+        'hangman': 'Hangman',
         'bingo': 'Bingo',
         'spin_names': 'Spin the Names',
         'ncl': 'NCL Reward'
@@ -163,6 +166,10 @@ window.openPostGameModal = () => {
     document.getElementById('game-trivia-answer').value = '';
     document.getElementById('game-bingo-letters').value = '5';
     document.getElementById('game-bingo-numbers').value = '3';
+    document.getElementById('game-dots-count').value = '13';
+    document.getElementById('game-dots-preview').value = '';
+    document.getElementById('game-dots-scrambled').value = '';
+    document.getElementById('game-hangman-word').value = '';
     document.getElementById('game-type').value = 'first_to_mine';
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
@@ -199,6 +206,41 @@ window.closePostGameModal = () => {
     document.getElementById('game-modal').classList.add('hidden');
 };
 
+window.generateDotsPuzzle = () => {
+    const countInput = document.getElementById('game-dots-count');
+    let count = parseInt(countInput.value, 10);
+    if (isNaN(count) || count < 1) count = 13;
+    if (count > 100) count = 100;
+    countInput.value = count;
+
+    const distractors = ['○', '▲', '■', '◆', '★', '✖', '✦', '✚', '▼', '◇', '⬟', '✳', '❖', '◈', '▫', '◽', '△', '▷', '◁', '⬢'];
+    const dotChar = '●';
+
+    const totalChars = Math.max(count + 24, Math.min(count * 4, 98));
+    const distractorCount = totalChars - count;
+
+    const items = [];
+    for (let i = 0; i < count; i++) items.push(dotChar);
+    for (let i = 0; i < distractorCount; i++) {
+        items.push(distractors[Math.floor(Math.random() * distractors.length)]);
+    }
+
+    for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+    }
+
+    const cols = 14;
+    const rows = [];
+    for (let i = 0; i < items.length; i += cols) {
+        rows.push(items.slice(i, i + cols).join(' '));
+    }
+    const puzzle = rows.join('\n');
+
+    document.getElementById('game-dots-preview').value = puzzle;
+    document.getElementById('game-dots-scrambled').value = puzzle;
+};
+
 window.toggleGameSettings = () => {
     const type = document.getElementById('game-type').value;
     const settingsDiv = document.getElementById('last-comment-settings');
@@ -212,16 +254,19 @@ window.toggleGameSettings = () => {
     const bingoContainer = document.getElementById('game-bingo-container');
     const spinNamesContainer = document.getElementById('game-spin-names-container');
     const nclContainer = document.getElementById('game-ncl-container');
+    const countDotsContainer = document.getElementById('game-count-dots-container');
+    const tictactoeContainer = document.getElementById('game-tictactoe-container');
+    const hangmanContainer = document.getElementById('game-hangman-container');
     
     // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, and spin_names
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names'].includes(type)) {
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
         settingsDiv.classList.add('hidden');
     }
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl') targetUserContainer.classList.remove('hidden');
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe') targetUserContainer.classList.remove('hidden');
     else targetUserContainer.classList.add('hidden');
 
     if (type === 'challenge') challengeTargets.classList.remove('hidden');
@@ -250,6 +295,21 @@ window.toggleGameSettings = () => {
 
     if (type === 'ncl') nclContainer.classList.remove('hidden');
     else nclContainer.classList.add('hidden');
+
+    if (type === 'count_dots') {
+        countDotsContainer.classList.remove('hidden');
+        if (!document.getElementById('game-dots-preview').value) {
+            window.generateDotsPuzzle();
+        }
+    } else {
+        countDotsContainer.classList.add('hidden');
+    }
+
+    if (type === 'tictactoe') tictactoeContainer.classList.remove('hidden');
+    else tictactoeContainer.classList.add('hidden');
+
+    if (type === 'hangman') hangmanContainer.classList.remove('hidden');
+    else hangmanContainer.classList.add('hidden');
 
     // Hide LB Points field for NCL (disabled for now)
     const lbPointsLabel = document.getElementById('game-lb-points-label');
@@ -370,26 +430,49 @@ window.submitGame = async () => {
     let bingoMaxNumber = 10;
     let spinNamesWinnersCount = 0;
     let spinNamesPrizes = [];
+    let dotsCount = 0;
+    let dotsScrambled = null;
+    let hangmanWord = null;
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl') {
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || (type === 'tictactoe' && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
-        if (!targetNameInput) return window.showAlert("Please search and select a target user.");
-        // Resolve name -> UID
-        if (window.globalUsersCache) {
-            for (const uid in window.globalUsersCache) {
-                if (window.globalUsersCache[uid].name === targetNameInput) {
-                    targetUserUid = uid;
-                    break;
+        if (targetNameInput) {
+            // Resolve name -> UID
+            if (window.globalUsersCache) {
+                for (const uid in window.globalUsersCache) {
+                    if (window.globalUsersCache[uid].name === targetNameInput) {
+                        targetUserUid = uid;
+                        break;
+                    }
                 }
             }
+            if (!targetUserUid) return window.showAlert(`User "${targetNameInput}" not found. Please select from the suggestions.`);
+        } else if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl') {
+            return window.showAlert("Please search and select a target user.");
         }
-        if (!targetUserUid) return window.showAlert(`User "${targetNameInput}" not found. Please select from the suggestions.`);
     }
 
     if (type === 'challenge') {
         targetReacts = parseInt(document.getElementById('game-target-reacts').value) || 0;
         targetComments = parseInt(document.getElementById('game-target-comments').value) || 0;
         if (targetReacts === 0 && targetComments === 0) return window.showAlert("Please set a target for reacts or comments.");
+    }
+
+    if (type === 'count_dots') {
+        dotsCount = parseInt(document.getElementById('game-dots-count').value) || 0;
+        dotsScrambled = document.getElementById('game-dots-scrambled').value.trim() || document.getElementById('game-dots-preview').value.trim();
+        if (dotsCount < 1) return window.showAlert("Please enter a valid number of dots to guess.");
+        if (!dotsScrambled) {
+            window.generateDotsPuzzle();
+            dotsScrambled = document.getElementById('game-dots-scrambled').value.trim();
+        }
+    }
+
+    if (type === 'hangman') {
+        const rawWord = document.getElementById('game-hangman-word').value.trim().toUpperCase();
+        if (!rawWord || rawWord.length < 2) return window.showAlert("Please enter a secret word (at least 2 letters).");
+        if (!/^[A-Z\s]+$/.test(rawWord)) return window.showAlert("Secret word must only contain letters A-Z.");
+        hangmanWord = rawWord;
     }
 
     if (type === 'guess_emoji' || type === 'bring_me_emoji') {
@@ -469,7 +552,7 @@ window.submitGame = async () => {
         }
     }
 
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names'].includes(type)) {
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman'].includes(type)) {
         const timerMode = document.querySelector('input[name="game-timer"]:checked').value;
         if (timerMode === 'auto') {
             const secs = parseInt(document.getElementById('game-duration').value);
@@ -496,6 +579,9 @@ window.submitGame = async () => {
     else if (type === 'math') text = `Math Challenge! Solve this: ${mathQuestion}`;
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
+    else if (type === 'count_dots') text = `🔢 Count the Dots! How many dots (●) can you find? First correct guess wins!`;
+    else if (type === 'tictactoe') text = targetUserName ? `⚔️ Tic Tac Toe match challenge against @${targetUserName}!` : `⚔️ Open Tic Tac Toe Challenge! First person to accept plays against @${window.currentUser.name}!`;
+    else if (type === 'hangman') text = `🪓 Hangman Game! Guess letters or guess the secret word before you get eliminated!`;
     else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) (A–${bingoMaxLetter}) + ${bingoNumberCount} number(s) (1–${bingoMaxNumber}). Submission open!`;
     else if (type === 'spin_names') {
         // Build caption with spin numbers and prizes
@@ -533,6 +619,25 @@ window.submitGame = async () => {
     if (jumbledScrambled) postData.gameJumbledScrambled = jumbledScrambled;
     if (triviaQuestion) postData.gameTriviaQuestion = triviaQuestion;
     if (triviaAnswer) postData.gameTriviaAnswer = triviaAnswer;
+    if (type === 'count_dots') {
+        postData.gameDotsCount = dotsCount;
+        postData.gameDotsScrambled = dotsScrambled;
+    }
+    if (type === 'tictactoe') {
+        postData.tictactoeBoard = ['', '', '', '', '', '', '', '', ''];
+        postData.tictactoePlayerX = window.currentUser.uid;
+        postData.tictactoePlayerO = targetUserUid || null;
+        postData.tictactoeTurn = 'X';
+        postData.tictactoeStatus = targetUserUid ? 'in_progress' : 'waiting';
+        postData.tictactoeTargetUser = targetUserUid || null;
+    }
+    if (type === 'hangman') {
+        postData.hangmanWord = hangmanWord;
+        postData.hangmanGuessedLetters = [];
+        postData.hangmanWrongLetters = [];
+        postData.hangmanLetterWrong = {};
+        postData.hangmanWordWrong = {};
+    }
     if (bingoLetterCount) {
         postData.bingoLetterCount = bingoLetterCount;
         postData.bingoNumberCount = bingoNumberCount;
@@ -547,6 +652,13 @@ window.submitGame = async () => {
         postData.spinNamesPhase = 'submission';
     }
     if (endTime) postData.gameEndTime = endTime;
+
+    const postBtn = document.getElementById('post-game-btn');
+    const originalBtnText = postBtn ? postBtn.innerHTML : '';
+    if (postBtn) {
+        postBtn.disabled = true;
+        postBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Posting...`;
+    }
 
     try {
         const newPostRef = await addDoc(collection(fsdb, 'community_posts'), postData);
@@ -581,6 +693,11 @@ window.submitGame = async () => {
     } catch(e) {
         console.error("Error posting game:", e);
         window.showAlert("Failed to post game.");
+    } finally {
+        if (postBtn) {
+            postBtn.disabled = false;
+            postBtn.innerHTML = originalBtnText;
+        }
     }
     // Always attempt re-render after modal closes (outside try so errors above don't block)
     if (typeof window.renderProfileData === 'function') window.renderProfileData(false);
@@ -785,16 +902,24 @@ window.checkChallenge = async (postId) => {
     }
 };
 
-window.openAnswerModal = (postId) => {
+window.openAnswerModal = (postId, customTitle = null, customPlaceholder = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to answer.");
     document.getElementById('game-answer-postid').value = postId;
     document.getElementById('game-answer-input').value = '';
+    const titleEl = document.getElementById('game-answer-title');
+    const labelEl = document.getElementById('game-answer-label');
+    const inputEl = document.getElementById('game-answer-input');
+    if (customTitle && titleEl) titleEl.innerHTML = `<i class="fa-solid fa-keyboard mr-2"></i>${customTitle}`;
+    else if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-keyboard mr-2"></i>Submit Answer`;
+    if (customPlaceholder && inputEl) inputEl.placeholder = customPlaceholder;
+    else if (inputEl) inputEl.placeholder = "Enter your answer";
+    if (labelEl) labelEl.innerText = customTitle ? customTitle : "Your Answer";
     document.getElementById('game-answer-modal').classList.remove('hidden');
 };
 
 window.answerGame = async (postId, answer) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
-    if (!answer) return window.showAlert("Please enter an answer.");
+    if (!answer || !answer.trim()) return window.showAlert("Please enter an answer.");
 
     const postRef = doc(fsdb, 'community_posts', postId);
 
@@ -818,14 +943,14 @@ window.answerGame = async (postId, answer) => {
         // For guess_emoji: player types the name → match against gameEmojiName
         // For bring_me_emoji: player types/pastes the emoji char → match against gameEmojiChar
         // Flags: match flag name or char depending on how we handle it. (Usually players guess flag by name or char)
-        const answerLower = answer.toLowerCase();
+        const answerLower = answer.trim().toLowerCase();
 
         let isCorrect = false;
         if (post.gameType === 'guess_emoji') {
             isCorrect = answerLower === (post.gameEmojiName || '').toLowerCase();
         } else if (post.gameType === 'bring_me_emoji') {
             const correctChar = (post.gameEmojiChar || '');
-            isCorrect = correctChar ? answer === correctChar : answerLower === (post.gameEmojiName || '').toLowerCase();
+            isCorrect = correctChar ? answer.trim() === correctChar : answerLower === (post.gameEmojiName || '').toLowerCase();
         } else if (post.gameType === 'flags') {
             const correctName = (post.gameFlagName || '').toLowerCase();
             isCorrect = answerLower === correctName;
@@ -835,6 +960,8 @@ window.answerGame = async (postId, answer) => {
             isCorrect = answerLower === (post.gameJumbledOriginal || '').toLowerCase();
         } else if (post.gameType === 'trivia') {
             isCorrect = answerLower === (post.gameTriviaAnswer || '').toLowerCase();
+        } else if (post.gameType === 'count_dots') {
+            isCorrect = parseInt(answer.trim(), 10) === Number(post.gameDotsCount);
         }
 
         if (!isCorrect) {
@@ -1490,3 +1617,315 @@ window.drawSpinNamesWheelCanvas = (canvas, players, angle) => {
     ctx.lineWidth = 2;
     ctx.stroke();
 };
+
+// ============================================================
+// TIC TAC TOE GAME HANDLERS
+// ============================================================
+
+window.acceptTicTacToeChallenge = async (postId) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.tictactoeStatus !== 'waiting') {
+            return window.showAlert("This challenge is no longer available.");
+        }
+
+        if (post.authorId === window.currentUser.uid) {
+            return window.showAlert("You cannot accept your own challenge!");
+        }
+
+        if (post.tictactoeTargetUser && post.tictactoeTargetUser !== window.currentUser.uid) {
+            return window.showAlert("This challenge was sent to another player!");
+        }
+
+        await updateDoc(postRef, {
+            tictactoePlayerO: window.currentUser.uid,
+            tictactoeStatus: 'in_progress'
+        });
+
+        window.showAlert("⚔️ Challenge accepted! Game is now in progress.");
+    } catch(e) {
+        console.error("Error accepting Tic Tac Toe challenge:", e);
+        window.showAlert("Error: " + e.message);
+    }
+};
+
+window.makeTicTacToeMove = async (postId, cellIndex) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.tictactoeStatus !== 'in_progress') {
+            return window.showAlert("This game is not active.");
+        }
+
+        const turn = post.tictactoeTurn || 'X';
+        const isXTurn = turn === 'X';
+        const expectedUid = isXTurn ? post.tictactoePlayerX : post.tictactoePlayerO;
+
+        if (window.currentUser.uid !== expectedUid) {
+            return window.showAlert("It is not your turn!");
+        }
+
+        const board = [...(post.tictactoeBoard || Array(9).fill(''))];
+        if (board[cellIndex]) {
+            return window.showAlert("That space is already taken!");
+        }
+
+        board[cellIndex] = turn;
+
+        // Check winner
+        const winningLines = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6]
+        ];
+
+        let hasWon = false;
+        for (const line of winningLines) {
+            const [a, b, c] = line;
+            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                hasWon = true;
+                break;
+            }
+        }
+
+        if (hasWon) {
+            const winnerUid = window.currentUser.uid;
+            await updateDoc(postRef, {
+                tictactoeBoard: board,
+                tictactoeStatus: 'ended',
+                gameStatus: 'ended',
+                gameWinner: winnerUid
+            });
+
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            if (lbPoints > 0) update(ref(db, `users/${winnerUid}`), { lbPoints: increment(lbPoints) });
+            window.logEarnings(winnerUid, postId, 'Tic Tac Toe', post.gamePrize, lbPoints);
+            if (post.authorId && post.authorId !== winnerUid) {
+                const winnerName = window.globalUsersCache?.[winnerUid]?.name || 'Someone';
+                window.logHostedGame(post.authorId, postId, 'Tic Tac Toe', post.gamePrize, winnerUid, winnerName);
+            }
+            const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
+                update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+            }
+
+            window.showAlert(`🎉 You won the Tic Tac Toe match! +${lbPoints} LB points!`);
+        } else if (!board.includes('')) {
+            // Draw
+            await updateDoc(postRef, {
+                tictactoeBoard: board,
+                tictactoeStatus: 'ended',
+                gameStatus: 'ended',
+                gameWinner: 'draw'
+            });
+            window.showAlert("It's a Draw! 🤝 Good game!");
+        } else {
+            // Next turn
+            const nextTurn = isXTurn ? 'O' : 'X';
+            await updateDoc(postRef, {
+                tictactoeBoard: board,
+                tictactoeTurn: nextTurn
+            });
+        }
+    } catch(e) {
+        console.error("Tic Tac Toe move error:", e);
+        window.showAlert("Error making move: " + e.message);
+    }
+};
+
+// ============================================================
+// HANGMAN GAME HANDLERS
+// ============================================================
+
+window.openHangmanGuessModal = (postId, mode) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const input = document.getElementById('hangman-guess-input');
+    const titleEl = document.getElementById('hangman-guess-title');
+    const labelEl = document.getElementById('hangman-guess-label');
+    const tipEl = document.getElementById('hangman-guess-tip');
+
+    document.getElementById('hangman-guess-postid').value = postId;
+    document.getElementById('hangman-guess-mode').value = mode;
+    input.value = '';
+
+    if (mode === 'letter') {
+        titleEl.innerHTML = `<i class="fa-solid fa-font mr-2"></i>Guess One Letter`;
+        labelEl.innerText = "Enter a Single Letter (A–Z)";
+        input.maxLength = 1;
+        input.placeholder = "e.g. E";
+        tipEl.innerText = "Tip: If you guess wrong and also fail the whole word guess, you are eliminated.";
+    } else {
+        titleEl.innerHTML = `<i class="fa-solid fa-bullseye mr-2"></i>Guess the Whole Word`;
+        labelEl.innerText = "Enter the Secret Word";
+        input.removeAttribute('maxLength');
+        input.placeholder = "e.g. PHILIPPINES";
+        tipEl.innerText = "Caution: If your whole word guess is wrong, you lose your word guess.";
+    }
+
+    document.getElementById('hangman-guess-modal').classList.remove('hidden');
+    input.focus();
+};
+
+window.submitHangmanGuess = async (postId, mode, inputVal) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const guess = (inputVal || '').trim().toUpperCase();
+    if (!guess) return window.showAlert("Please enter your guess.");
+
+    if (mode === 'letter') {
+        if (!/^[A-Z]$/.test(guess)) return window.showAlert("Please enter a single valid letter from A to Z.");
+    } else {
+        if (!/^[A-Z\s]+$/.test(guess)) return window.showAlert("Please enter letters only.");
+    }
+
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active') return window.showAlert("This game has already ended.");
+        if (post.authorId === window.currentUser.uid) return window.showAlert("You cannot guess on your own game!");
+
+        const uid = window.currentUser.uid;
+        const letterFailCount = Number(post.hangmanLetterWrong?.[uid] || 0);
+        const wordFailCount = Number(post.hangmanWordWrong?.[uid] || 0);
+        const letterFailed = letterFailCount >= 2;
+        const wordFailed = wordFailCount >= 2;
+        const letterRemaining = 2 - letterFailCount;
+        const wordRemaining = 2 - wordFailCount;
+
+        if (letterFailed && wordFailed) {
+            document.getElementById('hangman-guess-modal').classList.add('hidden');
+            return window.showAlert("You have used all your guesses and are eliminated from this game.");
+        }
+
+        const secretWord = (post.hangmanWord || '').toUpperCase();
+        const guessedLetters = post.hangmanGuessedLetters || [];
+        const wrongLetters = post.hangmanWrongLetters || [];
+
+        if (mode === 'letter') {
+            if (letterFailed) {
+                return window.showAlert("You have used both letter guesses. You can only attempt the whole word.");
+            }
+            if (guessedLetters.includes(guess)) {
+                return window.showAlert(`'${guess}' has already been revealed!`);
+            }
+            if (wrongLetters.includes(guess)) {
+                return window.showAlert(`'${guess}' was already guessed and is not in the word.`);
+            }
+
+            if (secretWord.includes(guess)) {
+                const newGuessed = [...guessedLetters, guess];
+                // Check if all letters in secretWord are revealed
+                const distinctSecretLetters = [...new Set(secretWord.replace(/\s+/g, '').split(''))];
+                const allRevealed = distinctSecretLetters.every(ch => newGuessed.includes(ch));
+
+                if (allRevealed) {
+                    await updateDoc(postRef, {
+                        hangmanGuessedLetters: newGuessed,
+                        gameStatus: 'ended',
+                        gameWinner: uid
+                    });
+
+                    const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                    if (lbPoints > 0) update(ref(db, `users/${uid}`), { lbPoints: increment(lbPoints) });
+                    window.logEarnings(uid, postId, 'Hangman', post.gamePrize, lbPoints);
+                    if (post.authorId && post.authorId !== uid) {
+                        const winnerName = window.globalUsersCache?.[uid]?.name || 'Someone';
+                        window.logHostedGame(post.authorId, postId, 'Hangman', post.gamePrize, uid, winnerName);
+                    }
+                    const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+                    if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
+                        update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+                    }
+
+                    document.getElementById('hangman-guess-modal').classList.add('hidden');
+                    window.showAlert(`🎉 Amazing! You revealed the last letter and WON the Hangman game! +${lbPoints} LB points!`);
+                } else {
+                    await updateDoc(postRef, {
+                        hangmanGuessedLetters: newGuessed
+                    });
+                    document.getElementById('hangman-guess-modal').classList.add('hidden');
+                    window.showAlert(`Correct! '${guess}' is in the secret word! 👍`);
+                }
+            } else {
+                // Wrong letter
+                const newWrong = [...wrongLetters, guess];
+                const newLetterCount = letterFailCount + 1;
+                const updatePayload = {
+                    hangmanWrongLetters: newWrong,
+                    [`hangmanLetterWrong.${uid}`]: newLetterCount
+                };
+                await updateDoc(postRef, updatePayload);
+                document.getElementById('hangman-guess-modal').classList.add('hidden');
+                if (newLetterCount >= 2 && wordFailed) {
+                    window.showAlert(`'${guess}' is not in the word. You've used all guesses and are eliminated! 💀`);
+                } else if (newLetterCount >= 2) {
+                    window.showAlert(`'${guess}' is not in the word! You've used both letter guesses. You still have ${wordRemaining} word guess(es).`);
+                } else {
+                    window.showAlert(`'${guess}' is not in the word! You have ${2 - newLetterCount} letter guess(es) and ${wordRemaining} word guess(es) remaining.`);
+                }
+            }
+        } else if (mode === 'word') {
+            if (wordFailed) {
+                return window.showAlert("You have used both word guesses. You can only guess individual letters.");
+            }
+
+            if (guess === secretWord) {
+                // Win!
+                const allWordLetters = [...new Set(secretWord.replace(/\s+/g, '').split(''))];
+                await updateDoc(postRef, {
+                    hangmanGuessedLetters: allWordLetters,
+                    gameStatus: 'ended',
+                    gameWinner: uid
+                });
+
+                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                if (lbPoints > 0) update(ref(db, `users/${uid}`), { lbPoints: increment(lbPoints) });
+                window.logEarnings(uid, postId, 'Hangman', post.gamePrize, lbPoints);
+                if (post.authorId && post.authorId !== uid) {
+                    const winnerName = window.globalUsersCache?.[uid]?.name || 'Someone';
+                    window.logHostedGame(post.authorId, postId, 'Hangman', post.gamePrize, uid, winnerName);
+                }
+                const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+                if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
+                    update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+                }
+
+                document.getElementById('hangman-guess-modal').classList.add('hidden');
+                window.showAlert(`🏆 BINGO! You guessed the entire word correctly and WON! +${lbPoints} LB points!`);
+            } else {
+                // Wrong word
+                const newWordCount = wordFailCount + 1;
+                const updatePayload = {
+                    [`hangmanWordWrong.${uid}`]: newWordCount
+                };
+                await updateDoc(postRef, updatePayload);
+                document.getElementById('hangman-guess-modal').classList.add('hidden');
+                if (newWordCount >= 2 && letterFailed) {
+                    window.showAlert(`"${guess}" is incorrect! You've used all guesses and are eliminated! 💀`);
+                } else if (newWordCount >= 2) {
+                    window.showAlert(`"${guess}" is incorrect! You've used both word guesses. You still have ${letterRemaining} letter guess(es).`);
+                } else {
+                    window.showAlert(`"${guess}" is incorrect! You have ${letterRemaining} letter guess(es) and ${2 - newWordCount} word guess(es) remaining.`);
+                }
+            }
+        }
+    } catch(e) {
+        console.error("Hangman guess error:", e);
+        window.showAlert("Error submitting guess: " + e.message);
+    }
+};
+
