@@ -1508,14 +1508,20 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ? `<div class="bg-emerald-500 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turn})!</div>`
                         : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${turnName} (${turn})'s move...</div>`;
 
-                    let gridHtml = `<div class="grid grid-cols-3 grid-rows-3 gap-2 p-2 bg-white/80 dark:bg-slate-900/80 rounded-2xl border-2 border-emerald-300 dark:border-slate-700 shadow-inner w-56 h-56 mx-auto my-2 shrink-0">`;
+                    const gridSize = Number(post.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
+                    const gridClass = gridSize === 4
+                        ? 'grid grid-cols-4 grid-rows-4 gap-1.5 p-2 bg-white/80 dark:bg-slate-900/80 rounded-2xl border-2 border-emerald-300 dark:border-slate-700 shadow-inner w-64 h-64 mx-auto my-2 shrink-0'
+                        : 'grid grid-cols-3 grid-rows-3 gap-2 p-2 bg-white/80 dark:bg-slate-900/80 rounded-2xl border-2 border-emerald-300 dark:border-slate-700 shadow-inner w-56 h-56 mx-auto my-2 shrink-0';
+                    const fontClass = gridSize === 4 ? 'text-2xl' : 'text-3xl';
+
+                    let gridHtml = `<div class="${gridClass}">`;
                     board.forEach((cell, idx) => {
                         const canClick = isMyTurn && cell === '';
-                        let cellContent = `<span class="text-transparent font-black text-3xl leading-none select-none pointer-events-none">&nbsp;</span>`;
+                        let cellContent = `<span class="text-transparent font-black ${fontClass} leading-none select-none pointer-events-none">&nbsp;</span>`;
                         if (cell === 'X') {
-                            cellContent = `<span class="text-rose-500 font-black text-3xl leading-none select-none flex items-center justify-center">✕</span>`;
+                            cellContent = `<span class="text-rose-500 font-black ${fontClass} leading-none select-none flex items-center justify-center">✕</span>`;
                         } else if (cell === 'O') {
-                            cellContent = `<span class="text-blue-500 font-black text-3xl leading-none select-none flex items-center justify-center">◯</span>`;
+                            cellContent = `<span class="text-blue-500 font-black ${fontClass} leading-none select-none flex items-center justify-center">◯</span>`;
                         }
                         const clickHandler = canClick ? `onclick="window.makeTicTacToeMove('${post.id}', ${idx})"` : '';
                         const hoverClass = canClick ? 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40 cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default';
@@ -1548,11 +1554,17 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerSymbol} ${winnerName} won the match!</div>`;
                 }
 
-                let gridHtml = `<div class="grid grid-cols-3 grid-rows-3 gap-1.5 p-2 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 w-44 h-44 mx-auto my-2 opacity-90 shrink-0">`;
+                const gridSize = Number(post.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
+                const endedGridClass = gridSize === 4
+                    ? 'grid grid-cols-4 grid-rows-4 gap-1 p-2 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 w-44 h-44 mx-auto my-2 opacity-90 shrink-0'
+                    : 'grid grid-cols-3 grid-rows-3 gap-1.5 p-2 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 w-44 h-44 mx-auto my-2 opacity-90 shrink-0';
+                const endedFontClass = gridSize === 4 ? 'text-lg' : 'text-xl';
+
+                let gridHtml = `<div class="${endedGridClass}">`;
                 board.forEach((cell) => {
-                    let cellContent = `<span class="text-transparent font-black text-xl leading-none select-none pointer-events-none">&nbsp;</span>`;
-                    if (cell === 'X') cellContent = `<span class="text-rose-500 font-black text-xl leading-none select-none flex items-center justify-center">✕</span>`;
-                    else if (cell === 'O') cellContent = `<span class="text-blue-500 font-black text-xl leading-none select-none flex items-center justify-center">◯</span>`;
+                    let cellContent = `<span class="text-transparent font-black ${endedFontClass} leading-none select-none pointer-events-none">&nbsp;</span>`;
+                    if (cell === 'X') cellContent = `<span class="text-rose-500 font-black ${endedFontClass} leading-none select-none flex items-center justify-center">✕</span>`;
+                    else if (cell === 'O') cellContent = `<span class="text-blue-500 font-black ${endedFontClass} leading-none select-none flex items-center justify-center">◯</span>`;
                     gridHtml += `<div class="w-full h-full min-h-0 min-w-0 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 select-none leading-none overflow-hidden">${cellContent}</div>`;
                 });
                 gridHtml += `</div>`;
@@ -1614,8 +1626,9 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-rose-50 to-pink-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-rose-200 dark:border-rose-900/50 flex flex-col items-center">
                         ${prizeStr}
-                        <h4 class="font-black text-rose-900 dark:text-rose-200 text-base mb-1">🪓 Hangman Challenge</h4>
-                        <div class="flex flex-wrap justify-center gap-1.5 my-3 py-2 px-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-rose-100 dark:border-slate-700 shadow-inner">
+                        <h4 class="font-black text-rose-900 dark:text-rose-200 text-base mb-1">🪓 Hangman Game</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Guess letters or solve the full word:</p>
+                        <div class="flex flex-wrap justify-center gap-1.5 my-2 tracking-widest font-mono">
                             ${blanks}
                         </div>
                         <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -1638,6 +1651,46 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🪓 Hangman Ended</h4>
                         <div class="bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 font-black px-4 py-2 rounded-lg text-base tracking-widest my-2">
                             ${secretWord}
+                        </div>
+                        ${outcomeHtml}
+                    </div>`;
+            }
+        } else if (post.gameType === 'gibberish') {
+            if (post.gameStatus === 'active') {
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-xl font-black text-amber-600 dark:text-amber-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+                const isAuthor = window.currentUser && window.currentUser.uid === post.authorId;
+                const answerBtn = isAuthor
+                    ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — Answer: <span class="font-bold text-amber-600 dark:text-amber-400">${post.gameGibberishAnswer || ''}</span></div>`
+                    : `<button onclick="window.openAnswerModal('${post.id}', 'Guess the Gibberish', 'Enter the real phrase...')" class="mt-3 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-5 rounded-xl shadow transition text-xs flex items-center gap-1.5"><i class="fa-solid fa-microphone-lines mr-1"></i>Guess Phrase</button>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-amber-200 dark:border-amber-900/50 flex flex-col items-center text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-amber-900 dark:text-amber-200 text-base mb-1">🗣️ Guess the Gibberish!</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Say this phrase out loud quickly to figure out what it means:</p>
+                        <div class="w-full max-w-sm bg-white dark:bg-slate-900 border border-amber-200 dark:border-slate-700 rounded-xl p-3 shadow-inner my-1">
+                            <p class="font-black text-base md:text-lg text-amber-800 dark:text-amber-300 tracking-wide font-mono select-all">"${post.gameGibberishClue || ''}"</p>
+                        </div>
+                        ${timerHtml}
+                        ${answerBtn}
+                    </div>`;
+            } else {
+                const winnerName = post.gameWinner && post.gameWinner !== 'none'
+                    ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
+                    : 'No one';
+                const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
+                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} got the right answer!</div>`
+                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No one got it.</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🗣️ Guess the Gibberish Ended</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">"${post.gameGibberishClue || ''}"</p>
+                        <div class="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-bold px-4 py-2 rounded-xl text-sm my-1">
+                            Real Phrase: <span class="font-black">${post.gameGibberishAnswer || ''}</span>
                         </div>
                         ${outcomeHtml}
                     </div>`;

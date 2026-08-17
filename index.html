@@ -338,6 +338,7 @@
                     <option value="count_dots">Count the Dots</option>
                     <option value="tictactoe">Tic Tac Toe</option>
                     <option value="hangman">Hangman</option>
+                    <option value="gibberish">Gibberish</option>
                     <option value="guess_emoji">Guess the emoji</option>
                     <option value="bring_me_emoji">Bring me emoji</option>
                     <option value="flags">Flags</option>
@@ -546,8 +547,13 @@
                 </div>
 
                 <div id="game-tictactoe-container" class="hidden mb-3 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-3 bg-emerald-50 dark:bg-emerald-900/20">
-                    <p class="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1">⚔️ Tic Tac Toe (3x3 Match)</p>
-                    <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">You will play as <strong>X</strong>. You can challenge a specific user (search above) or leave it blank so <strong>anyone</strong> can accept the challenge on a first-come, first-served basis!</p>
+                    <p class="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-2">⚔️ Tic Tac Toe Match</p>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Grid Size</label>
+                    <select id="game-tictactoe-grid-size" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
+                        <option value="3" selected>3x3 Grid (Get 3 in a row to win)</option>
+                        <option value="4">4x4 Grid (Get 4 in a row to win)</option>
+                    </select>
+                    <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">You will play as <strong>X</strong>. You can challenge a specific user (search above) or leave it blank so <strong>anyone</strong> can accept the challenge on a first-come, first-served basis!</p>
                 </div>
 
                 <div id="game-hangman-container" class="hidden mb-3 border border-rose-200 dark:border-rose-900/50 rounded-lg p-3 bg-rose-50 dark:bg-rose-900/20">
@@ -558,6 +564,16 @@
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Revealed Clue Letters <span class="text-[10px] text-gray-400 font-normal">(Optional)</span></label>
                     <input type="text" id="game-hangman-clues" placeholder="e.g. H (letters revealed right away as a hint)" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm uppercase dark:text-white outline-none mb-1 font-mono tracking-wider">
                     <p class="text-[10px] text-gray-500 dark:text-gray-400">Players get 2 letter guesses and 2 word guesses before being eliminated.</p>
+                </div>
+
+                <div id="game-gibberish-container" class="hidden mb-3 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20">
+                    <p class="text-xs font-bold text-amber-700 dark:text-amber-300 mb-2">🗣️ Guess the Gibberish</p>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Gibberish Phrase (Clue)</label>
+                    <input type="text" id="game-gibberish-clue" placeholder="e.g. Hue Can Knot Paws" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
+                    
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Real Answer Phrase</label>
+                    <input type="text" id="game-gibberish-answer" placeholder="e.g. You cannot pass" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-1 font-medium">
+                    <p class="text-[10px] text-gray-500 dark:text-gray-400">Players must pronounce the gibberish out loud to guess what actual phrase it sounds like.</p>
                 </div>
 
                 <button id="post-game-btn" onclick="window.submitGame()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg shadow-sm transition mt-2">Post Game</button>

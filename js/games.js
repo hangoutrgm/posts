@@ -39,6 +39,7 @@ window.gameTypeLabel = (type) => {
         'count_dots': 'Count the Dots',
         'tictactoe': 'Tic Tac Toe',
         'hangman': 'Hangman',
+        'gibberish': 'Guess the Gibberish',
         'bingo': 'Bingo',
         'spin_names': 'Spin the Names',
         'ncl': 'NCL Reward'
@@ -172,6 +173,12 @@ window.openPostGameModal = () => {
     document.getElementById('game-hangman-word').value = '';
     const cluesInput = document.getElementById('game-hangman-clues');
     if (cluesInput) cluesInput.value = '';
+    const tttGridSelect = document.getElementById('game-tictactoe-grid-size');
+    if (tttGridSelect) tttGridSelect.value = '3';
+    const gibberishClue = document.getElementById('game-gibberish-clue');
+    if (gibberishClue) gibberishClue.value = '';
+    const gibberishAns = document.getElementById('game-gibberish-answer');
+    if (gibberishAns) gibberishAns.value = '';
     document.getElementById('game-type').value = 'first_to_mine';
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
@@ -259,9 +266,10 @@ window.toggleGameSettings = () => {
     const countDotsContainer = document.getElementById('game-count-dots-container');
     const tictactoeContainer = document.getElementById('game-tictactoe-container');
     const hangmanContainer = document.getElementById('game-hangman-container');
+    const gibberishContainer = document.getElementById('game-gibberish-container');
     
-    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, and spin_names
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman'].includes(type)) {
+    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, spin_names, count_dots, hangman, gibberish
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
@@ -309,6 +317,12 @@ window.toggleGameSettings = () => {
 
     if (type === 'hangman') hangmanContainer.classList.remove('hidden');
     else hangmanContainer.classList.add('hidden');
+
+    if (type === 'gibberish') {
+        if (gibberishContainer) gibberishContainer.classList.remove('hidden');
+    } else {
+        if (gibberishContainer) gibberishContainer.classList.add('hidden');
+    }
 
     // Hide LB Points field for NCL (disabled for now)
     const lbPointsLabel = document.getElementById('game-lb-points-label');
@@ -433,6 +447,9 @@ window.submitGame = async () => {
     let dotsScrambled = null;
     let hangmanWord = null;
     let hangmanClueLetters = [];
+    let tictactoeGridSize = 3;
+    let gibberishClue = null;
+    let gibberishAnswer = null;
 
     if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || (type === 'tictactoe' && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
@@ -450,6 +467,10 @@ window.submitGame = async () => {
         } else if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl') {
             return window.showAlert("Please search and select a target user.");
         }
+    }
+
+    if (type === 'tictactoe') {
+        tictactoeGridSize = parseInt(document.getElementById('game-tictactoe-grid-size')?.value) || 3;
     }
 
     if (type === 'challenge') {
@@ -486,6 +507,12 @@ window.submitGame = async () => {
                 return window.showAlert("You cannot reveal all letters of the secret word as clues!");
             }
         }
+    }
+
+    if (type === 'gibberish') {
+        gibberishClue = document.getElementById('game-gibberish-clue')?.value.trim();
+        gibberishAnswer = document.getElementById('game-gibberish-answer')?.value.trim();
+        if (!gibberishClue || !gibberishAnswer) return window.showAlert("Please provide both the Gibberish clue and the Real Answer phrase.");
     }
 
     if (type === 'guess_emoji' || type === 'bring_me_emoji') {
@@ -565,7 +592,7 @@ window.submitGame = async () => {
         }
     }
 
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman'].includes(type)) {
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish'].includes(type)) {
         const timerMode = document.querySelector('input[name="game-timer"]:checked').value;
         if (timerMode === 'auto') {
             const secs = parseInt(document.getElementById('game-duration').value);
@@ -592,8 +619,9 @@ window.submitGame = async () => {
     else if (type === 'math') text = `Math Challenge! Solve this: ${mathQuestion}`;
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
+    else if (type === 'gibberish') text = `🗣️ Guess the Gibberish! Say it out loud: "${gibberishClue}"`;
     else if (type === 'count_dots') text = `🔢 Count the Dots! How many dots (●) can you find? First correct guess wins!`;
-    else if (type === 'tictactoe') text = targetUserName ? `⚔️ Tic Tac Toe match challenge against @${targetUserName}!` : `⚔️ Open Tic Tac Toe Challenge! First person to accept plays against @${window.currentUser.name}!`;
+    else if (type === 'tictactoe') text = targetUserName ? `⚔️ Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) match challenge against @${targetUserName}!` : `⚔️ Open Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) Challenge! First person to accept plays against @${window.currentUser.name}!`;
     else if (type === 'hangman') text = `🪓 Hangman Game! Guess letters or guess the secret word before you get eliminated!`;
     else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) (A–${bingoMaxLetter}) + ${bingoNumberCount} number(s) (1–${bingoMaxNumber}). Submission open!`;
     else if (type === 'spin_names') {
@@ -632,12 +660,17 @@ window.submitGame = async () => {
     if (jumbledScrambled) postData.gameJumbledScrambled = jumbledScrambled;
     if (triviaQuestion) postData.gameTriviaQuestion = triviaQuestion;
     if (triviaAnswer) postData.gameTriviaAnswer = triviaAnswer;
+    if (type === 'gibberish') {
+        postData.gameGibberishClue = gibberishClue;
+        postData.gameGibberishAnswer = gibberishAnswer;
+    }
     if (type === 'count_dots') {
         postData.gameDotsCount = dotsCount;
         postData.gameDotsScrambled = dotsScrambled;
     }
     if (type === 'tictactoe') {
-        postData.tictactoeBoard = ['', '', '', '', '', '', '', '', ''];
+        postData.tictactoeGridSize = tictactoeGridSize;
+        postData.tictactoeBoard = Array(tictactoeGridSize * tictactoeGridSize).fill('');
         postData.tictactoePlayerX = window.currentUser.uid;
         postData.tictactoePlayerO = targetUserUid || null;
         postData.tictactoeTurn = 'X';
@@ -979,6 +1012,9 @@ window.answerGame = async (postId, answer) => {
             isCorrect = answerLower === (post.gameJumbledOriginal || '').toLowerCase();
         } else if (post.gameType === 'trivia') {
             isCorrect = answerLower === (post.gameTriviaAnswer || '').toLowerCase();
+        } else if (post.gameType === 'gibberish') {
+            const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            isCorrect = clean(answer) === clean(post.gameGibberishAnswer);
         } else if (post.gameType === 'count_dots') {
             isCorrect = parseInt(answer.trim(), 10) === Number(post.gameDotsCount);
         }
@@ -1707,17 +1743,36 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
 
         board[cellIndex] = turn;
 
-        // Check winner
-        const winningLines = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8],
-            [0, 3, 6], [1, 4, 7], [2, 5, 8],
-            [0, 4, 8], [2, 4, 6]
-        ];
+        const gridSize = Number(post.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
+
+        // Generate winning lines dynamically for 3x3 (3-in-a-row) or 4x4 (4-in-a-row)
+        const winningLines = [];
+        // Rows
+        for (let r = 0; r < gridSize; r++) {
+            const row = [];
+            for (let c = 0; c < gridSize; c++) row.push(r * gridSize + c);
+            winningLines.push(row);
+        }
+        // Columns
+        for (let c = 0; c < gridSize; c++) {
+            const col = [];
+            for (let r = 0; r < gridSize; r++) col.push(r * gridSize + c);
+            winningLines.push(col);
+        }
+        // Diagonals
+        const diag1 = [];
+        const diag2 = [];
+        for (let i = 0; i < gridSize; i++) {
+            diag1.push(i * gridSize + i);
+            diag2.push(i * gridSize + (gridSize - 1 - i));
+        }
+        winningLines.push(diag1);
+        winningLines.push(diag2);
 
         let hasWon = false;
         for (const line of winningLines) {
-            const [a, b, c] = line;
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+            const firstMark = board[line[0]];
+            if (firstMark && line.every(idx => board[idx] === firstMark)) {
                 hasWon = true;
                 break;
             }
