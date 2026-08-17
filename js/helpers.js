@@ -52,7 +52,11 @@ window.siteSettings = {
     maxLbPointsPrize: 100,
     imageUploadLimit: 10,
     videoUploadLimit: 3,
-    videoSizeLimitMB: 20
+    videoSizeLimitMB: 20,
+    chatImageLimit: 10,
+    chatVideoLimit: 3,
+    chatVoiceLimit: 10,
+    chatVideoSizeLimitMB: 20
 };
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;

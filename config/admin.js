@@ -163,6 +163,7 @@ function initAdminDashboard() {
             document.getElementById('set-videoSizeLimitMB').value = settings.videoSizeLimitMB ?? '';
             document.getElementById('set-chatImageLimit').value = settings.chatImageLimit ?? '';
             document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
+            document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
             document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
         } else {
             document.getElementById('set-starsPerPost').value = '';
@@ -178,6 +179,7 @@ function initAdminDashboard() {
             document.getElementById('set-videoSizeLimitMB').value = '';
             document.getElementById('set-chatImageLimit').value = '';
             document.getElementById('set-chatVideoLimit').value = '';
+            document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
         }
 
@@ -212,6 +214,7 @@ function initAdminDashboard() {
             videoSizeLimitMB: parseInt(document.getElementById('set-videoSizeLimitMB').value) || 0,
             chatImageLimit: parseInt(document.getElementById('set-chatImageLimit').value) || 10,
             chatVideoLimit: parseInt(document.getElementById('set-chatVideoLimit').value) || 3,
+            chatVoiceLimit: parseInt(document.getElementById('set-chatVoiceLimit').value) || 10,
             chatVideoSizeLimitMB: parseInt(document.getElementById('set-chatVideoSizeLimitMB').value) || 20,
         };
 

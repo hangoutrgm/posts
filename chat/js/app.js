@@ -3,12 +3,13 @@ import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndP
 import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 // Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
-const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVideoSizeLimitMB: 20 };
+const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20 };
 onValue(ref(db, 'settings'), (snap) => {
   if (snap.exists()) {
     const s = snap.val();
     chatSettings.chatImageLimit = s.chatImageLimit ?? 10;
     chatSettings.chatVideoLimit = s.chatVideoLimit ?? 3;
+    chatSettings.chatVoiceLimit = s.chatVoiceLimit ?? 10;
     chatSettings.chatVideoSizeLimitMB = s.chatVideoSizeLimitMB ?? 20;
   }
 });
@@ -813,6 +814,15 @@ async function startVoiceRecording() {
     return showToast('Only admins can send messages in Global Announcements.');
   }
 
+  // Pre-check daily voice limit
+  const limit = chatSettings.chatVoiceLimit;
+  const day = new Date().toISOString().slice(0, 10);
+  const currentQuotaSnap = await get(ref(db, `chatVoiceUploadQuota/${state.user.uid}/${day}`)).catch(() => null);
+  const currentCount = Number(currentQuotaSnap?.val() || 0);
+  if (currentCount >= limit) {
+    return showToast(`Daily voice message limit reached (${limit} recordings). Try again tomorrow.`);
+  }
+
   // Check if live MediaRecorder + getUserMedia is supported in this context (requires secure context https or localhost)
   const hasGetUserMedia = Boolean(navigator.mediaDevices?.getUserMedia || navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia);
   const hasMediaRecorder = typeof window.MediaRecorder !== 'undefined';
@@ -906,6 +916,12 @@ function cancelVoiceRecording() {
 
 async function sendVoiceMessage(audioBlob) {
   if (!state.user || !state.activeThreadId) return;
+  try {
+    await useVoiceUploadQuota();
+  } catch (quotaErr) {
+    showToast(quotaErr.message);
+    return;
+  }
   showToast('Uploading voice message…');
   try {
     const audioUrl = await uploadToCloudinary(audioBlob, null, state.user.uid);
@@ -1090,6 +1106,11 @@ async function useVideoUploadQuota() {
   const limit = chatSettings.chatVideoLimit;
   const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatVideoUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= limit ? undefined : Number(count || 0) + 1));
   if (!result.committed) throw new Error(`Daily video limit reached (${limit} uploads). Try again tomorrow.`);
+}
+async function useVoiceUploadQuota() {
+  const limit = chatSettings.chatVoiceLimit;
+  const day = new Date().toISOString().slice(0, 10); const result = await runTransaction(ref(db, `chatVoiceUploadQuota/${state.user.uid}/${day}`), (count) => (Number(count || 0) >= limit ? undefined : Number(count || 0) + 1));
+  if (!result.committed) throw new Error(`Daily voice message limit reached (${limit} recordings). Try again tomorrow.`);
 }
 
 function clearAttachment() { 
