@@ -799,6 +799,7 @@ function resetVoiceRecorderUi() {
     state.recTimerInterval = null;
   }
   state.recSeconds = 0;
+  state.recStartTime = 0;
   $('voice-recorder-bar')?.classList.add('hidden');
   $('composer-input-row')?.classList.remove('hidden');
   const timerEl = $('voice-rec-timer');
@@ -846,22 +847,25 @@ async function startVoiceRecording() {
     };
 
     state.mediaRecorder.onstop = async () => {
+      const durationMs = Date.now() - (state.recStartTime || 0);
       stream.getTracks().forEach(track => track.stop());
-      if (state.audioChunks.length === 0) return;
-      const mimeType = state.mediaRecorder?.mimeType || 'audio/webm';
-      const audioBlob = new Blob(state.audioChunks, { type: mimeType });
-      state.audioChunks = [];
-      
-      if (state.recSeconds < 1) {
+      resetVoiceRecorderUi();
+
+      if (state.audioChunks.length === 0 || durationMs < 600) {
+        state.audioChunks = [];
         showToast('Voice message was too short.');
         return;
       }
-      
+
+      const mimeType = state.mediaRecorder?.mimeType || 'audio/webm';
+      const audioBlob = new Blob(state.audioChunks, { type: mimeType });
+      state.audioChunks = [];
       await sendVoiceMessage(audioBlob);
     };
 
-    state.mediaRecorder.start(250);
+    state.mediaRecorder.start(200);
     state.recSeconds = 0;
+    state.recStartTime = Date.now();
     $('composer-input-row')?.classList.add('hidden');
     $('voice-recorder-bar')?.classList.remove('hidden');
 
@@ -886,13 +890,14 @@ async function startVoiceRecording() {
 function stopVoiceRecording() {
   if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
     state.mediaRecorder.stop();
+  } else {
+    resetVoiceRecorderUi();
   }
-  resetVoiceRecorderUi();
 }
 
 function cancelVoiceRecording() {
+  state.audioChunks = [];
   if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
-    state.audioChunks = [];
     state.mediaRecorder.stop();
   }
   resetVoiceRecorderUi();
