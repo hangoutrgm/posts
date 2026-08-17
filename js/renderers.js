@@ -1508,19 +1508,19 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ? `<div class="bg-emerald-500 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turn})!</div>`
                         : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${turnName} (${turn})'s move...</div>`;
 
-                    let gridHtml = `<div class="grid grid-cols-3 gap-2 p-2 bg-white/80 dark:bg-slate-900/80 rounded-2xl border-2 border-emerald-300 dark:border-slate-700 shadow-inner w-56 h-56 mx-auto my-2">`;
+                    let gridHtml = `<div class="grid grid-cols-3 grid-rows-3 gap-2 p-2 bg-white/80 dark:bg-slate-900/80 rounded-2xl border-2 border-emerald-300 dark:border-slate-700 shadow-inner w-56 h-56 mx-auto my-2 shrink-0">`;
                     board.forEach((cell, idx) => {
                         const canClick = isMyTurn && cell === '';
-                        let cellContent = '';
+                        let cellContent = `<span class="text-transparent font-black text-3xl leading-none select-none pointer-events-none">&nbsp;</span>`;
                         if (cell === 'X') {
-                            cellContent = `<span class="text-rose-500 font-black text-3xl">✕</span>`;
+                            cellContent = `<span class="text-rose-500 font-black text-3xl leading-none select-none flex items-center justify-center">✕</span>`;
                         } else if (cell === 'O') {
-                            cellContent = `<span class="text-blue-500 font-black text-3xl">◯</span>`;
+                            cellContent = `<span class="text-blue-500 font-black text-3xl leading-none select-none flex items-center justify-center">◯</span>`;
                         }
                         const clickHandler = canClick ? `onclick="window.makeTicTacToeMove('${post.id}', ${idx})"` : '';
                         const hoverClass = canClick ? 'hover:bg-emerald-100 dark:hover:bg-emerald-950/40 cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default';
                         gridHtml += `
-                            <div ${clickHandler} class="w-full h-full rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition transform ${hoverClass}">
+                            <div ${clickHandler} class="w-full h-full min-h-0 min-w-0 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition transform select-none leading-none overflow-hidden ${hoverClass}">
                                 ${cellContent}
                             </div>`;
                     });
@@ -1548,12 +1548,12 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerSymbol} ${winnerName} won the match!</div>`;
                 }
 
-                let gridHtml = `<div class="grid grid-cols-3 gap-1.5 p-2 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 w-40 h-40 mx-auto my-2 opacity-80">`;
+                let gridHtml = `<div class="grid grid-cols-3 grid-rows-3 gap-1.5 p-2 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 w-44 h-44 mx-auto my-2 opacity-90 shrink-0">`;
                 board.forEach((cell) => {
-                    let cellContent = '';
-                    if (cell === 'X') cellContent = `<span class="text-rose-500 font-black text-xl">✕</span>`;
-                    else if (cell === 'O') cellContent = `<span class="text-blue-500 font-black text-xl">◯</span>`;
-                    gridHtml += `<div class="w-full h-full rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700">${cellContent}</div>`;
+                    let cellContent = `<span class="text-transparent font-black text-xl leading-none select-none pointer-events-none">&nbsp;</span>`;
+                    if (cell === 'X') cellContent = `<span class="text-rose-500 font-black text-xl leading-none select-none flex items-center justify-center">✕</span>`;
+                    else if (cell === 'O') cellContent = `<span class="text-blue-500 font-black text-xl leading-none select-none flex items-center justify-center">◯</span>`;
+                    gridHtml += `<div class="w-full h-full min-h-0 min-w-0 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 select-none leading-none overflow-hidden">${cellContent}</div>`;
                 });
                 gridHtml += `</div>`;
 

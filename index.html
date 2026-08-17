@@ -538,11 +538,11 @@
                         <button type="button" onclick="window.generateDotsPuzzle()" class="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-md font-bold transition shadow-sm"><i class="fa-solid fa-dice mr-1"></i>Generate Puzzle</button>
                     </div>
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Number of Dots to Guess</label>
-                    <input type="number" id="game-dots-count" placeholder="e.g. 13" min="1" max="100" value="13" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2">
+                    <input type="number" id="game-dots-count" placeholder="e.g. 13" min="1" max="100" value="13" oninput="document.getElementById('game-dots-preview').value=''; document.getElementById('game-dots-scrambled').value='';" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2">
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Scrambled Preview</label>
-                    <textarea id="game-dots-preview" readonly rows="4" class="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono tracking-widest text-center dark:text-indigo-300 resize-none outline-none select-all" placeholder="Click 'Generate Puzzle' to generate..."></textarea>
+                    <textarea id="game-dots-preview" readonly rows="4" class="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono tracking-widest text-center dark:text-indigo-300 resize-none outline-none select-all" placeholder="Click 'Generate Puzzle' above to generate..."></textarea>
                     <input type="hidden" id="game-dots-scrambled">
-                    <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Random distractor characters are scrambled with the exact number of dots for players to count.</p>
+                    <p class="text-[10px] text-gray-500 dark:text-gray-400 mt-1">You must click 'Generate Puzzle' before posting. Random distractor characters will be mixed with your dots.</p>
                 </div>
 
                 <div id="game-tictactoe-container" class="hidden mb-3 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-3 bg-emerald-50 dark:bg-emerald-900/20">
@@ -553,8 +553,11 @@
                 <div id="game-hangman-container" class="hidden mb-3 border border-rose-200 dark:border-rose-900/50 rounded-lg p-3 bg-rose-50 dark:bg-rose-900/20">
                     <p class="text-xs font-bold text-rose-700 dark:text-rose-300 mb-1">🪓 Hangman Game</p>
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Secret Word</label>
-                    <input type="text" id="game-hangman-word" placeholder="e.g. PHILIPPINES or GALAXY" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm uppercase dark:text-white outline-none mb-1 font-mono tracking-wider">
-                    <p class="text-[10px] text-gray-500 dark:text-gray-400">Players can guess one letter or guess the entire word. Failing both eliminates them from the game.</p>
+                    <input type="text" id="game-hangman-word" placeholder="e.g. PHILIPPINES or CHAIR" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm uppercase dark:text-white outline-none mb-2 font-mono tracking-wider">
+                    
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Revealed Clue Letters <span class="text-[10px] text-gray-400 font-normal">(Optional)</span></label>
+                    <input type="text" id="game-hangman-clues" placeholder="e.g. H (letters revealed right away as a hint)" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm uppercase dark:text-white outline-none mb-1 font-mono tracking-wider">
+                    <p class="text-[10px] text-gray-500 dark:text-gray-400">Players get 2 letter guesses and 2 word guesses before being eliminated.</p>
                 </div>
 
                 <button id="post-game-btn" onclick="window.submitGame()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg shadow-sm transition mt-2">Post Game</button>
@@ -573,7 +576,7 @@
                 <input type="text" id="game-answer-input" placeholder="Enter your answer" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
                 <input type="hidden" id="game-answer-postid">
                 
-                <button onclick="window.answerGame(document.getElementById('game-answer-postid').value, document.getElementById('game-answer-input').value)" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit</button>
+                <button id="game-answer-submit-btn" onclick="window.answerGame(document.getElementById('game-answer-postid').value, document.getElementById('game-answer-input').value)" class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit</button>
             </div>
         </div>
     </div>
@@ -591,7 +594,7 @@
                 <input type="hidden" id="hangman-guess-postid">
                 <input type="hidden" id="hangman-guess-mode">
                 
-                <button onclick="window.submitHangmanGuess(document.getElementById('hangman-guess-postid').value, document.getElementById('hangman-guess-mode').value, document.getElementById('hangman-guess-input').value)" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit Guess</button>
+                <button id="hangman-guess-submit-btn" onclick="window.submitHangmanGuess(document.getElementById('hangman-guess-postid').value, document.getElementById('hangman-guess-mode').value, document.getElementById('hangman-guess-input').value)" class="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg shadow-sm transition">Submit Guess</button>
             </div>
         </div>
     </div>

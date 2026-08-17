@@ -170,6 +170,8 @@ window.openPostGameModal = () => {
     document.getElementById('game-dots-preview').value = '';
     document.getElementById('game-dots-scrambled').value = '';
     document.getElementById('game-hangman-word').value = '';
+    const cluesInput = document.getElementById('game-hangman-clues');
+    if (cluesInput) cluesInput.value = '';
     document.getElementById('game-type').value = 'first_to_mine';
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
@@ -298,9 +300,6 @@ window.toggleGameSettings = () => {
 
     if (type === 'count_dots') {
         countDotsContainer.classList.remove('hidden');
-        if (!document.getElementById('game-dots-preview').value) {
-            window.generateDotsPuzzle();
-        }
     } else {
         countDotsContainer.classList.add('hidden');
     }
@@ -433,6 +432,7 @@ window.submitGame = async () => {
     let dotsCount = 0;
     let dotsScrambled = null;
     let hangmanWord = null;
+    let hangmanClueLetters = [];
 
     if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || (type === 'tictactoe' && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
@@ -463,8 +463,7 @@ window.submitGame = async () => {
         dotsScrambled = document.getElementById('game-dots-scrambled').value.trim() || document.getElementById('game-dots-preview').value.trim();
         if (dotsCount < 1) return window.showAlert("Please enter a valid number of dots to guess.");
         if (!dotsScrambled) {
-            window.generateDotsPuzzle();
-            dotsScrambled = document.getElementById('game-dots-scrambled').value.trim();
+            return window.showAlert("Please generate the puzzle first by clicking 'Generate Puzzle'.");
         }
     }
 
@@ -473,6 +472,20 @@ window.submitGame = async () => {
         if (!rawWord || rawWord.length < 2) return window.showAlert("Please enter a secret word (at least 2 letters).");
         if (!/^[A-Z\s]+$/.test(rawWord)) return window.showAlert("Secret word must only contain letters A-Z.");
         hangmanWord = rawWord;
+
+        const rawClues = (document.getElementById('game-hangman-clues')?.value || '').trim().toUpperCase();
+        if (rawClues) {
+            const clueChars = rawClues.replace(/[^A-Z]/g, '').split('');
+            const wordChars = new Set(hangmanWord.replace(/\s+/g, '').split(''));
+            for (const ch of clueChars) {
+                if (wordChars.has(ch) && !hangmanClueLetters.includes(ch)) {
+                    hangmanClueLetters.push(ch);
+                }
+            }
+            if (hangmanClueLetters.length > 0 && hangmanClueLetters.length >= wordChars.size) {
+                return window.showAlert("You cannot reveal all letters of the secret word as clues!");
+            }
+        }
     }
 
     if (type === 'guess_emoji' || type === 'bring_me_emoji') {
@@ -633,7 +646,7 @@ window.submitGame = async () => {
     }
     if (type === 'hangman') {
         postData.hangmanWord = hangmanWord;
-        postData.hangmanGuessedLetters = [];
+        postData.hangmanGuessedLetters = hangmanClueLetters || [];
         postData.hangmanWrongLetters = [];
         postData.hangmanLetterWrong = {};
         postData.hangmanWordWrong = {};
@@ -922,6 +935,12 @@ window.answerGame = async (postId, answer) => {
     if (!answer || !answer.trim()) return window.showAlert("Please enter an answer.");
 
     const postRef = doc(fsdb, 'community_posts', postId);
+    const submitBtn = document.getElementById('game-answer-submit-btn');
+    const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Submitting...`;
+    }
 
     try {
         const snap = await getDoc(postRef);
@@ -990,6 +1009,11 @@ window.answerGame = async (postId, answer) => {
     } catch(e) {
         console.error("Answer error:", e);
         window.showAlert("Error submitting answer: " + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
     }
 };
 
@@ -1789,6 +1813,12 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
     }
 
     const postRef = doc(fsdb, 'community_posts', postId);
+    const submitBtn = document.getElementById('hangman-guess-submit-btn');
+    const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Submitting...`;
+    }
 
     try {
         const snap = await getDoc(postRef);
@@ -1926,6 +1956,11 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
     } catch(e) {
         console.error("Hangman guess error:", e);
         window.showAlert("Error submitting guess: " + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
     }
 };
 
