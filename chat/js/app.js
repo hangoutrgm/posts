@@ -23,6 +23,8 @@ const state = {
   noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null,
   streaks: {}, stopStreak: null, pinnedMessage: null, stopPinnedMessage: null, mediaRecorder: null, audioChunks: [], recTimerInterval: null, recSeconds: 0
 };
+// Restore users cache immediately so DM names are available before RTDB responds
+try { const cu = localStorage.getItem('hangout-users'); if (cu) state.users = JSON.parse(cu); } catch (e) {}
 const reactions = { like: '👍', love: '❤️', laugh: '😂', wow: '😮', sad: '😢' };
 reactions.angry = '😡';
 const fallbackAvatar = (seed = 'hangout') => `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed)}&backgroundColor=transparent`;
@@ -1498,9 +1500,19 @@ function handleInbox(snapshot) {
   markThreadRead();
 }
 
+// Debounced save so rapid child events don't thrash localStorage
+let _saveUsersTimer = null;
+function saveUsersCache() {
+  clearTimeout(_saveUsersTimer);
+  _saveUsersTimer = setTimeout(() => {
+    try { localStorage.setItem('hangout-users', JSON.stringify(state.users)); } catch (e) {}
+  }, 500);
+}
+
 get(ref(db, 'users')).then((snapshot) => {
   const raw = snapshot.val() || {};
   state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }]));
+  saveUsersCache(); // persist full list for next page load
   renderConversations();
   renderPeople();
   updateChatHeader();
@@ -1509,6 +1521,7 @@ get(ref(db, 'users')).then((snapshot) => {
   onChildChanged(usersRef, (childSnap) => {
     const uid = childSnap.key;
     state.users[uid] = { ...(childSnap.val() || {}), uid };
+    saveUsersCache();
     renderConversations();
     renderPeople();
     updateChatHeader();
@@ -1517,12 +1530,14 @@ get(ref(db, 'users')).then((snapshot) => {
     const uid = childSnap.key;
     if (!state.users[uid]) {
       state.users[uid] = { ...(childSnap.val() || {}), uid };
+      saveUsersCache();
       renderConversations();
       renderPeople();
     }
   });
   onChildRemoved(usersRef, (childSnap) => {
     delete state.users[childSnap.key];
+    saveUsersCache();
     renderConversations();
     renderPeople();
   });
@@ -1533,6 +1548,13 @@ let checkedInvite = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
   state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
+  // Restore cached inbox immediately so the first render shows correct GC names & nicknames (no flicker)
+  if (user) {
+    try {
+      const cached = localStorage.getItem(`hangout-inbox-${user.uid}`);
+      if (cached) { state.inbox = JSON.parse(cached); renderConversations(); }
+    } catch (e) {}
+  }
   
   if (!checkedInvite) {
     const urlParams = new URLSearchParams(window.location.search);
