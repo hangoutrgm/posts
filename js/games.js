@@ -3,7 +3,7 @@ import { ref, update, set, push, get, increment } from "https://www.gstatic.com/
 import { collection, doc, addDoc, getDoc, updateDoc, deleteField, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 window.logEarnings = (uid, postId, title, prize, lbPoints) => {
-    push(ref(db, `users/${uid}/earnings`), {
+    push(ref(db, `earnings/${uid}`), {
         postId: postId || '',
         title: title || 'Game Reward',
         prize: prize || '',
@@ -13,7 +13,7 @@ window.logEarnings = (uid, postId, title, prize, lbPoints) => {
 };
 
 window.logHostedGame = (hostUid, postId, title, prize, winnerUid, winnerName) => {
-    push(ref(db, `users/${hostUid}/hostedGames`), {
+    push(ref(db, `hostedGames/${hostUid}`), {
         postId: postId || '',
         title: title || 'Game',
         prize: prize || '',

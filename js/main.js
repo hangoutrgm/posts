@@ -1,7 +1,7 @@
 // main.js
 import { app, auth, db, fsdb } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp, query as dbQuery, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
@@ -371,20 +371,8 @@ onValue(ref(db, 'presence'), (snap) => {
     if(window.activeProfileUid) window.renderProfileData(false);
 });
 
-onValue(ref(db, 'users'), (snap) => {
-    window.globalUsersCache = snap.val() || {};
-    const wasReady = window.usersReady;
-    window.usersReady = true;
-    // If posts arrived before users (race condition), flush the pending render now
-    if (!wasReady && window._pendingPostRender) {
-        window._pendingPostRender = false;
-        window.renderFeed(false);
-    } else {
-        if(window.activeProfileUid) window.renderProfileData(false); else window.renderFeed(false);
-    }
-    if(!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
-    
-    if(window.currentUser && window.globalUsersCache[window.currentUser.uid]) {
+window._updateNavUserUI = () => {
+    if (window.currentUser && window.globalUsersCache[window.currentUser.uid]) {
         if (window.globalUsersCache[window.currentUser.uid].pic) {
             document.getElementById('nav-avatar').src = window.globalUsersCache[window.currentUser.uid].pic;
         }
@@ -397,8 +385,47 @@ onValue(ref(db, 'users'), (snap) => {
         const catSelect = document.getElementById('post-category');
         if (role.level === 1 && (catSelect.value === 'Announcements' || catSelect.value === 'Rules')) catSelect.value = 'General';
     }
-    
+};
+
+// Granular Users Loading: 1 initial get() + granular child event updates
+// This prevents downloading the full ~100KB users database on every like/point update.
+get(ref(db, 'users')).then((snap) => {
+    window.globalUsersCache = snap.val() || {};
+    const wasReady = window.usersReady;
+    window.usersReady = true;
+    if (!wasReady && window._pendingPostRender) {
+        window._pendingPostRender = false;
+        window.renderFeed(false);
+    } else {
+        if (window.activeProfileUid) window.renderProfileData(false);
+        else window.renderFeed(false);
+    }
+    if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
+    window._updateNavUserUI();
     window.handleDeepLinks();
+
+    // Granular updates: Only downloads the single modified user record (~200 bytes) on updates
+    const usersRef = ref(db, 'users');
+    onChildChanged(usersRef, (childSnap) => {
+        const uid = childSnap.key;
+        window.globalUsersCache[uid] = childSnap.val();
+        if (window.activeProfileUid === uid) window.renderProfileData(false);
+        if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
+        if (window.currentUser && window.currentUser.uid === uid) window._updateNavUserUI();
+    });
+
+    onChildAdded(usersRef, (childSnap) => {
+        const uid = childSnap.key;
+        if (!window.globalUsersCache[uid]) {
+            window.globalUsersCache[uid] = childSnap.val();
+            if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
+        }
+    });
+
+    onChildRemoved(usersRef, (childSnap) => {
+        delete window.globalUsersCache[childSnap.key];
+        if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
+    });
 });
 
 // Dedicated notifications listener — only for the logged-in user, limited to last 100.
@@ -638,15 +665,21 @@ window.loadMorePosts = async () => {
 window.loadPinnedPosts();
 window.listenPosts();
 
-// Tab Visibility Management: Pause listener when tab is inactive/hidden for >30s to conserve Firestore reads
+// Tab Visibility Management: Pause listener and presence heartbeat when tab is inactive/hidden for >30s
 let visibilityPauseTimer = null;
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         if (visibilityPauseTimer) clearTimeout(visibilityPauseTimer);
         visibilityPauseTimer = setTimeout(() => {
-            if (document.hidden && window.postsUnsubscribe) {
-                window.postsUnsubscribe();
-                window.postsUnsubscribe = null;
+            if (document.hidden) {
+                if (window.postsUnsubscribe) {
+                    window.postsUnsubscribe();
+                    window.postsUnsubscribe = null;
+                }
+                if (presenceInterval) {
+                    clearInterval(presenceInterval);
+                    presenceInterval = null;
+                }
             }
         }, 30000);
     } else {
@@ -656,6 +689,9 @@ document.addEventListener('visibilitychange', () => {
         }
         if (!window.postsUnsubscribe) {
             window.listenPosts();
+        }
+        if (!presenceInterval && auth.currentUser) {
+            startOwnPresence(auth.currentUser);
         }
     }
 });

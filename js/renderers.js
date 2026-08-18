@@ -2028,19 +2028,28 @@ window.renderRankings = async (resetLimit = true) => {
             if(resetLimit) list.innerHTML = '';
             loader.classList.remove('hidden');
             try {
-                const snap = await get(ref(db, `users/${window.currentUser.uid}/earnings`));
+                const [newSnap, legacySnap] = await Promise.all([
+                    get(ref(db, `earnings/${window.currentUser.uid}`)).catch(() => null),
+                    get(ref(db, `users/${window.currentUser.uid}/earnings`)).catch(() => null)
+                ]);
                 loader.classList.add('hidden');
                 
-                if (!snap.exists()) {
+                let earningsArray = [];
+                if (newSnap && newSnap.exists()) {
+                    newSnap.forEach(child => earningsArray.push({ id: child.key, ...child.val() }));
+                }
+                if (legacySnap && legacySnap.exists()) {
+                    const existingIds = new Set(earningsArray.map(e => e.id));
+                    legacySnap.forEach(child => {
+                        if (!existingIds.has(child.key)) earningsArray.push({ id: child.key, ...child.val() });
+                    });
+                }
+
+                if (earningsArray.length === 0) {
                     list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no earnings yet.</p>`;
                     window._earningsCache = [];
                     return;
                 }
-                
-                let earningsArray = [];
-                snap.forEach(child => {
-                    earningsArray.push({ id: child.key, ...child.val() });
-                });
                 
                 earningsArray.sort((a, b) => b.timestamp - a.timestamp);
                 window._earningsCache = earningsArray;
@@ -2143,19 +2152,29 @@ window.renderRankings = async (resetLimit = true) => {
             if (resetLimit) list.innerHTML = '';
             loader.classList.remove('hidden');
             try {
-                const snap = await get(ref(db, `users/${window.currentUser.uid}/hostedGames`));
+                const [newSnap, legacySnap] = await Promise.all([
+                    get(ref(db, `hostedGames/${window.currentUser.uid}`)).catch(() => null),
+                    get(ref(db, `users/${window.currentUser.uid}/hostedGames`)).catch(() => null)
+                ]);
                 loader.classList.add('hidden');
 
-                if (!snap.exists()) {
+                let hostedArray = [];
+                if (newSnap && newSnap.exists()) {
+                    newSnap.forEach(child => hostedArray.push({ id: child.key, ...child.val() }));
+                }
+                if (legacySnap && legacySnap.exists()) {
+                    const existingIds = new Set(hostedArray.map(e => e.id));
+                    legacySnap.forEach(child => {
+                        if (!existingIds.has(child.key)) hostedArray.push({ id: child.key, ...child.val() });
+                    });
+                }
+
+                if (hostedArray.length === 0) {
                     list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no hosted games yet.</p>`;
                     window._hostedGamesCache = [];
                     return;
                 }
 
-                let hostedArray = [];
-                snap.forEach(child => {
-                    hostedArray.push({ id: child.key, ...child.val() });
-                });
                 hostedArray.sort((a, b) => b.timestamp - a.timestamp);
                 window._hostedGamesCache = hostedArray;
             } catch (error) {
@@ -2335,7 +2354,10 @@ window.markHostedGamePaid = async (entryId, btn) => {
     try {
         btn.disabled = true;
         btn.textContent = 'Saving...';
-        await update(ref(db, `users/${window.currentUser.uid}/hostedGames/${entryId}`), { paymentStatus: 'paid' });
+        await Promise.all([
+            update(ref(db, `hostedGames/${window.currentUser.uid}/${entryId}`), { paymentStatus: 'paid' }).catch(() => {}),
+            update(ref(db, `users/${window.currentUser.uid}/hostedGames/${entryId}`), { paymentStatus: 'paid' }).catch(() => {})
+        ]);
         // Update local cache so re-renders stay consistent
         if (window._hostedGamesCache) {
             const entry = window._hostedGamesCache.find(e => e.id === entryId);

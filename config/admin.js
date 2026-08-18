@@ -294,8 +294,10 @@ function initAdminDashboard() {
             try {
                 const updates = {};
                 for (const uid in globalUsers) {
+                    updates[`earnings/${uid}`] = null;
+                    updates[`hostedGames/${uid}`] = null;
                     updates[`users/${uid}/earnings`] = null;
-                    updates[`users/${uid}/wins`] = null; // Just in case it exists
+                    updates[`users/${uid}/wins`] = null;
                     updates[`users/${uid}/hostedGames`] = null;
                 }
                 

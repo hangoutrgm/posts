@@ -1,6 +1,6 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 // Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
 const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20 };
@@ -1498,7 +1498,35 @@ function handleInbox(snapshot) {
   markThreadRead();
 }
 
-onValue(ref(db, 'users'), (snapshot) => { const raw = snapshot.val() || {}; state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }])); renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('member list', error));
+get(ref(db, 'users')).then((snapshot) => {
+  const raw = snapshot.val() || {};
+  state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }]));
+  renderConversations();
+  renderPeople();
+  updateChatHeader();
+
+  const usersRef = ref(db, 'users');
+  onChildChanged(usersRef, (childSnap) => {
+    const uid = childSnap.key;
+    state.users[uid] = { ...(childSnap.val() || {}), uid };
+    renderConversations();
+    renderPeople();
+    updateChatHeader();
+  });
+  onChildAdded(usersRef, (childSnap) => {
+    const uid = childSnap.key;
+    if (!state.users[uid]) {
+      state.users[uid] = { ...(childSnap.val() || {}), uid };
+      renderConversations();
+      renderPeople();
+    }
+  });
+  onChildRemoved(usersRef, (childSnap) => {
+    delete state.users[childSnap.key];
+    renderConversations();
+    renderPeople();
+  });
+}).catch((error) => reportRealtimeError('member list', error));
 onValue(ref(db, 'presence'), (snapshot) => { state.online = snapshot.val() || {}; renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('presence', error));
 onValue(ref(db, '.info/connected'), (snapshot) => { state.connected = snapshot.val() === true; if (state.connected) startOwnPresence(); });
 let checkedInvite = false;
