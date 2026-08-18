@@ -140,7 +140,7 @@ function showAppModal(options = {}) {
 
 function updateUnreadTitle() {
   const unread = Object.values(state.inbox).reduce((total, item) => total + Number(item.unreadCount || 0), 0);
-  document.title = unread ? `(${unread > 99 ? '99+' : unread}) Hangout Messenger` : 'Hangout Messenger';
+  document.title = unread ? `(${unread > 99 ? '99+' : unread}) Hangout Chat` : 'Hangout Chat';
 }
 
 function renderConversations() {
