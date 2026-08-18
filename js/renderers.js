@@ -88,7 +88,6 @@ window.openProfile = (uid) => {
     window.postLimit = 15;
     window.hasMorePosts = true;
     if (window.listenPosts) window.listenPosts();
-    // Initial render will be handled by listenPosts response, but render the skeleton/header now:
     window.renderProfileData(true);
     window.scrollTo(0,0);
 };
@@ -409,6 +408,9 @@ window.renderFeed = (resetLimit = true) => {
     
     window.renderPostList(feed, postsToRender, 'main', window.currentFilter);
 
+    // Clean up any existing loaders or catchup messages first
+    feed.querySelectorAll('.sentinel-loader, .end-message-catchup').forEach(el => el.remove());
+
     if (window.feedRenderLimit < window.filteredPostsLength || window.hasMorePosts) {
         const sentinel = document.createElement('div');
         sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
@@ -428,10 +430,6 @@ window.renderFeed = (resetLimit = true) => {
         }, { rootMargin: "300px" });
         window.feedObserver.observe(sentinel);
     } else if (displayPosts.length > 0) {
-        // Prevent multiple end messages from stacking if feed is not wiped
-        const existingMsg = feed.querySelector('.end-message-catchup');
-        if (existingMsg) existingMsg.remove();
-        
         const endMessage = document.createElement('div');
         endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold end-message-catchup';
         endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
@@ -606,6 +604,9 @@ window.renderProfileData = (resetLimit = true) => {
     const postsToRender = pPosts.slice(0, window.profileRenderLimit);
     window.renderPostList(pFeed, postsToRender, 'profile', 'profile');
 
+    // Clean up any existing loaders or catchup messages first
+    pFeed.querySelectorAll('.sentinel-loader, .end-message-catchup').forEach(el => el.remove());
+
     if (window.profileRenderLimit < pPosts.length || window.hasMorePosts) {
         const sentinel = document.createElement('div');
         sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
@@ -626,7 +627,7 @@ window.renderProfileData = (resetLimit = true) => {
         window.profileObserver.observe(sentinel);
     } else if (pPosts.length > 0) {
         const endMessage = document.createElement('div');
-        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold';
+        endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold end-message-catchup';
         endMessage.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> You caught up! No more posts.';
         pFeed.appendChild(endMessage);
     }

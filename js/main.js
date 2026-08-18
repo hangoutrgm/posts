@@ -83,7 +83,6 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
         window.postLimit = 15;
         window.hasMorePosts = true;
         window.listenPosts();
-        // Initial render will be handled by listenPosts onValue response
     });
 });
 
@@ -638,6 +637,28 @@ window.loadMorePosts = async () => {
 
 window.loadPinnedPosts();
 window.listenPosts();
+
+// Tab Visibility Management: Pause listener when tab is inactive/hidden for >30s to conserve Firestore reads
+let visibilityPauseTimer = null;
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (visibilityPauseTimer) clearTimeout(visibilityPauseTimer);
+        visibilityPauseTimer = setTimeout(() => {
+            if (document.hidden && window.postsUnsubscribe) {
+                window.postsUnsubscribe();
+                window.postsUnsubscribe = null;
+            }
+        }, 30000);
+    } else {
+        if (visibilityPauseTimer) {
+            clearTimeout(visibilityPauseTimer);
+            visibilityPauseTimer = null;
+        }
+        if (!window.postsUnsubscribe) {
+            window.listenPosts();
+        }
+    }
+});
 
 // ==========================================
 // ==========================================

@@ -980,22 +980,21 @@ window.endLastCommentGame = async (postId) => {
     if (!window.currentUser) return;
     
     try {
-        let snap = await getDoc(doc(fsdb, 'community_posts', postId));
-        let post = snap.data();
-        if (post.gameStatus !== 'active') return; 
+        const localPost = (window.allPosts || []).find(p => p.id === postId);
+        if (localPost && localPost.gameStatus !== 'active') return;
         
-        // Update gameStatus to ending to lock out others
+        // Update gameStatus to evaluating to lock out further entries
         await updateDoc(doc(fsdb, 'community_posts', postId), {
             gameStatus: 'evaluating',
             locked: true
         });
 
-        // Wait 2 seconds for any last-millisecond comments to arrive
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait 1.5 seconds for any last-millisecond comments to settle
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // One more check in case of race conditions
-        snap = await getDoc(doc(fsdb, 'community_posts', postId));
-        post = snap.data();
+        // Single read to evaluate the final winner
+        const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+        const post = snap.data();
         if (!post) return;
 
         let lastCommenterId = null;
