@@ -1,0 +1,216 @@
+{
+  "movies": [
+    {
+      "emojis": "🤡🐠🌊",
+      "answer": "Finding Nemo"
+    },
+    {
+      "emojis": "🦁👑🌅",
+      "answer": "The Lion King"
+    },
+    {
+      "emojis": "🚢❄️💔",
+      "answer": "Titanic"
+    },
+    {
+      "emojis": "🧙‍♂️💍🌋",
+      "answer": "The Lord of the Rings"
+    },
+    {
+      "emojis": "🕷️🧑🕸️",
+      "answer": "Spider-Man"
+    },
+    {
+      "emojis": "⚡👦🪄🚂",
+      "answer": "Harry Potter"
+    },
+    {
+      "emojis": "🦖🏝️🚙",
+      "answer": "Jurassic Park"
+    },
+    {
+      "emojis": "🍫🏭🎫",
+      "answer": "Charlie and the Chocolate Factory"
+    },
+    {
+      "emojis": "👻🚫🔫",
+      "answer": "Ghostbusters"
+    },
+    {
+      "emojis": "🏠🎈👴👦",
+      "answer": "Up"
+    },
+    {
+      "emojis": "🐀👨‍🍳🍲",
+      "answer": "Ratatouille"
+    },
+    {
+      "emojis": "🏎️💨😡",
+      "answer": "Fast and Furious"
+    },
+    {
+      "emojis": "🪓🚪😱",
+      "answer": "The Shining"
+    },
+    {
+      "emojis": "🤖🕶️🏍️",
+      "answer": "The Terminator"
+    },
+    {
+      "emojis": "🦇🦸‍♂️🌃",
+      "answer": "Batman"
+    },
+    {
+      "emojis": "👽🚲🌕",
+      "answer": "E.T."
+    },
+    {
+      "emojis": "🪞❄️👸⛄",
+      "answer": "Frozen"
+    },
+    {
+      "emojis": "🏴‍☠️🦜⚔️🪙",
+      "answer": "Pirates of the Caribbean"
+    },
+    {
+      "emojis": "👠🏰🕛🎃",
+      "answer": "Cinderella"
+    },
+    {
+      "emojis": "🐼🥋🥢🥟",
+      "answer": "Kung Fu Panda"
+    }
+  ],
+  "songs": [
+    {
+      "emojis": "👁️🐯🥊",
+      "answer": "Eye of the Tiger"
+    },
+    {
+      "emojis": "🌧️☔💃",
+      "answer": "Singing in the Rain"
+    },
+    {
+      "emojis": "💎🌌✨",
+      "answer": "Diamonds in the Sky"
+    },
+    {
+      "emojis": "👑🐝💃",
+      "answer": "Queen Bee"
+    },
+    {
+      "emojis": "🧊🧊👶",
+      "answer": "Ice Ice Baby"
+    },
+    {
+      "emojis": "💃🕺🪩🌙",
+      "answer": "Dancing Queen"
+    },
+    {
+      "emojis": "🌊🏖️☀️🍹",
+      "answer": "Cake by the Ocean"
+    },
+    {
+      "emojis": "🚀👨🌌",
+      "answer": "Rocket Man"
+    },
+    {
+      "emojis": "🔥🌧️❤️",
+      "answer": "Set Fire to the Rain"
+    },
+    {
+      "emojis": "🚗🛣️🏎️💨",
+      "answer": "Life is a Highway"
+    },
+    {
+      "emojis": "🎸⭐🎵",
+      "answer": "Rockstar"
+    },
+    {
+      "emojis": "💔🏨🛎️",
+      "answer": "Heartbreak Hotel"
+    },
+    {
+      "emojis": "🌊🐎🤠",
+      "answer": "Old Town Road"
+    },
+    {
+      "emojis": "🎂🍫🍬🍭",
+      "answer": "Sugar"
+    },
+    {
+      "emojis": "🌧️🌧️☔",
+      "answer": "Umbrella"
+    },
+    {
+      "emojis": "👑🦁🎶",
+      "answer": "Roar"
+    }
+  ],
+  "idioms": [
+    {
+      "emojis": "🌧️🐱🐶",
+      "answer": "Raining Cats and Dogs"
+    },
+    {
+      "emojis": "🫘🥫🗣️",
+      "answer": "Spill the Beans"
+    },
+    {
+      "emojis": "🍰✨👌",
+      "answer": "Piece of Cake"
+    },
+    {
+      "emojis": "🪓🧊🤝",
+      "answer": "Break the Ice"
+    },
+    {
+      "emojis": "🐱👜🙊",
+      "answer": "Let the Cat out of the Bag"
+    },
+    {
+      "emojis": "⏰✈️💨",
+      "answer": "Time Flies"
+    },
+    {
+      "emojis": "🦷👄🤐",
+      "answer": "Bite Your Tongue"
+    },
+    {
+      "emojis": "🍎👁️❤️",
+      "answer": "Apple of My Eye"
+    },
+    {
+      "emojis": "🥚🧺⚠️",
+      "answer": "Don't Put All Your Eggs in One Basket"
+    },
+    {
+      "emojis": "🦵🍗🤣",
+      "answer": "Pulling My Leg"
+    },
+    {
+      "emojis": "🐷🪽☁️",
+      "answer": "When Pigs Fly"
+    },
+    {
+      "emojis": "❄️⚽🏔️",
+      "answer": "Snowball Effect"
+    },
+    {
+      "emojis": "🪙🪙💭",
+      "answer": "A Penny for Your Thoughts"
+    },
+    {
+      "emojis": "👂🌽👂",
+      "answer": "All Ears"
+    },
+    {
+      "emojis": "🔥🧊🏃‍♂️",
+      "answer": "Cold Feet"
+    },
+    {
+      "emojis": "🕊️🪨🪨",
+      "answer": "Kill Two Birds with One Stone"
+    }
+  ]
+}

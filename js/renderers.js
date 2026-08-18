@@ -1695,6 +1695,54 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
+        } else if (post.gameType === 'emoji_riddle') {
+            const cat = post.emojiRiddleCategory || 'movies';
+            const catInfo = {
+                movies: { name: 'Movie', icon: '🎬', gradient: 'from-purple-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800', border: 'border-purple-200 dark:border-purple-900/50', text: 'text-purple-900 dark:text-purple-200', btn: 'bg-purple-600 hover:bg-purple-500', timerText: 'text-purple-600 dark:text-purple-400' },
+                songs: { name: 'Song', icon: '🎵', gradient: 'from-pink-50 to-rose-50 dark:from-slate-800 dark:to-slate-800', border: 'border-pink-200 dark:border-pink-900/50', text: 'text-pink-900 dark:text-pink-200', btn: 'bg-pink-600 hover:bg-pink-500', timerText: 'text-pink-600 dark:text-pink-400' },
+                idioms: { name: 'Idiom', icon: '💬', gradient: 'from-teal-50 to-emerald-50 dark:from-slate-800 dark:to-slate-800', border: 'border-teal-200 dark:border-teal-900/50', text: 'text-teal-900 dark:text-teal-200', btn: 'bg-teal-600 hover:bg-teal-500', timerText: 'text-teal-600 dark:text-teal-400' },
+                custom: { name: 'Riddle', icon: '✨', gradient: 'from-indigo-50 to-sky-50 dark:from-slate-800 dark:to-slate-800', border: 'border-indigo-200 dark:border-indigo-900/50', text: 'text-indigo-900 dark:text-indigo-200', btn: 'bg-indigo-600 hover:bg-indigo-500', timerText: 'text-indigo-600 dark:text-indigo-400' }
+            }[cat] || { name: 'Riddle', icon: '✨', gradient: 'from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-800', border: 'border-indigo-200 dark:border-indigo-900/50', text: 'text-indigo-900 dark:text-indigo-200', btn: 'bg-indigo-600 hover:bg-indigo-500', timerText: 'text-indigo-600 dark:text-indigo-400' };
+
+            if (post.gameStatus === 'active') {
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-xl font-black ${catInfo.timerText} mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+                const isAuthor = window.currentUser && window.currentUser.uid === post.authorId;
+                const answerBtn = isAuthor
+                    ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — Answer: <span class="font-bold ${catInfo.text}">${post.emojiRiddleAnswer || ''}</span></div>`
+                    : `<button onclick="window.openAnswerModal('${post.id}', 'Guess the ${catInfo.name}', 'Enter the ${catInfo.name} title...')" class="mt-3 ${catInfo.btn} text-white font-bold py-2 px-5 rounded-xl shadow transition text-xs flex items-center gap-1.5">${catInfo.icon} Guess ${catInfo.name}</button>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gradient-to-br ${catInfo.gradient} rounded-2xl border-2 ${catInfo.border} flex flex-col items-center text-center">
+                        ${prizeStr}
+                        <h4 class="font-black ${catInfo.text} text-base mb-1">${catInfo.icon} Guess the ${catInfo.name}!</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">What ${catInfo.name.toLowerCase()} is described by these emojis?</p>
+                        <div class="w-full max-w-sm bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl p-4 shadow-inner my-1 flex items-center justify-center">
+                            <span class="text-4xl md:text-5xl tracking-widest select-all leading-relaxed">${post.emojiRiddleEmojis || ''}</span>
+                        </div>
+                        ${timerHtml}
+                        ${answerBtn}
+                    </div>`;
+            } else {
+                const winnerName = post.gameWinner && post.gameWinner !== 'none'
+                    ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
+                    : 'No one';
+                const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
+                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} solved the riddle!</div>`
+                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No one solved it.</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">${catInfo.icon} Emoji Riddle Ended</h4>
+                        <div class="text-2xl tracking-widest my-1 select-all">${post.emojiRiddleEmojis || ''}</div>
+                        <div class="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 font-bold px-4 py-2 rounded-xl text-sm my-1">
+                            ${catInfo.name}: <span class="font-black">${post.emojiRiddleAnswer || ''}</span>
+                        </div>
+                        ${outcomeHtml}
+                    </div>`;
+            }
         }
     }
 

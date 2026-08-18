@@ -24,6 +24,145 @@ window.logHostedGame = (hostUid, postId, title, prize, winnerUid, winnerName) =>
     });
 };
 
+// ============================================================
+// EMOJI RIDDLE PRESETS DATASET & HELPERS
+// ============================================================
+const DEFAULT_EMOJI_RIDDLES = {
+    movies: [
+        { emojis: '🤡🐠🌊', answer: 'Finding Nemo' },
+        { emojis: '🦁👑🌅', answer: 'The Lion King' },
+        { emojis: '🚢❄️💔', answer: 'Titanic' },
+        { emojis: '🧙‍♂️💍🌋', answer: 'The Lord of the Rings' },
+        { emojis: '🕷️🧑🕸️', answer: 'Spider-Man' },
+        { emojis: '⚡👦🪄🚂', answer: 'Harry Potter' },
+        { emojis: '🦖🏝️🚙', answer: 'Jurassic Park' },
+        { emojis: '🍫🏭🎫', answer: 'Charlie and the Chocolate Factory' },
+        { emojis: '👻🚫🔫', answer: 'Ghostbusters' },
+        { emojis: '🏠🎈👴👦', answer: 'Up' },
+        { emojis: '🐀👨‍🍳🍲', answer: 'Ratatouille' },
+        { emojis: '🏎️💨😡', answer: 'Fast and Furious' },
+        { emojis: '🪓🚪😱', answer: 'The Shining' },
+        { emojis: '🤖🕶️🏍️', answer: 'The Terminator' },
+        { emojis: '🦇🦸‍♂️🌃', answer: 'Batman' },
+        { emojis: '👽🚲🌕', answer: 'E.T.' },
+        { emojis: '🪞❄️👸⛄', answer: 'Frozen' },
+        { emojis: '🏴‍☠️🦜⚔️🪙', answer: 'Pirates of the Caribbean' },
+        { emojis: '👠🏰🕛🎃', answer: 'Cinderella' },
+        { emojis: '🐼🥋🥢🥟', answer: 'Kung Fu Panda' }
+    ],
+    songs: [
+        { emojis: '👁️🐯🥊', answer: 'Eye of the Tiger' },
+        { emojis: '🌧️☔💃', answer: 'Singing in the Rain' },
+        { emojis: '💎🌌✨', answer: 'Diamonds in the Sky' },
+        { emojis: '👑🐝💃', answer: 'Queen Bee' },
+        { emojis: '🧊🧊👶', answer: 'Ice Ice Baby' },
+        { emojis: '💃🕺🪩🌙', answer: 'Dancing Queen' },
+        { emojis: '🌊🏖️☀️🍹', answer: 'Cake by the Ocean' },
+        { emojis: '🚀👨🌌', answer: 'Rocket Man' },
+        { emojis: '🔥🌧️❤️', answer: 'Set Fire to the Rain' },
+        { emojis: '🚗🛣️🏎️💨', answer: 'Life is a Highway' },
+        { emojis: '🎸⭐🎵', answer: 'Rockstar' },
+        { emojis: '💔🏨🛎️', answer: 'Heartbreak Hotel' },
+        { emojis: '🌊🐎🤠', answer: 'Old Town Road' },
+        { emojis: '🎂🍫🍬🍭', answer: 'Sugar' },
+        { emojis: '🌧️🌧️☔', answer: 'Umbrella' },
+        { emojis: '👑🦁🎶', answer: 'Roar' }
+    ],
+    idioms: [
+        { emojis: '🌧️🐱🐶', answer: 'Raining Cats and Dogs' },
+        { emojis: '🫘🥫🗣️', answer: 'Spill the Beans' },
+        { emojis: '🍰✨👌', answer: 'Piece of Cake' },
+        { emojis: '🪓🧊🤝', answer: 'Break the Ice' },
+        { emojis: '🐱👜🙊', answer: 'Let the Cat out of the Bag' },
+        { emojis: '⏰✈️💨', answer: 'Time Flies' },
+        { emojis: '🦷👄🤐', answer: 'Bite Your Tongue' },
+        { emojis: '🍎👁️❤️', answer: 'Apple of My Eye' },
+        { emojis: '🥚🧺⚠️', answer: "Don't Put All Your Eggs in One Basket" },
+        { emojis: '🦵🍗🤣', answer: 'Pulling My Leg' },
+        { emojis: '🐷🪽☁️', answer: 'When Pigs Fly' },
+        { emojis: '❄️⚽🏔️', answer: 'Snowball Effect' },
+        { emojis: '🪙🪙💭', answer: 'A Penny for Your Thoughts' },
+        { emojis: '👂🌽👂', answer: 'All Ears' },
+        { emojis: '🔥🧊🏃‍♂️', answer: 'Cold Feet' },
+        { emojis: '🕊️🪨🪨', answer: 'Kill Two Birds with One Stone' }
+    ]
+};
+
+window.emojiRiddlesData = { ...DEFAULT_EMOJI_RIDDLES };
+
+// Attempt to fetch custom or expanded JSON file if available
+(async function loadEmojiRiddlesJSON() {
+    try {
+        const res = await fetch('config/emoji_riddles.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (parsed && typeof parsed === 'object') {
+                window.emojiRiddlesData = parsed;
+                if (typeof window.updateEmojiRiddlePresetsUI === 'function') {
+                    window.updateEmojiRiddlePresetsUI();
+                }
+            }
+        }
+    } catch(e) {
+        console.debug('Using bundled emoji riddles presets');
+    }
+})();
+
+window.updateEmojiRiddlePresetsUI = () => {
+    const catSelect = document.getElementById('game-emoji-riddle-category');
+    const presetBox = document.getElementById('game-emoji-riddle-preset-box');
+    const presetSelect = document.getElementById('game-emoji-riddle-preset-select');
+    if (!catSelect || !presetSelect) return;
+
+    const category = catSelect.value;
+    if (category === 'custom') {
+        if (presetBox) presetBox.classList.add('hidden');
+        return;
+    }
+
+    if (presetBox) presetBox.classList.remove('hidden');
+    const items = window.emojiRiddlesData?.[category] || [];
+    
+    presetSelect.innerHTML = `<option value="">-- Pick a Preset or Type Custom Below (${items.length} available) --</option>`;
+    items.forEach((item, index) => {
+        presetSelect.innerHTML += `<option value="${index}">${item.emojis} — ${item.answer}</option>`;
+    });
+};
+
+window.onEmojiRiddlePresetSelected = (indexStr) => {
+    if (indexStr === '') return;
+    const idx = parseInt(indexStr, 10);
+    const catSelect = document.getElementById('game-emoji-riddle-category');
+    if (!catSelect) return;
+    const category = catSelect.value;
+    const items = window.emojiRiddlesData?.[category] || [];
+    const chosen = items[idx];
+    if (!chosen) return;
+
+    const emojiInput = document.getElementById('game-emoji-riddle-emojis');
+    const ansInput = document.getElementById('game-emoji-riddle-answer');
+    if (emojiInput) emojiInput.value = chosen.emojis;
+    if (ansInput) ansInput.value = chosen.answer;
+};
+
+window.pickRandomEmojiRiddlePreset = () => {
+    const catSelect = document.getElementById('game-emoji-riddle-category');
+    if (!catSelect) return;
+    let category = catSelect.value;
+    if (category === 'custom') {
+        catSelect.value = 'movies';
+        category = 'movies';
+        window.updateEmojiRiddlePresetsUI();
+    }
+    const items = window.emojiRiddlesData?.[category] || [];
+    if (!items || items.length === 0) return;
+
+    const randomIdx = Math.floor(Math.random() * items.length);
+    const presetSelect = document.getElementById('game-emoji-riddle-preset-select');
+    if (presetSelect) presetSelect.value = String(randomIdx);
+    window.onEmojiRiddlePresetSelected(String(randomIdx));
+};
+
 window.gameTypeLabel = (type) => {
     const labels = {
         'math': 'Math Challenge',
@@ -40,6 +179,7 @@ window.gameTypeLabel = (type) => {
         'tictactoe': 'Tic Tac Toe',
         'hangman': 'Hangman',
         'gibberish': 'Guess the Gibberish',
+        'emoji_riddle': 'Emoji Riddle',
         'bingo': 'Bingo',
         'spin_names': 'Spin the Names',
         'ncl': 'NCL Reward'
@@ -179,6 +319,15 @@ window.openPostGameModal = () => {
     if (gibberishClue) gibberishClue.value = '';
     const gibberishAns = document.getElementById('game-gibberish-answer');
     if (gibberishAns) gibberishAns.value = '';
+    const riddleCat = document.getElementById('game-emoji-riddle-category');
+    if (riddleCat) riddleCat.value = 'movies';
+    const riddleEmojis = document.getElementById('game-emoji-riddle-emojis');
+    if (riddleEmojis) riddleEmojis.value = '';
+    const riddleAns = document.getElementById('game-emoji-riddle-answer');
+    if (riddleAns) riddleAns.value = '';
+    if (typeof window.updateEmojiRiddlePresetsUI === 'function') {
+        window.updateEmojiRiddlePresetsUI();
+    }
     document.getElementById('game-type').value = 'first_to_mine';
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
@@ -267,9 +416,10 @@ window.toggleGameSettings = () => {
     const tictactoeContainer = document.getElementById('game-tictactoe-container');
     const hangmanContainer = document.getElementById('game-hangman-container');
     const gibberishContainer = document.getElementById('game-gibberish-container');
+    const emojiRiddleContainer = document.getElementById('game-emoji-riddle-container');
     
-    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, spin_names, count_dots, hangman, gibberish
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish'].includes(type)) {
+    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, spin_names, count_dots, hangman, gibberish, emoji_riddle
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
@@ -322,6 +472,15 @@ window.toggleGameSettings = () => {
         if (gibberishContainer) gibberishContainer.classList.remove('hidden');
     } else {
         if (gibberishContainer) gibberishContainer.classList.add('hidden');
+    }
+
+    if (type === 'emoji_riddle') {
+        if (emojiRiddleContainer) emojiRiddleContainer.classList.remove('hidden');
+        if (typeof window.updateEmojiRiddlePresetsUI === 'function') {
+            window.updateEmojiRiddlePresetsUI();
+        }
+    } else {
+        if (emojiRiddleContainer) emojiRiddleContainer.classList.add('hidden');
     }
 
     // Hide LB Points field for NCL (disabled for now)
@@ -450,6 +609,9 @@ window.submitGame = async () => {
     let tictactoeGridSize = 3;
     let gibberishClue = null;
     let gibberishAnswer = null;
+    let emojiRiddleCategory = 'movies';
+    let emojiRiddleEmojis = null;
+    let emojiRiddleAnswer = null;
 
     if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || (type === 'tictactoe' && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
@@ -513,6 +675,13 @@ window.submitGame = async () => {
         gibberishClue = document.getElementById('game-gibberish-clue')?.value.trim();
         gibberishAnswer = document.getElementById('game-gibberish-answer')?.value.trim();
         if (!gibberishClue || !gibberishAnswer) return window.showAlert("Please provide both the Gibberish clue and the Real Answer phrase.");
+    }
+
+    if (type === 'emoji_riddle') {
+        emojiRiddleCategory = document.getElementById('game-emoji-riddle-category')?.value || 'movies';
+        emojiRiddleEmojis = document.getElementById('game-emoji-riddle-emojis')?.value.trim();
+        emojiRiddleAnswer = document.getElementById('game-emoji-riddle-answer')?.value.trim();
+        if (!emojiRiddleEmojis || !emojiRiddleAnswer) return window.showAlert("Please provide both the emojis and the answer for the riddle.");
     }
 
     if (type === 'guess_emoji' || type === 'bring_me_emoji') {
@@ -592,7 +761,7 @@ window.submitGame = async () => {
         }
     }
 
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish'].includes(type)) {
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle'].includes(type)) {
         const timerMode = document.querySelector('input[name="game-timer"]:checked').value;
         if (timerMode === 'auto') {
             const secs = parseInt(document.getElementById('game-duration').value);
@@ -620,6 +789,11 @@ window.submitGame = async () => {
     else if (type === 'jumbled_words') text = `Unscramble this word: ${jumbledScrambled}`;
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
     else if (type === 'gibberish') text = `🗣️ Guess the Gibberish! Say it out loud: "${gibberishClue}"`;
+    else if (type === 'emoji_riddle') {
+        const catLabel = emojiRiddleCategory === 'movies' ? 'Movie' : emojiRiddleCategory === 'songs' ? 'Song' : emojiRiddleCategory === 'idioms' ? 'Idiom' : 'Emoji Riddle';
+        const icon = emojiRiddleCategory === 'movies' ? '🎬' : emojiRiddleCategory === 'songs' ? '🎵' : emojiRiddleCategory === 'idioms' ? '💬' : '✨';
+        text = `${icon} Guess the ${catLabel} from these emojis: ${emojiRiddleEmojis}`;
+    }
     else if (type === 'count_dots') text = `🔢 Count the Dots! How many dots (●) can you find? First correct guess wins!`;
     else if (type === 'tictactoe') text = targetUserName ? `⚔️ Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) match challenge against @${targetUserName}!` : `⚔️ Open Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) Challenge! First person to accept plays against @${window.currentUser.name}!`;
     else if (type === 'hangman') text = `🪓 Hangman Game! Guess letters or guess the secret word before you get eliminated!`;
@@ -663,6 +837,11 @@ window.submitGame = async () => {
     if (type === 'gibberish') {
         postData.gameGibberishClue = gibberishClue;
         postData.gameGibberishAnswer = gibberishAnswer;
+    }
+    if (type === 'emoji_riddle') {
+        postData.emojiRiddleCategory = emojiRiddleCategory;
+        postData.emojiRiddleEmojis = emojiRiddleEmojis;
+        postData.emojiRiddleAnswer = emojiRiddleAnswer;
     }
     if (type === 'count_dots') {
         postData.gameDotsCount = dotsCount;
@@ -1015,6 +1194,9 @@ window.answerGame = async (postId, answer) => {
         } else if (post.gameType === 'gibberish') {
             const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             isCorrect = clean(answer) === clean(post.gameGibberishAnswer);
+        } else if (post.gameType === 'emoji_riddle') {
+            const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            isCorrect = clean(answer) === clean(post.emojiRiddleAnswer);
         } else if (post.gameType === 'count_dots') {
             isCorrect = parseInt(answer.trim(), 10) === Number(post.gameDotsCount);
         }

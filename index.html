@@ -339,6 +339,7 @@
                     <option value="tictactoe">Tic Tac Toe</option>
                     <option value="hangman">Hangman</option>
                     <option value="gibberish">Gibberish</option>
+                    <option value="emoji_riddle">Emoji Riddle (Movie/Song/Idiom)</option>
                     <option value="guess_emoji">Guess the emoji</option>
                     <option value="bring_me_emoji">Bring me emoji</option>
                     <option value="flags">Flags</option>
@@ -574,6 +575,36 @@
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Real Answer Phrase</label>
                     <input type="text" id="game-gibberish-answer" placeholder="e.g. You cannot pass" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-1 font-medium">
                     <p class="text-[10px] text-gray-500 dark:text-gray-400">Players must pronounce the gibberish out loud to guess what actual phrase it sounds like.</p>
+                </div>
+
+                <div id="game-emoji-riddle-container" class="hidden mb-3 border border-indigo-200 dark:border-indigo-900/50 rounded-lg p-3 bg-indigo-50 dark:bg-indigo-900/20">
+                    <p class="text-xs font-bold text-indigo-700 dark:text-indigo-300 mb-2">🎬🎵💬 Emoji Riddle (Movie / Song / Idiom)</p>
+                    
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Riddle Category</label>
+                    <select id="game-emoji-riddle-category" onchange="window.updateEmojiRiddlePresetsUI()" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
+                        <option value="movies" selected>🎬 Movie Title</option>
+                        <option value="songs">🎵 Song Title</option>
+                        <option value="idioms">💬 Idiomatic Expression</option>
+                        <option value="custom">✨ Custom Category</option>
+                    </select>
+
+                    <div id="game-emoji-riddle-preset-box" class="mb-2">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300">Pick a Preset</label>
+                            <button type="button" onclick="window.pickRandomEmojiRiddlePreset()" class="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded font-bold transition shadow-sm"><i class="fa-solid fa-dice mr-1"></i>Random Preset</button>
+                        </div>
+                        <select id="game-emoji-riddle-preset-select" onchange="window.onEmojiRiddlePresetSelected(this.value)" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-xs dark:text-white outline-none">
+                            <option value="">-- Select from presets or type below --</option>
+                        </select>
+                    </div>
+
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Emojis</label>
+                    <input type="text" id="game-emoji-riddle-emojis" placeholder="e.g. 🤡🐠🌊" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-base text-center dark:text-white outline-none mb-2 font-mono">
+
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Answer</label>
+                    <input type="text" id="game-emoji-riddle-answer" placeholder="e.g. Finding Nemo" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-1 font-medium">
+                    
+                    <p class="text-[10px] text-gray-500 dark:text-gray-400">Players guess the movie, song, or idiom represented by the emojis.</p>
                 </div>
 
                 <button id="post-game-btn" onclick="window.submitGame()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg shadow-sm transition mt-2">Post Game</button>
