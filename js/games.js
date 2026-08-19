@@ -370,6 +370,13 @@ window.openPostGameModal = () => {
     document.getElementById('game-lb-points').max = maxLb;
     document.getElementById('game-lb-points-label').innerText = `🏆 LB Points (Max ${maxLb})`;
 
+    for (let i = 1; i <= 3; i++) {
+        const lbInp = document.getElementById(`spin-lb-${i}`);
+        if (lbInp) lbInp.max = maxLb;
+        const lbLbl = document.getElementById(`spin-lb-label-${i}`);
+        if (lbLbl) lbLbl.innerText = `🏆 LB (Max ${maxLb})`;
+    }
+
     const prizeLabel = document.getElementById('game-prize-label');
     if(prizeLabel) prizeLabel.innerText = `🎁 Prize (PHP)`;
 
@@ -821,6 +828,9 @@ window.submitGame = async () => {
 
             if (!spinTarget || spinTarget < 1) return window.showAlert(`Please fill out a valid Spin # for Winner ${i}.`);
             if (prizeVal <= 0 && lbVal <= 0) return window.showAlert(`Please enter at least a Prize (PHP) or LB Points for Winner ${i}.`);
+            if (lbVal < 0 || lbVal > maxLbAllowed) {
+                return window.showAlert(`Winner ${i} LB Points reward must be between 0 and ${maxLbAllowed}.`);
+            }
 
             const prizeParts = [];
             if (prizeVal > 0) prizeParts.push(`PHP ${prizeVal}`);

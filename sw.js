@@ -1,14 +1,14 @@
-const CACHE_NAME = 'hangout-v11';
+const CACHE_NAME = 'hangout-v12';
 
 // All local assets to pre-cache on install
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/chat/index.html',
-  '/js/renderers.js?v=11',
-  '/js/helpers.js?v=11',
-  '/js/games.js?v=11',
-  '/js/main.js?v=11',
+  '/js/renderers.js?v=12',
+  '/js/helpers.js?v=12',
+  '/js/games.js?v=12',
+  '/js/main.js?v=12',
   '/chat/js/app.js?v=2',
 ];
 
