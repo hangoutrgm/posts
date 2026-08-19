@@ -207,58 +207,31 @@ window.gameTypeLabel = (type) => {
     return labels[type] || type;
 };
 
-const POPULAR_EMOJIS = [
-    "😀 Grinning Face", "😂 Face with Tears of Joy", "🤣 Rolling on the Floor Laughing", 
-    "😍 Smiling Face with Heart-Eyes", "🥰 Smiling Face with Hearts", "😎 Smiling Face with Sunglasses",
-    "🤔 Thinking Face", "🙄 Face with Rolling Eyes", "😴 Sleeping Face", "🤮 Face Vomiting",
-    "🤡 Clown Face", "👻 Ghost", "👽 Alien", "🤖 Robot", "💩 Pile of Poo",
-    "🔥 Fire", "✨ Sparkles", "🌟 Glowing Star", "💯 Hundred Points", "❤️ Red Heart",
-    "🍎 Red Apple", "🍔 Hamburger", "🍕 Pizza", "🍺 Beer Mug", "🚗 Automobile",
-    "⚽ Soccer Ball", "🏀 Basketball", "🎮 Video Game", "📱 Mobile Phone", "💻 Laptop",
-    "🥺 Pleading Face", "😭 Loudly Crying Face", "😜 Winking Face with Tongue", "😇 Smiling Face with Halo",
-    "🤬 Face with Symbols on Mouth", "🤯 Exploding Head", "🥶 Cold Face", "🥵 Hot Face",
-    "😈 Smiling Face with Horns", "💀 Skull", "👺 Goblin", "👹 Ogre", "👾 Alien Monster",
-    "🎃 Jack-O-Lantern", "🐱 Cat Face", "🐶 Dog Face", "🦊 Fox", "🦄 Unicorn",
-    "🦋 Butterfly", "🦖 T-Rex", "🐙 Octopus", "🍉 Watermelon", "🍓 Strawberry",
-    "🥑 Avocado", "🍩 Doughnut", "🍟 French Fries", "🌮 Taco", "🍣 Sushi",
-    "🍦 Ice Cream", "☕ Hot Beverage", "🍷 Wine Glass", "🚀 Rocket", "✈️ Airplane",
-    "🚁 Helicopter", "🚢 Ship", "🎡 Ferris Wheel", "⛺ Tent", "⛰️ Mountain",
-    "🏖️ Beach with Umbrella", "🗺️ World Map", "⌚ Watch", "💎 Gem Stone", "💡 Light Bulb",
-    "📚 Books", "🎉 Party Popper", "🎈 Balloon", "🎁 Wrapped Gift", "🧸 Teddy Bear",
-    "🎵 Musical Note", "🎸 Guitar", "📸 Camera", "🎬 Clapper Board", "🎨 Palette",
-    "🏆 Trophy", "🥇 1st Place Medal", "🎲 Game Die", "🧩 Puzzle Piece", "🥊 Martial Arts Uniform",
-    "✅ Check Mark Button", "❌ Cross Mark", "⚠️ Warning", "🛑 Stop Sign", "⏳ Hourglass"
-];
+// ============================================================
+// FLAGS & EMOJIS DATA — loaded from config JSON files
+// ============================================================
+window.flagsData = [];
+window.emojisData = [];
 
-const POPULAR_FLAGS = [
-    { code: 'us', name: 'United States' }, { code: 'gb', name: 'United Kingdom' }, { code: 'ca', name: 'Canada' },
-    { code: 'au', name: 'Australia' }, { code: 'jp', name: 'Japan' }, { code: 'de', name: 'Germany' },
-    { code: 'fr', name: 'France' }, { code: 'it', name: 'Italy' }, { code: 'es', name: 'Spain' },
-    { code: 'br', name: 'Brazil' }, { code: 'mx', name: 'Mexico' }, { code: 'in', name: 'India' },
-    { code: 'cn', name: 'China' }, { code: 'kr', name: 'South Korea' }, { code: 'ru', name: 'Russia' },
-    { code: 'ph', name: 'Philippines' }, { code: 'sg', name: 'Singapore' }, { code: 'my', name: 'Malaysia' },
-    { code: 'id', name: 'Indonesia' }, { code: 'th', name: 'Thailand' }, { code: 'vn', name: 'Vietnam' },
-    { code: 'ar', name: 'Argentina' }, { code: 'za', name: 'South Africa' }, { code: 'ng', name: 'Nigeria' },
-    { code: 'eg', name: 'Egypt' }, { code: 'ke', name: 'Kenya' }, { code: 'nz', name: 'New Zealand' },
-    { code: 'nl', name: 'Netherlands' }, { code: 'se', name: 'Sweden' }, { code: 'no', name: 'Norway' },
-    { code: 'dk', name: 'Denmark' }, { code: 'fi', name: 'Finland' }, { code: 'ch', name: 'Switzerland' },
-    { code: 'at', name: 'Austria' }, { code: 'be', name: 'Belgium' }, { code: 'pt', name: 'Portugal' },
-    { code: 'gr', name: 'Greece' }, { code: 'tr', name: 'Turkey' }, { code: 'sa', name: 'Saudi Arabia' },
-    { code: 'ae', name: 'United Arab Emirates' }, { code: 'il', name: 'Israel' }, { code: 'pl', name: 'Poland' },
-    { code: 'ua', name: 'Ukraine' }, { code: 'ie', name: 'Ireland' }, { code: 'cz', name: 'Czechia' },
-    { code: 'hu', name: 'Hungary' }, { code: 'ro', name: 'Romania' }, { code: 'cl', name: 'Chile' },
-    { code: 'co', name: 'Colombia' }, { code: 'pe', name: 'Peru' }, { code: 've', name: 'Venezuela' },
-    { code: 'pk', name: 'Pakistan' }, { code: 'bd', name: 'Bangladesh' }, { code: 'lk', name: 'Sri Lanka' },
-    { code: 'np', name: 'Nepal' }, { code: 'mm', name: 'Myanmar' }, { code: 'kh', name: 'Cambodia' },
-    { code: 'tw', name: 'Taiwan' }, { code: 'hk', name: 'Hong Kong' }, { code: 'ma', name: 'Morocco' },
-    { code: 'dz', name: 'Algeria' }, { code: 'gh', name: 'Ghana' }, { code: 'tz', name: 'Tanzania' },
-    { code: 'et', name: 'Ethiopia' }, { code: 'ug', name: 'Uganda' }, { code: 'iq', name: 'Iraq' },
-    { code: 'ir', name: 'Iran' }, { code: 'sy', name: 'Syria' }, { code: 'lb', name: 'Lebanon' },
-    { code: 'jo', name: 'Jordan' }, { code: 'kw', name: 'Kuwait' }, { code: 'qa', name: 'Qatar' },
-    { code: 'cu', name: 'Cuba' }, { code: 'jm', name: 'Jamaica' }, { code: 'do', name: 'Dominican Republic' },
-    { code: 'ht', name: 'Haiti' }, { code: 'pa', name: 'Panama' }, { code: 'cr', name: 'Costa Rica' },
-    { code: 'gt', name: 'Guatemala' }, { code: 'hn', name: 'Honduras' }, { code: 'sv', name: 'El Salvador' }
-];
+(async function loadFlagsJSON() {
+    try {
+        const res = await fetch('config/flags.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (Array.isArray(parsed) && parsed.length > 0) window.flagsData = parsed;
+        }
+    } catch(e) { console.debug('Could not load config/flags.json'); }
+})();
+
+(async function loadEmojisJSON() {
+    try {
+        const res = await fetch('config/emojis.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (Array.isArray(parsed) && parsed.length > 0) window.emojisData = parsed;
+        }
+    } catch(e) { console.debug('Could not load config/emojis.json'); }
+})();
 
 window.generateRandomMath = () => {
     const isAlgebra = Math.random() > 0.5;
@@ -394,11 +367,11 @@ window.openPostGameModal = () => {
 
     // Populate Emoji Datalist
     const emojiDatalist = document.getElementById('game-emoji-datalist');
-    emojiDatalist.innerHTML = POPULAR_EMOJIS.map(e => `<option value="${e}"></option>`).join('');
+    emojiDatalist.innerHTML = window.emojisData.map(e => `<option value="${e}"></option>`).join('');
 
     // Populate Flag Datalist
     const flagDatalist = document.getElementById('game-flag-datalist');
-    flagDatalist.innerHTML = POPULAR_FLAGS.map(f => `<option value="${f.name}" label="[${f.code.toUpperCase()}] ${f.name}"></option>`).join('');
+    flagDatalist.innerHTML = window.flagsData.map(f => `<option value="${f.name}" label="[${f.code.toUpperCase()}] ${f.name}"></option>`).join('');
 
     window.toggleGameSettings();
 };
@@ -768,7 +741,7 @@ window.submitGame = async () => {
         if (!flagInput) return window.showAlert("Please enter a Flag Name.");
         flagName = flagInput;
         // Try to match against the popular flags list to get the country code
-        const matched = POPULAR_FLAGS.find(f => f.name.toLowerCase() === flagInput.toLowerCase());
+        const matched = window.flagsData.find(f => f.name.toLowerCase() === flagInput.toLowerCase());
         if (matched) {
             flagCode = matched.code;
             flagName = matched.name;

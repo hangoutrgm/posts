@@ -332,7 +332,7 @@
                 <h2 class="font-bold text-sm"><i class="fa-solid fa-gamepad mr-2"></i>Post a Game</h2>
                 <button onclick="window.closePostGameModal()" class="hover:text-purple-200"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="p-4">
+            <div class="p-4 overflow-y-auto max-h-[75vh]">
                 <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Game Type</label>
                 <select id="game-type" onchange="window.toggleGameSettings()" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
                     <option value="first_to_mine">First to Mine</option>
@@ -713,10 +713,10 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=12"></script>
-    <script type="module" src="js/helpers.js?v=12"></script>
-    <script type="module" src="js/games.js?v=12"></script>
-    <script type="module" src="js/main.js?v=12"></script>
+    <script type="module" src="js/renderers.js?v=13"></script>
+    <script type="module" src="js/helpers.js?v=13"></script>
+    <script type="module" src="js/games.js?v=13"></script>
+    <script type="module" src="js/main.js?v=13"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
