@@ -1858,6 +1858,151 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
+        } else if (post.gameType === 'drop_four') {
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            const count = Number(post.dropFourPlayerCount) || 2;
+            const playerR = post.dropFourPlayerR;
+            const playerY = post.dropFourPlayerY;
+            const playerB = post.dropFourPlayerB;
+            const nameR = (playerR ? (window.globalUsersCache[playerR]?.name || 'Host') : 'Host');
+            const nameY = (playerY ? (window.globalUsersCache[playerY]?.name || 'Challenger 1') : (post.dropFourTargetUser ? (window.globalUsersCache[post.dropFourTargetUser]?.name || 'Challenger 1') : 'Waiting...'));
+            const nameB = (playerB ? (window.globalUsersCache[playerB]?.name || 'Challenger 2') : 'Waiting...');
+            const isTargeted = Boolean(post.dropFourTargetUser);
+            const myUid = window.currentUser ? window.currentUser.uid : null;
+            const isAlreadyIn = myUid && (myUid === playerR || myUid === playerY || myUid === playerB);
+            const isEligibleChallenger = myUid && !isAlreadyIn && (!isTargeted || post.dropFourTargetUser === myUid || (count === 3 && playerY && !playerB));
+
+            const board = post.dropFourBoard || Array(42).fill('');
+            const turn = post.dropFourTurn || 'R';
+            const isMyTurn = myUid && (
+                (turn === 'R' && myUid === playerR) ||
+                (turn === 'Y' && myUid === playerY) ||
+                (turn === 'B' && myUid === playerB)
+            );
+
+            if (post.gameStatus === 'active') {
+                if (post.dropFourStatus === 'waiting') {
+                    const acceptBtn = isEligibleChallenger ? `
+                        <button onclick="window.acceptDropFourChallenge('${post.id}')" class="mt-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-2.5 px-8 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse text-sm">
+                            <i class="fa-solid fa-circle-arrow-down mr-2"></i>Accept Challenge & Join Drop!
+                        </button>` : (isHost ? `<div class="mt-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full">Waiting for challenger(s) to accept...</div>` : `<div class="mt-2 text-xs text-gray-400">Waiting for players to join...</div>`);
+
+                    const playersBadges = count === 3 ? `
+                        <div class="flex flex-wrap items-center justify-center gap-2 my-2 text-xs font-bold">
+                            <span class="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-2.5 py-1 rounded-full">🔴 @${escapeHtml(nameR)}</span>
+                            <span class="text-gray-400 font-extrabold">VS</span>
+                            <span class="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-2.5 py-1 rounded-full">🟡 ${playerY ? `@${escapeHtml(nameY)}` : 'Open Slot'}</span>
+                            <span class="text-gray-400 font-extrabold">VS</span>
+                            <span class="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2.5 py-1 rounded-full">🔵 ${playerB ? `@${escapeHtml(nameB)}` : 'Open Slot'}</span>
+                        </div>` : `
+                        <div class="flex items-center gap-3 my-2 text-xs font-bold">
+                            <span class="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-3 py-1 rounded-full">🔴 @${escapeHtml(nameR)} (Host)</span>
+                            <span class="text-gray-400 font-extrabold">VS</span>
+                            <span class="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-3 py-1 rounded-full">🟡 ${isTargeted ? `@${escapeHtml(nameY)}` : 'Open Challenger'}</span>
+                        </div>`;
+
+                    gameHtml = `
+                        <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-blue-300 dark:border-blue-900/50 flex flex-col items-center">
+                            ${prizeStr}
+                            <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 4 in a Row (7x6 Drop)</h4>
+                            ${playersBadges}
+                            ${acceptBtn}
+                        </div>`;
+                } else {
+                    const turnName = (turn === 'R' ? nameR : (turn === 'Y' ? nameY : nameB));
+                    const turnColor = turn === 'R' ? 'Red 🔴' : (turn === 'Y' ? 'Yellow 🟡' : 'Blue 🔵');
+                    const turnBadge = isMyTurn
+                        ? `<div class="bg-blue-600 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turnColor})!</div>`
+                        : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${escapeHtml(turnName)} (${turnColor})'s move...</div>`;
+
+                    const playersBadges = count === 3 ? `
+                        <div class="flex flex-wrap items-center justify-between w-full max-w-xs text-xs font-bold mb-2">
+                            <span class="text-rose-600 dark:text-rose-400">🔴 @${escapeHtml(nameR)}</span>
+                            <span class="text-amber-600 dark:text-amber-400">🟡 @${escapeHtml(nameY)}</span>
+                            <span class="text-blue-600 dark:text-blue-400">🔵 @${escapeHtml(nameB)}</span>
+                        </div>` : `
+                        <div class="flex items-center justify-between w-full max-w-xs text-xs font-bold mb-2">
+                            <span class="text-rose-600 dark:text-rose-400">🔴 @${escapeHtml(nameR)}</span>
+                            <span class="text-gray-400">VS</span>
+                            <span class="text-amber-600 dark:text-amber-400">🟡 @${escapeHtml(nameY)}</span>
+                        </div>`;
+
+                    // Top drop buttons for 7 columns
+                    let dropBtnsHtml = `<div class="grid grid-cols-7 gap-1 w-72 mx-auto mb-1 shrink-0">`;
+                    for (let c = 0; c < 7; c++) {
+                        const canDrop = isMyTurn && (board[c] === ''); // top row empty
+                        const btnClick = canDrop ? `onclick="window.makeDropFourMove('${post.id}', ${c})"` : '';
+                        const btnClass = canDrop ? 'bg-blue-500 hover:bg-blue-400 text-white cursor-pointer active:scale-90 hover:scale-105' : 'bg-transparent text-transparent cursor-default';
+                        dropBtnsHtml += `<button type="button" ${btnClick} class="w-full py-1 text-xs font-black rounded-lg transition ${btnClass}">⬇</button>`;
+                    }
+                    dropBtnsHtml += `</div>`;
+
+                    // 7 columns x 6 rows board
+                    let gridHtml = `<div class="grid grid-cols-7 grid-rows-6 gap-1 p-2.5 bg-blue-600 dark:bg-blue-800 rounded-2xl shadow-xl border-4 border-blue-700 dark:border-blue-900 w-72 h-64 mx-auto my-1 shrink-0">`;
+                    board.forEach((cell, idx) => {
+                        const col = idx % 7;
+                        const canClick = isMyTurn && (board[col] === '');
+                        let cellContent = `<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-100 dark:bg-slate-900 border border-blue-500/50 dark:border-blue-900 shadow-inner"></div>`;
+                        if (cell === 'R') {
+                            cellContent = `<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-rose-500 to-red-600 shadow-md border-2 border-rose-300 animate-scale-in"></div>`;
+                        } else if (cell === 'Y') {
+                            cellContent = `<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-400 shadow-md border-2 border-amber-200 animate-scale-in"></div>`;
+                        } else if (cell === 'B') {
+                            cellContent = `<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 shadow-md border-2 border-sky-200 animate-scale-in"></div>`;
+                        }
+                        const clickHandler = canClick ? `onclick="window.makeDropFourMove('${post.id}', ${col})"` : '';
+                        const hoverClass = canClick ? 'cursor-pointer hover:opacity-85' : 'cursor-default';
+                        gridHtml += `
+                            <div ${clickHandler} class="w-full h-full flex items-center justify-center select-none ${hoverClass}">
+                                ${cellContent}
+                            </div>`;
+                    });
+                    gridHtml += `</div>`;
+
+                    gameHtml = `
+                        <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-blue-300 dark:border-blue-900/50 flex flex-col items-center">
+                            ${prizeStr}
+                            <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 4 in a Row (7x6 Drop)</h4>
+                            ${playersBadges}
+                            ${turnBadge}
+                            ${dropBtnsHtml}
+                            ${gridHtml}
+                        </div>`;
+                }
+            } else {
+                let outcomeHtml = '';
+                if (post.gameWinner === 'draw') {
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-handshake"></i> Match ended in a Draw!</div>`;
+                } else {
+                    const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone') : 'Someone';
+                    const winnerSymbol = post.gameWinner === playerR ? '🔴' : (post.gameWinner === playerY ? '🟡' : '🔵');
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerSymbol} ${escapeHtml(winnerName)} won Connect 4!</span></div>`;
+                }
+
+                const winningLine = Array.isArray(post.dropFourWinningLine) ? post.dropFourWinningLine : [];
+                let gridHtml = `<div class="grid grid-cols-7 grid-rows-6 gap-1 p-2 bg-blue-600/90 dark:bg-blue-900/90 rounded-2xl border-2 border-blue-700 dark:border-blue-950 w-64 h-56 mx-auto my-2 opacity-95 shrink-0">`;
+                board.forEach((cell, idx) => {
+                    const isWinCell = winningLine.includes(idx);
+                    let cellContent = `<div class="w-6 h-6 rounded-full bg-slate-100/70 dark:bg-slate-900/70 border border-blue-400/50 dark:border-blue-950"></div>`;
+                    if (cell === 'R') {
+                        cellContent = `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-rose-500 to-red-600 shadow border border-rose-300 ${isWinCell ? 'ring-4 ring-yellow-300 scale-110' : ''}"></div>`;
+                    } else if (cell === 'Y') {
+                        cellContent = `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-amber-300 to-yellow-400 shadow border border-amber-200 ${isWinCell ? 'ring-4 ring-white scale-110' : ''}"></div>`;
+                    } else if (cell === 'B') {
+                        cellContent = `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 shadow border border-sky-200 ${isWinCell ? 'ring-4 ring-yellow-300 scale-110' : ''}"></div>`;
+                    }
+                    gridHtml += `<div class="w-full h-full flex items-center justify-center select-none">${cellContent}</div>`;
+                });
+                gridHtml += `</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🟡🔴 4 in a Row (7x6 Drop) Ended</h4>
+                        ${gridHtml}
+                        ${outcomeHtml}
+                    </div>`;
+            }
         } else if (post.gameType === 'hangman') {
             const isHost = window.currentUser && window.currentUser.uid === post.authorId;
             const secretWord = (post.hangmanWord || '').toUpperCase();

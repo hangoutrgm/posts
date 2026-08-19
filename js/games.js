@@ -199,6 +199,7 @@ window.gameTypeLabel = (type) => {
         'count_dots': 'Count the Dots',
         'tictactoe': 'Tic Tac Toe',
         'four_in_a_row': '4 in a Row (7x7)',
+        'drop_four': '4 in a Row (7x6 Drop)',
         'hangman': 'Hangman',
         'gibberish': 'Guess the Gibberish',
         'emoji_riddle': 'Emoji Riddle',
@@ -369,6 +370,8 @@ window.openPostGameModal = () => {
     window.updateElementHint();
     const fourPlayersSelect = document.getElementById('game-four-players-count');
     if (fourPlayersSelect) fourPlayersSelect.value = '2';
+    const dropFourPlayersSelect = document.getElementById('game-drop-four-players-count');
+    if (dropFourPlayersSelect) dropFourPlayersSelect.value = '2';
 
     const spinCountSelect = document.getElementById('game-spin-names-count');
     if (spinCountSelect) spinCountSelect.value = '1';
@@ -485,6 +488,7 @@ window.toggleGameSettings = () => {
     const countDotsContainer = document.getElementById('game-count-dots-container');
     const tictactoeContainer = document.getElementById('game-tictactoe-container');
     const fourInARowContainer = document.getElementById('game-four-in-a-row-container');
+    const dropFourContainer = document.getElementById('game-drop-four-container');
     const hangmanContainer = document.getElementById('game-hangman-container');
     const gibberishContainer = document.getElementById('game-gibberish-container');
     const emojiRiddleContainer = document.getElementById('game-emoji-riddle-container');
@@ -507,7 +511,7 @@ window.toggleGameSettings = () => {
         settingsDiv.classList.add('hidden');
     }
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe' || type === 'four_in_a_row') targetUserContainer.classList.remove('hidden');
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four') targetUserContainer.classList.remove('hidden');
     else targetUserContainer.classList.add('hidden');
 
     if (type === 'challenge') challengeTargets.classList.remove('hidden');
@@ -556,6 +560,12 @@ window.toggleGameSettings = () => {
         if (fourInARowContainer) fourInARowContainer.classList.remove('hidden');
     } else {
         if (fourInARowContainer) fourInARowContainer.classList.add('hidden');
+    }
+
+    if (type === 'drop_four') {
+        if (dropFourContainer) dropFourContainer.classList.remove('hidden');
+    } else {
+        if (dropFourContainer) dropFourContainer.classList.add('hidden');
     }
 
     if (type === 'hangman') hangmanContainer.classList.remove('hidden');
@@ -725,8 +735,9 @@ window.submitGame = async () => {
     let elementAnswer = null;
     let elementClue = null;
     let fourPlayerCount = 2;
+    let dropFourPlayerCount = 2;
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || ((type === 'tictactoe' || type === 'four_in_a_row') && document.getElementById('game-target-user').value.trim())) {
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || ((type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four') && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
         if (targetNameInput) {
             // Resolve name -> UID
@@ -750,6 +761,10 @@ window.submitGame = async () => {
 
     if (type === 'four_in_a_row') {
         fourPlayerCount = parseInt(document.getElementById('game-four-players-count')?.value, 10) || 2;
+    }
+
+    if (type === 'drop_four') {
+        dropFourPlayerCount = parseInt(document.getElementById('game-drop-four-players-count')?.value, 10) || 2;
     }
 
     if (type === 'periodic_table') {
@@ -968,6 +983,11 @@ window.submitGame = async () => {
             ? `🔴🔵 4 in a Row (${fourPlayerCount} Players, 7x7) match challenge against @${targetUserName}!`
             : `🔴🔵 Open 4 in a Row (${fourPlayerCount} Players, 7x7) Challenge! First to connect 4 in a row wins!`;
     }
+    else if (type === 'drop_four') {
+        text = targetUserName 
+            ? `🟡🔴 4 in a Row (7x6 Drop, ${dropFourPlayerCount} Players) match challenge against @${targetUserName}!`
+            : `🟡🔴 Open 4 in a Row (7x6 Drop, ${dropFourPlayerCount} Players) Challenge! Drop your pieces to connect 4!`;
+    }
     else if (type === 'periodic_table') {
         text = elementGuessMode === 'name'
             ? `🧪 Periodic Table Challenge! Guess the Element Name for symbol: ${elementSymbol} (Atomic #${elementNumber})! ⚛️`
@@ -1055,6 +1075,18 @@ window.submitGame = async () => {
         postData.fourTurn = 'R';
         postData.fourStatus = (fourPlayerCount === 2 && targetUserUid) ? 'in_progress' : 'waiting';
         postData.fourTargetUser = targetUserUid || null;
+    }
+    if (type === 'drop_four') {
+        postData.dropFourCols = 7;
+        postData.dropFourRows = 6;
+        postData.dropFourBoard = Array(42).fill('');
+        postData.dropFourPlayerCount = dropFourPlayerCount;
+        postData.dropFourPlayerR = window.currentUser.uid;
+        postData.dropFourPlayerY = (dropFourPlayerCount === 2 && targetUserUid) ? targetUserUid : null;
+        postData.dropFourPlayerB = null;
+        postData.dropFourTurn = 'R';
+        postData.dropFourStatus = (dropFourPlayerCount === 2 && targetUserUid) ? 'in_progress' : 'waiting';
+        postData.dropFourTargetUser = targetUserUid || null;
     }
     if (type === 'hangman') {
         postData.hangmanWord = hangmanWord;
@@ -2417,6 +2449,194 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
         }
     } catch(e) {
         console.error("4 in a Row move error:", e);
+        window.showAlert("Error making move: " + e.message);
+    }
+};
+
+// ============================================================
+// 4 IN A ROW (7x6 DROP) GAME HANDLERS
+// ============================================================
+
+window.checkDropFourWinner = (board) => {
+    const rows = 6, cols = 7;
+    // Horizontal (r, c) to (r, c+3)
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c <= cols - 4; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + 1] && m === board[idx + 2] && m === board[idx + 3]) {
+                return { won: true, mark: m, line: [idx, idx + 1, idx + 2, idx + 3] };
+            }
+        }
+    }
+    // Vertical (r, c) to (r+3, c)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + cols] && m === board[idx + cols * 2] && m === board[idx + cols * 3]) {
+                return { won: true, mark: m, line: [idx, idx + cols, idx + cols * 2, idx + cols * 3] };
+            }
+        }
+    }
+    // Diagonal down-right (r, c) to (r+3, c+3)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 0; c <= cols - 4; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + (cols + 1)] && m === board[idx + (cols + 1) * 2] && m === board[idx + (cols + 1) * 3]) {
+                return { won: true, mark: m, line: [idx, idx + (cols + 1), idx + (cols + 1) * 2, idx + (cols + 1) * 3] };
+            }
+        }
+    }
+    // Diagonal down-left (r, c) to (r+3, c-3)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 3; c < cols; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + (cols - 1)] && m === board[idx + (cols - 1) * 2] && m === board[idx + (cols - 1) * 3]) {
+                return { won: true, mark: m, line: [idx, idx + (cols - 1), idx + (cols - 1) * 2, idx + (cols - 1) * 3] };
+            }
+        }
+    }
+    return { won: false };
+};
+
+window.acceptDropFourChallenge = async (postId) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.dropFourStatus !== 'waiting') {
+            return window.showAlert("This challenge is no longer available.");
+        }
+
+        const myUid = window.currentUser.uid;
+        if (post.dropFourPlayerR === myUid || post.dropFourPlayerY === myUid || post.dropFourPlayerB === myUid) {
+            return window.showAlert("You are already part of this match!");
+        }
+
+        if (post.dropFourTargetUser && post.dropFourTargetUser !== myUid && !post.dropFourPlayerY) {
+            return window.showAlert("This challenge was sent to another player!");
+        }
+
+        const count = Number(post.dropFourPlayerCount) || 2;
+        const updates = {};
+
+        if (!post.dropFourPlayerY) {
+            updates.dropFourPlayerY = myUid;
+            if (count === 2) {
+                updates.dropFourStatus = 'in_progress';
+            }
+        } else if (count === 3 && !post.dropFourPlayerB) {
+            updates.dropFourPlayerB = myUid;
+            updates.dropFourStatus = 'in_progress';
+        }
+
+        await updateDoc(postRef, updates);
+        window.showAlert("🟡🔴 Challenge accepted! Good luck!");
+    } catch(e) {
+        console.error("Error accepting Drop Four challenge:", e);
+        window.showAlert("Error: " + e.message);
+    }
+};
+
+window.makeDropFourMove = async (postId, colIndex) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.dropFourStatus !== 'in_progress') {
+            return window.showAlert("This game is not active.");
+        }
+
+        const turn = post.dropFourTurn || 'R';
+        const expectedUid = turn === 'R' ? post.dropFourPlayerR : (turn === 'Y' ? post.dropFourPlayerY : post.dropFourPlayerB);
+
+        if (window.currentUser.uid !== expectedUid) {
+            return window.showAlert("It is not your turn!");
+        }
+
+        const board = [...(post.dropFourBoard || Array(42).fill(''))];
+        
+        // Find lowest empty slot in column (rows 0 to 5, row 5 is bottom)
+        let targetRow = -1;
+        for (let r = 5; r >= 0; r--) {
+            if (board[r * 7 + colIndex] === '') {
+                targetRow = r;
+                break;
+            }
+        }
+
+        if (targetRow === -1) {
+            return window.showAlert("That column is full! Please choose another column.");
+        }
+
+        const targetCellIndex = targetRow * 7 + colIndex;
+        board[targetCellIndex] = turn;
+
+        const winResult = window.checkDropFourWinner(board);
+
+        if (winResult.won) {
+            const winnerUid = window.currentUser.uid;
+            await updateDoc(postRef, {
+                dropFourBoard: board,
+                dropFourStatus: 'ended',
+                dropFourWinningLine: winResult.line || null,
+                gameStatus: 'ended',
+                gameWinner: winnerUid
+            });
+
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
+            if (lbPoints > 0) update(ref(db, `users/${winnerUid}`), { lbPoints: increment(lbPoints) });
+            window.logEarnings(winnerUid, postId, '4 in a Row (7x6 Drop)', prizeLogged, lbPoints);
+            if (post.authorId && post.authorId !== winnerUid) {
+                const winnerName = window.globalUsersCache?.[winnerUid]?.name || 'Someone';
+                window.logHostedGame(post.authorId, postId, '4 in a Row (7x6 Drop)', prizeLogged, winnerUid, winnerName);
+            }
+            const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
+                update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+            }
+
+            let winMsg = `🎉 Connect 4! You won the match!`;
+            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+            window.showAlert(winMsg);
+        } else if (!board.includes('')) {
+            // Draw
+            await updateDoc(postRef, {
+                dropFourBoard: board,
+                dropFourStatus: 'ended',
+                gameStatus: 'ended',
+                gameWinner: 'draw'
+            });
+            window.showAlert("It's a Draw! 🤝 Good game!");
+        } else {
+            // Next turn
+            const count = Number(post.dropFourPlayerCount) || 2;
+            let nextTurn = 'R';
+            if (count === 2) {
+                nextTurn = turn === 'R' ? 'Y' : 'R';
+            } else {
+                nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : 'R');
+            }
+            await updateDoc(postRef, {
+                dropFourBoard: board,
+                dropFourTurn: nextTurn
+            });
+        }
+    } catch(e) {
+        console.error("Drop Four move error:", e);
         window.showAlert("Error making move: " + e.message);
     }
 };

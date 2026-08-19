@@ -342,6 +342,7 @@
                     <option value="count_dots">Count the Dots</option>
                     <option value="tictactoe">Tic Tac Toe</option>
                     <option value="four_in_a_row">4 in a Row (7x7)</option>
+                    <option value="drop_four">4 in a Row (7x6 Drop)</option>
                     <option value="hangman">Hangman</option>
                     <option value="gibberish">Gibberish</option>
                     <option value="emoji_riddle">Emoji Riddle (Movie/Song/Idiom)</option>
@@ -609,6 +610,16 @@
                     <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">You will play as <span class="font-bold text-rose-600">🔴 Red</span>. Connect 4 balls in a row horizontally, vertically, or diagonally to win!</p>
                 </div>
 
+                <div id="game-drop-four-container" class="hidden mb-3 border border-blue-300 dark:border-blue-800 rounded-lg p-3 bg-blue-50 dark:bg-blue-950/40">
+                    <p class="text-xs font-bold text-blue-800 dark:text-blue-200 mb-2">🟡🔴 4 in a Row (7x6 Drop)</p>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Player Mode</label>
+                    <select id="game-drop-four-players-count" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
+                        <option value="2" selected>2 Players (🔴 Red vs 🟡 Yellow)</option>
+                        <option value="3">3 Players (🔴 Red vs 🟡 Yellow vs 🔵 Blue)</option>
+                    </select>
+                    <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">You will play as <span class="font-bold text-rose-600">🔴 Red</span>. Click a column to drop your piece to the bottom. Connect 4 in a row to win!</p>
+                </div>
+
                 <div id="game-periodic-table-container" class="hidden mb-3 border border-cyan-200 dark:border-cyan-900/50 rounded-lg p-3 bg-cyan-50 dark:bg-cyan-900/20">
                     <div class="flex justify-between items-center mb-2">
                         <p class="text-xs font-bold text-cyan-800 dark:text-cyan-200">🧪 Periodic Table of Elements</p>
@@ -741,10 +752,10 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=14"></script>
-    <script type="module" src="js/helpers.js?v=14"></script>
-    <script type="module" src="js/games.js?v=14"></script>
-    <script type="module" src="js/main.js?v=14"></script>
+    <script type="module" src="js/renderers.js?v=15"></script>
+    <script type="module" src="js/helpers.js?v=15"></script>
+    <script type="module" src="js/games.js?v=15"></script>
+    <script type="module" src="js/main.js?v=15"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
