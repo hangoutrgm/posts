@@ -189,6 +189,7 @@ window.gameTypeLabel = (type) => {
         'trivia': 'Trivia Game',
         'jumbled_words': 'Jumbled Words',
         'flags': 'Guess the Flag',
+        'periodic_table': 'Periodic Table of Elements',
         'guess_emoji': 'Guess the Emoji',
         'bring_me_emoji': 'Bring Me the Emoji',
         'first_to_mine': 'First to Mine',
@@ -197,6 +198,7 @@ window.gameTypeLabel = (type) => {
         'quick_challenge': 'Quick Challenge',
         'count_dots': 'Count the Dots',
         'tictactoe': 'Tic Tac Toe',
+        'four_in_a_row': '4 in a Row (7x7)',
         'hangman': 'Hangman',
         'gibberish': 'Guess the Gibberish',
         'emoji_riddle': 'Emoji Riddle',
@@ -208,10 +210,11 @@ window.gameTypeLabel = (type) => {
 };
 
 // ============================================================
-// FLAGS & EMOJIS DATA — loaded from config JSON files
+// FLAGS, EMOJIS & ELEMENTS DATA — loaded from config JSON files
 // ============================================================
 window.flagsData = [];
 window.emojisData = [];
+window.elementsData = [];
 
 (async function loadFlagsJSON() {
     try {
@@ -232,6 +235,42 @@ window.emojisData = [];
         }
     } catch(e) { console.debug('Could not load config/emojis.json'); }
 })();
+
+(async function loadElementsJSON() {
+    try {
+        const res = await fetch('config/elements.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                window.elementsData = parsed;
+                const elementDatalist = document.getElementById('game-element-datalist');
+                if (elementDatalist) {
+                    elementDatalist.innerHTML = parsed.map(el => `<option value="[${el.number}] ${el.symbol} - ${el.name}" label="[${el.number}] ${el.symbol} - ${el.name}"></option>`).join('');
+                }
+            }
+        }
+    } catch(e) { console.debug('Could not load config/elements.json'); }
+})();
+
+window.updateElementHint = () => {
+    const mode = document.getElementById('game-element-mode')?.value || 'name';
+    const hintEl = document.getElementById('game-element-hint');
+    if (hintEl) {
+        hintEl.innerText = mode === 'name' 
+            ? 'Players will see the Chemical Symbol & Atomic Number and guess the Element Name.' 
+            : 'Players will see the Element Name & Atomic Number and guess the Chemical Symbol.';
+    }
+};
+
+window.pickRandomElement = () => {
+    const list = window.elementsData || [];
+    if (list.length === 0) return;
+    const el = list[Math.floor(Math.random() * list.length)];
+    const input = document.getElementById('game-element-input');
+    if (input) {
+        input.value = `[${el.number}] ${el.symbol} - ${el.name}`;
+    }
+};
 
 window.generateRandomMath = () => {
     const isAlgebra = Math.random() > 0.5;
@@ -323,6 +362,14 @@ window.openPostGameModal = () => {
     if (typeof window.updateEmojiRiddlePresetsUI === 'function') {
         window.updateEmojiRiddlePresetsUI();
     }
+    const elemMode = document.getElementById('game-element-mode');
+    if (elemMode) elemMode.value = 'name';
+    const elemInput = document.getElementById('game-element-input');
+    if (elemInput) elemInput.value = '';
+    window.updateElementHint();
+    const fourPlayersSelect = document.getElementById('game-four-players-count');
+    if (fourPlayersSelect) fourPlayersSelect.value = '2';
+
     const spinCountSelect = document.getElementById('game-spin-names-count');
     if (spinCountSelect) spinCountSelect.value = '1';
     for (let i = 1; i <= 3; i++) {
@@ -373,6 +420,12 @@ window.openPostGameModal = () => {
     const flagDatalist = document.getElementById('game-flag-datalist');
     flagDatalist.innerHTML = window.flagsData.map(f => `<option value="${f.name}" label="[${f.code.toUpperCase()}] ${f.name}"></option>`).join('');
 
+    // Populate Element Datalist
+    const elementDatalist = document.getElementById('game-element-datalist');
+    if (elementDatalist) {
+        elementDatalist.innerHTML = (window.elementsData || []).map(el => `<option value="[${el.number}] ${el.symbol} - ${el.name}" label="[${el.number}] ${el.symbol} - ${el.name}"></option>`).join('');
+    }
+
     window.toggleGameSettings();
 };
 
@@ -422,6 +475,7 @@ window.toggleGameSettings = () => {
     const emojiNameContainer = document.getElementById('game-emoji-name-container');
     const challengeTargets = document.getElementById('game-challenge-targets');
     const flagContainer = document.getElementById('game-flag-container');
+    const periodicTableContainer = document.getElementById('game-periodic-table-container');
     const mathContainer = document.getElementById('game-math-container');
     const jumbledContainer = document.getElementById('game-jumbled-container');
     const triviaContainer = document.getElementById('game-trivia-container');
@@ -430,6 +484,7 @@ window.toggleGameSettings = () => {
     const nclContainer = document.getElementById('game-ncl-container');
     const countDotsContainer = document.getElementById('game-count-dots-container');
     const tictactoeContainer = document.getElementById('game-tictactoe-container');
+    const fourInARowContainer = document.getElementById('game-four-in-a-row-container');
     const hangmanContainer = document.getElementById('game-hangman-container');
     const gibberishContainer = document.getElementById('game-gibberish-container');
     const emojiRiddleContainer = document.getElementById('game-emoji-riddle-container');
@@ -444,15 +499,15 @@ window.toggleGameSettings = () => {
         }
     }
 
-    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, spin_names, count_dots, hangman, gibberish, emoji_riddle
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle'].includes(type)) {
+    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, spin_names, count_dots, hangman, gibberish, emoji_riddle, periodic_table
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle', 'periodic_table'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
         settingsDiv.classList.add('hidden');
     }
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe') targetUserContainer.classList.remove('hidden');
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe' || type === 'four_in_a_row') targetUserContainer.classList.remove('hidden');
     else targetUserContainer.classList.add('hidden');
 
     if (type === 'challenge') challengeTargets.classList.remove('hidden');
@@ -463,6 +518,12 @@ window.toggleGameSettings = () => {
 
     if (type === 'flags') flagContainer.classList.remove('hidden');
     else flagContainer.classList.add('hidden');
+
+    if (type === 'periodic_table') {
+        if (periodicTableContainer) periodicTableContainer.classList.remove('hidden');
+    } else {
+        if (periodicTableContainer) periodicTableContainer.classList.add('hidden');
+    }
 
     if (type === 'math') mathContainer.classList.remove('hidden');
     else mathContainer.classList.add('hidden');
@@ -490,6 +551,12 @@ window.toggleGameSettings = () => {
 
     if (type === 'tictactoe') tictactoeContainer.classList.remove('hidden');
     else tictactoeContainer.classList.add('hidden');
+
+    if (type === 'four_in_a_row') {
+        if (fourInARowContainer) fourInARowContainer.classList.remove('hidden');
+    } else {
+        if (fourInARowContainer) fourInARowContainer.classList.add('hidden');
+    }
 
     if (type === 'hangman') hangmanContainer.classList.remove('hidden');
     else hangmanContainer.classList.add('hidden');
@@ -651,8 +718,15 @@ window.submitGame = async () => {
     let emojiRiddleCategory = 'movies';
     let emojiRiddleEmojis = null;
     let emojiRiddleAnswer = null;
+    let elementNumber = null;
+    let elementSymbol = null;
+    let elementName = null;
+    let elementGuessMode = 'name';
+    let elementAnswer = null;
+    let elementClue = null;
+    let fourPlayerCount = 2;
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || (type === 'tictactoe' && document.getElementById('game-target-user').value.trim())) {
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || ((type === 'tictactoe' || type === 'four_in_a_row') && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
         if (targetNameInput) {
             // Resolve name -> UID
@@ -672,6 +746,40 @@ window.submitGame = async () => {
 
     if (type === 'tictactoe') {
         tictactoeGridSize = parseInt(document.getElementById('game-tictactoe-grid-size')?.value) || 3;
+    }
+
+    if (type === 'four_in_a_row') {
+        fourPlayerCount = parseInt(document.getElementById('game-four-players-count')?.value, 10) || 2;
+    }
+
+    if (type === 'periodic_table') {
+        const rawElem = (document.getElementById('game-element-input')?.value || '').trim();
+        elementGuessMode = document.getElementById('game-element-mode')?.value || 'name';
+        if (!rawElem) return window.showAlert("Please select or enter an Element from the Periodic Table.");
+
+        const list = window.elementsData || [];
+        let matched = list.find(el => `[${el.number}] ${el.symbol} - ${el.name}`.toLowerCase() === rawElem.toLowerCase() || el.name.toLowerCase() === rawElem.toLowerCase() || el.symbol.toLowerCase() === rawElem.toLowerCase());
+        if (!matched) {
+            const match = rawElem.match(/\[?(\d+)\]?\s*([A-Za-z]+)\s*[-–]\s*(.+)/i);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                matched = list.find(el => el.number === num) || { number: num, symbol: match[2], name: match[3].trim() };
+            }
+        }
+        if (!matched) {
+            return window.showAlert("Element not found. Please pick an element from the suggestions or click Random Element.");
+        }
+        elementNumber = matched.number;
+        elementSymbol = matched.symbol;
+        elementName = matched.name;
+
+        if (elementGuessMode === 'name') {
+            elementClue = `${elementSymbol} (#${elementNumber})`;
+            elementAnswer = elementName;
+        } else {
+            elementClue = `${elementName} (#${elementNumber})`;
+            elementAnswer = elementSymbol;
+        }
     }
 
     if (type === 'challenge') {
@@ -855,6 +963,16 @@ window.submitGame = async () => {
     }
     else if (type === 'count_dots') text = `🔢 Count the Dots! How many dots (●) can you find? First correct guess wins!`;
     else if (type === 'tictactoe') text = targetUserName ? `⚔️ Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) match challenge against @${targetUserName}!` : `⚔️ Open Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) Challenge! First person to accept plays against @${window.currentUser.name}!`;
+    else if (type === 'four_in_a_row') {
+        text = targetUserName 
+            ? `🔴🔵 4 in a Row (${fourPlayerCount} Players, 7x7) match challenge against @${targetUserName}!`
+            : `🔴🔵 Open 4 in a Row (${fourPlayerCount} Players, 7x7) Challenge! First to connect 4 in a row wins!`;
+    }
+    else if (type === 'periodic_table') {
+        text = elementGuessMode === 'name'
+            ? `🧪 Periodic Table Challenge! Guess the Element Name for symbol: ${elementSymbol} (Atomic #${elementNumber})! ⚛️`
+            : `🧪 Periodic Table Challenge! Guess the Chemical Symbol for: ${elementName} (Atomic #${elementNumber})! ⚛️`;
+    }
     else if (type === 'hangman') text = `🪓 Hangman Game! Guess letters or guess the secret word before you get eliminated!`;
     else if (type === 'bingo') text = `🎱 Bingo! Pick your entry — ${bingoLetterCount} letter(s) (A–${bingoMaxLetter}) + ${bingoNumberCount} number(s) (1–${bingoMaxNumber}). Submission open!`;
     else if (type === 'spin_names') {
@@ -891,6 +1009,14 @@ window.submitGame = async () => {
     if (emojiChar) postData.gameEmojiChar = emojiChar;
     if (flagName) postData.gameFlagName = flagName;
     if (flagCode) postData.gameFlagCode = flagCode;
+    if (type === 'periodic_table') {
+        postData.gameElementNumber = elementNumber;
+        postData.gameElementSymbol = elementSymbol;
+        postData.gameElementName = elementName;
+        postData.gameElementGuessMode = elementGuessMode;
+        postData.gameElementClue = elementClue;
+        postData.gameElementAnswer = elementAnswer;
+    }
     if (mathQuestion) postData.gameMathQuestion = mathQuestion;
     if (mathAnswer) postData.gameMathAnswer = mathAnswer;
     if (jumbledOriginal) postData.gameJumbledOriginal = jumbledOriginal;
@@ -918,6 +1044,17 @@ window.submitGame = async () => {
         postData.tictactoeTurn = 'X';
         postData.tictactoeStatus = targetUserUid ? 'in_progress' : 'waiting';
         postData.tictactoeTargetUser = targetUserUid || null;
+    }
+    if (type === 'four_in_a_row') {
+        postData.fourGridSize = 7;
+        postData.fourBoard = Array(49).fill('');
+        postData.fourPlayerCount = fourPlayerCount;
+        postData.fourPlayerR = window.currentUser.uid;
+        postData.fourPlayerB = (fourPlayerCount === 2 && targetUserUid) ? targetUserUid : null;
+        postData.fourPlayerY = null;
+        postData.fourTurn = 'R';
+        postData.fourStatus = (fourPlayerCount === 2 && targetUserUid) ? 'in_progress' : 'waiting';
+        postData.fourTargetUser = targetUserUid || null;
     }
     if (type === 'hangman') {
         postData.hangmanWord = hangmanWord;
@@ -1267,6 +1404,9 @@ window.answerGame = async (postId, answer) => {
         } else if (post.gameType === 'emoji_riddle') {
             const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             isCorrect = clean(answer) === clean(post.emojiRiddleAnswer);
+        } else if (post.gameType === 'periodic_table') {
+            const clean = str => (str || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            isCorrect = clean(answer) === clean(post.gameElementAnswer);
         } else if (post.gameType === 'count_dots') {
             isCorrect = parseInt(answer.trim(), 10) === Number(post.gameDotsCount);
         }
@@ -2100,6 +2240,183 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
         }
     } catch(e) {
         console.error("Tic Tac Toe move error:", e);
+        window.showAlert("Error making move: " + e.message);
+    }
+};
+
+// ============================================================
+// 4 IN A ROW GAME HANDLERS (7x7)
+// ============================================================
+
+window.checkFourInARowWinner = (board) => {
+    const rows = 7, cols = 7;
+    // Horizontal (r, c) to (r, c+3)
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c <= cols - 4; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + 1] && m === board[idx + 2] && m === board[idx + 3]) {
+                return { won: true, mark: m, line: [idx, idx + 1, idx + 2, idx + 3] };
+            }
+        }
+    }
+    // Vertical (r, c) to (r+3, c)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + cols] && m === board[idx + cols * 2] && m === board[idx + cols * 3]) {
+                return { won: true, mark: m, line: [idx, idx + cols, idx + cols * 2, idx + cols * 3] };
+            }
+        }
+    }
+    // Diagonal down-right (r, c) to (r+3, c+3)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 0; c <= cols - 4; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + (cols + 1)] && m === board[idx + (cols + 1) * 2] && m === board[idx + (cols + 1) * 3]) {
+                return { won: true, mark: m, line: [idx, idx + (cols + 1), idx + (cols + 1) * 2, idx + (cols + 1) * 3] };
+            }
+        }
+    }
+    // Diagonal down-left (r, c) to (r+3, c-3)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 3; c < cols; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + (cols - 1)] && m === board[idx + (cols - 1) * 2] && m === board[idx + (cols - 1) * 3]) {
+                return { won: true, mark: m, line: [idx, idx + (cols - 1), idx + (cols - 1) * 2, idx + (cols - 1) * 3] };
+            }
+        }
+    }
+    return { won: false };
+};
+
+window.acceptFourInARowChallenge = async (postId) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.fourStatus !== 'waiting') {
+            return window.showAlert("This challenge is no longer available.");
+        }
+
+        const myUid = window.currentUser.uid;
+        if (post.fourPlayerR === myUid || post.fourPlayerB === myUid || post.fourPlayerY === myUid) {
+            return window.showAlert("You are already part of this match!");
+        }
+
+        if (post.fourTargetUser && post.fourTargetUser !== myUid && !post.fourPlayerB) {
+            return window.showAlert("This challenge was sent to another player!");
+        }
+
+        const count = Number(post.fourPlayerCount) || 2;
+        const updates = {};
+
+        if (!post.fourPlayerB) {
+            updates.fourPlayerB = myUid;
+            if (count === 2) {
+                updates.fourStatus = 'in_progress';
+            }
+        } else if (count === 3 && !post.fourPlayerY) {
+            updates.fourPlayerY = myUid;
+            updates.fourStatus = 'in_progress';
+        }
+
+        await updateDoc(postRef, updates);
+        window.showAlert("🔴🔵 Challenge accepted! Good luck!");
+    } catch(e) {
+        console.error("Error accepting 4 in a Row challenge:", e);
+        window.showAlert("Error: " + e.message);
+    }
+};
+
+window.makeFourInARowMove = async (postId, cellIndex) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const postRef = doc(fsdb, 'community_posts', postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.fourStatus !== 'in_progress') {
+            return window.showAlert("This game is not active.");
+        }
+
+        const turn = post.fourTurn || 'R';
+        const expectedUid = turn === 'R' ? post.fourPlayerR : (turn === 'B' ? post.fourPlayerB : post.fourPlayerY);
+
+        if (window.currentUser.uid !== expectedUid) {
+            return window.showAlert("It is not your turn!");
+        }
+
+        const board = [...(post.fourBoard || Array(49).fill(''))];
+        if (board[cellIndex]) {
+            return window.showAlert("That space is already taken!");
+        }
+
+        board[cellIndex] = turn;
+
+        const winResult = window.checkFourInARowWinner(board);
+
+        if (winResult.won) {
+            const winnerUid = window.currentUser.uid;
+            await updateDoc(postRef, {
+                fourBoard: board,
+                fourStatus: 'ended',
+                fourWinningLine: winResult.line || null,
+                gameStatus: 'ended',
+                gameWinner: winnerUid
+            });
+
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
+            if (lbPoints > 0) update(ref(db, `users/${winnerUid}`), { lbPoints: increment(lbPoints) });
+            window.logEarnings(winnerUid, postId, '4 in a Row', prizeLogged, lbPoints);
+            if (post.authorId && post.authorId !== winnerUid) {
+                const winnerName = window.globalUsersCache?.[winnerUid]?.name || 'Someone';
+                window.logHostedGame(post.authorId, postId, '4 in a Row', prizeLogged, winnerUid, winnerName);
+            }
+            const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
+                update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
+            }
+
+            let winMsg = `🎉 Connect 4! You won the match!`;
+            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+            window.showAlert(winMsg);
+        } else if (!board.includes('')) {
+            // Draw
+            await updateDoc(postRef, {
+                fourBoard: board,
+                fourStatus: 'ended',
+                gameStatus: 'ended',
+                gameWinner: 'draw'
+            });
+            window.showAlert("It's a Draw! 🤝 Good game!");
+        } else {
+            // Next turn
+            const count = Number(post.fourPlayerCount) || 2;
+            let nextTurn = 'R';
+            if (count === 2) {
+                nextTurn = turn === 'R' ? 'B' : 'R';
+            } else {
+                nextTurn = turn === 'R' ? 'B' : (turn === 'B' ? 'Y' : 'R');
+            }
+            await updateDoc(postRef, {
+                fourBoard: board,
+                fourTurn: nextTurn
+            });
+        }
+    } catch(e) {
+        console.error("4 in a Row move error:", e);
         window.showAlert("Error making move: " + e.message);
     }
 };

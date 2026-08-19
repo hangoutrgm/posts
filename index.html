@@ -341,12 +341,14 @@
                     <option value="quick_challenge">Quick Challenge</option>
                     <option value="count_dots">Count the Dots</option>
                     <option value="tictactoe">Tic Tac Toe</option>
+                    <option value="four_in_a_row">4 in a Row (7x7)</option>
                     <option value="hangman">Hangman</option>
                     <option value="gibberish">Gibberish</option>
                     <option value="emoji_riddle">Emoji Riddle (Movie/Song/Idiom)</option>
                     <option value="guess_emoji">Guess the emoji</option>
                     <option value="bring_me_emoji">Bring me emoji</option>
                     <option value="flags">Flags</option>
+                    <option value="periodic_table">Periodic Table of Elements</option>
                     <option value="math">Math</option>
                     <option value="jumbled_words">Jumbled Words</option>
                     <option value="trivia">Random Trivia</option>
@@ -597,6 +599,32 @@
                     <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">You will play as <strong>X</strong>. You can challenge a specific user (search above) or leave it blank so <strong>anyone</strong> can accept the challenge on a first-come, first-served basis!</p>
                 </div>
 
+                <div id="game-four-in-a-row-container" class="hidden mb-3 border border-blue-200 dark:border-blue-900/50 rounded-lg p-3 bg-blue-50 dark:bg-blue-900/20">
+                    <p class="text-xs font-bold text-blue-800 dark:text-blue-200 mb-2">🔴🔵 4 in a Row (7x7 Grid)</p>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Player Mode</label>
+                    <select id="game-four-players-count" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
+                        <option value="2" selected>2 Players (🔴 Red vs 🔵 Blue)</option>
+                        <option value="3">3 Players (🔴 Red vs 🔵 Blue vs 🟡 Yellow)</option>
+                    </select>
+                    <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">You will play as <span class="font-bold text-rose-600">🔴 Red</span>. Connect 4 balls in a row horizontally, vertically, or diagonally to win!</p>
+                </div>
+
+                <div id="game-periodic-table-container" class="hidden mb-3 border border-cyan-200 dark:border-cyan-900/50 rounded-lg p-3 bg-cyan-50 dark:bg-cyan-900/20">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-xs font-bold text-cyan-800 dark:text-cyan-200">🧪 Periodic Table of Elements</p>
+                        <button type="button" onclick="window.pickRandomElement()" class="text-[10px] bg-cyan-600 hover:bg-cyan-500 text-white px-2.5 py-1 rounded-md font-bold transition shadow-sm"><i class="fa-solid fa-dice mr-1"></i>Random Element</button>
+                    </div>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">What to Guess</label>
+                    <select id="game-element-mode" onchange="window.updateElementHint()" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
+                        <option value="name" selected>Guess Element Name (Clue is Symbol & Atomic #)</option>
+                        <option value="symbol">Guess Chemical Symbol (Clue is Element Name & Atomic #)</option>
+                    </select>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Select Element</label>
+                    <input type="text" id="game-element-input" list="game-element-datalist" placeholder="e.g. [26] Fe - Iron or click Random" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-1 font-medium">
+                    <datalist id="game-element-datalist"></datalist>
+                    <p id="game-element-hint" class="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Players will see the Symbol and guess the Element Name.</p>
+                </div>
+
                 <div id="game-hangman-container" class="hidden mb-3 border border-rose-200 dark:border-rose-900/50 rounded-lg p-3 bg-rose-50 dark:bg-rose-900/20">
                     <p class="text-xs font-bold text-rose-700 dark:text-rose-300 mb-1">🪓 Hangman Game</p>
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Secret Word</label>
@@ -713,10 +741,10 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=13"></script>
-    <script type="module" src="js/helpers.js?v=13"></script>
-    <script type="module" src="js/games.js?v=13"></script>
-    <script type="module" src="js/main.js?v=13"></script>
+    <script type="module" src="js/renderers.js?v=14"></script>
+    <script type="module" src="js/helpers.js?v=14"></script>
+    <script type="module" src="js/games.js?v=14"></script>
+    <script type="module" src="js/main.js?v=14"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
