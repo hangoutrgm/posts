@@ -350,6 +350,20 @@ window.openPostGameModal = () => {
     if (typeof window.updateEmojiRiddlePresetsUI === 'function') {
         window.updateEmojiRiddlePresetsUI();
     }
+    const spinCountSelect = document.getElementById('game-spin-names-count');
+    if (spinCountSelect) spinCountSelect.value = '1';
+    for (let i = 1; i <= 3; i++) {
+        const targetInp = document.getElementById(`spin-target-${i}`);
+        if (targetInp) targetInp.value = i === 1 ? '1' : (i === 2 ? '2' : '3');
+        const prizeInp = document.getElementById(`spin-prize-${i}`);
+        if (prizeInp) prizeInp.value = '';
+        const lbInp = document.getElementById(`spin-lb-${i}`);
+        if (lbInp) lbInp.value = '';
+    }
+    if (typeof window.toggleSpinNamesWinners === 'function') {
+        window.toggleSpinNamesWinners();
+    }
+
     document.getElementById('game-type').value = 'first_to_mine';
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
@@ -439,7 +453,17 @@ window.toggleGameSettings = () => {
     const hangmanContainer = document.getElementById('game-hangman-container');
     const gibberishContainer = document.getElementById('game-gibberish-container');
     const emojiRiddleContainer = document.getElementById('game-emoji-riddle-container');
+    const defaultRewardsContainer = document.getElementById('game-default-rewards-container');
     
+    // Default rewards container (Prize PHP, LB Points, Bonus prize)
+    if (defaultRewardsContainer) {
+        if (type === 'spin_names') {
+            defaultRewardsContainer.classList.add('hidden');
+        } else {
+            defaultRewardsContainer.classList.remove('hidden');
+        }
+    }
+
     // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, bingo, spin_names, count_dots, hangman, gibberish, emoji_riddle
     if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle'].includes(type)) {
         settingsDiv.classList.remove('hidden');
@@ -790,9 +814,26 @@ window.submitGame = async () => {
         spinNamesWinnersCount = parseInt(document.getElementById('game-spin-names-count').value) || 1;
         for (let i = 1; i <= spinNamesWinnersCount; i++) {
             const spinTarget = parseInt(document.getElementById(`spin-target-${i}`).value);
-            const spinPrize = document.getElementById(`spin-prize-${i}`).value.trim();
-            if (!spinTarget || !spinPrize) return window.showAlert(`Please fill out the Spin # and Prize for Winner ${i}.`);
-            spinNamesPrizes.push({ target: spinTarget, prize: spinPrize, wonBy: null });
+            const prizeInput = document.getElementById(`spin-prize-${i}`)?.value.trim() || '';
+            const prizeVal = prizeInput ? parseFloat(prizeInput) : 0;
+            const lbInput = document.getElementById(`spin-lb-${i}`)?.value.trim() || '';
+            const lbVal = lbInput ? parseInt(lbInput) : 0;
+
+            if (!spinTarget || spinTarget < 1) return window.showAlert(`Please fill out a valid Spin # for Winner ${i}.`);
+            if (prizeVal <= 0 && lbVal <= 0) return window.showAlert(`Please enter at least a Prize (PHP) or LB Points for Winner ${i}.`);
+
+            const prizeParts = [];
+            if (prizeVal > 0) prizeParts.push(`PHP ${prizeVal}`);
+            if (lbVal > 0) prizeParts.push(`+${lbVal} LB Point${lbVal > 1 ? 's' : ''}`);
+            const prizeFormatted = prizeParts.join(' + ');
+
+            spinNamesPrizes.push({ 
+                target: spinTarget, 
+                prize: prizeFormatted, 
+                prizeNum: prizeVal > 0 ? prizeVal : 0,
+                lbPoints: lbVal > 0 ? lbVal : 0,
+                wonBy: null 
+            });
         }
     }
 
@@ -1777,13 +1818,24 @@ window.drawSpinNamesItem = async (postId) => {
     // --- Auto-declare: if only 1 player left and this spin has a prize, skip the spin animation ---
     if (remaining.length === 1 && matchingPrize) {
         const autoWinner = remaining[0];
+        const matchingLb = (matchingPrize.lbPoints !== undefined && matchingPrize.lbPoints !== null)
+            ? Number(matchingPrize.lbPoints)
+            : (post.gameLbPoints !== undefined ? Number(post.gameLbPoints) : 0);
+
         const newWinners = [...existingWinners, {
             uid: autoWinner.uid,
             name: autoWinner.name,
             prize: matchingPrize.prize,
+            lbPoints: matchingLb,
             target: currentSpinNumber
         }];
-        const newHistory = [...spinHistory, { spinNumber: currentSpinNumber, name: autoWinner.name, uid: autoWinner.uid, prize: matchingPrize.prize }];
+        const newHistory = [...spinHistory, { 
+            spinNumber: currentSpinNumber, 
+            name: autoWinner.name, 
+            uid: autoWinner.uid, 
+            prize: matchingPrize.prize,
+            lbPoints: matchingLb
+        }];
         const autoUpdates = {
             spinNamesSpinCount: currentSpinNumber,
             spinNamesWinners: newWinners,
@@ -1791,9 +1843,8 @@ window.drawSpinNamesItem = async (postId) => {
             spinNamesSpinHistory: newHistory,
             spinNamesLastSpin: { item: autoWinner.name, startTime: Date.now() }
         };
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 0;
-        if (lbPoints > 0) update(ref(db, `users/${autoWinner.uid}`), { lbPoints: increment(lbPoints) });
-        window.logEarnings(autoWinner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, lbPoints);
+        if (matchingLb > 0) update(ref(db, `users/${autoWinner.uid}`), { lbPoints: increment(matchingLb) });
+        window.logEarnings(autoWinner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, matchingLb);
         if (post.authorId) window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, autoWinner.uid, autoWinner.name);
         if (newWinners.length >= prizes.length) {
             autoUpdates.spinNamesPhase = 'ended';
@@ -1810,7 +1861,17 @@ window.drawSpinNamesItem = async (postId) => {
     // Normal spin — pick randomly from remaining pool
     const winner = remaining[Math.floor(Math.random() * remaining.length)];
     const newAllPicked = [...allPickedUids, winner.uid];
-    const newHistory = [...spinHistory, { spinNumber: currentSpinNumber, name: winner.name, uid: winner.uid, prize: matchingPrize ? matchingPrize.prize : null }];
+    const matchingLb = matchingPrize ? ((matchingPrize.lbPoints !== undefined && matchingPrize.lbPoints !== null)
+        ? Number(matchingPrize.lbPoints)
+        : (post.gameLbPoints !== undefined ? Number(post.gameLbPoints) : 0)) : 0;
+
+    const newHistory = [...spinHistory, { 
+        spinNumber: currentSpinNumber, 
+        name: winner.name, 
+        uid: winner.uid, 
+        prize: matchingPrize ? matchingPrize.prize : null,
+        lbPoints: matchingLb
+    }];
 
     const updates = {
         spinNamesLastSpin: { item: winner.name, startTime: Date.now() },
@@ -1824,13 +1885,13 @@ window.drawSpinNamesItem = async (postId) => {
             uid: winner.uid,
             name: winner.name,
             prize: matchingPrize.prize,
+            lbPoints: matchingLb,
             target: currentSpinNumber
         }];
         updates.spinNamesWinners = newWinners;
 
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 0;
-        if (lbPoints > 0) update(ref(db, `users/${winner.uid}`), { lbPoints: increment(lbPoints) });
-        window.logEarnings(winner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, lbPoints);
+        if (matchingLb > 0) update(ref(db, `users/${winner.uid}`), { lbPoints: increment(matchingLb) });
+        window.logEarnings(winner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, matchingLb);
         if (post.authorId) window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, winner.uid, winner.name);
 
         if (newWinners.length >= prizes.length) {
