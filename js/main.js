@@ -483,49 +483,52 @@ window.loadPinnedPosts = () => {
     });
 };
 
+// Store per-post realtime listeners keyed by postId so we can unsubscribe when a pin is removed
+window._pinnedListeners = window._pinnedListeners || {};
+
 window._applyPinnedIds = (ids, pinType) => {
     ids.forEach(id => {
-        // Check if this post is already somewhere in memory
-        let existingPost = window.allPosts.find(p => p.id === id)
-            || window.globalPinnedPosts.find(p => p.id === id)
-            || window.profilePinnedPosts.find(p => p.id === id);
+        // If we already have a live listener for this post, nothing to do
+        if (window._pinnedListeners[id]) return;
 
-        if (!existingPost) {
-            // Fetch the pinned post but do NOT push it into window.allPosts —
-            // that would corrupt the chronological timeline with an out-of-order old post.
-            import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js")
-                .then(({ getDoc, doc }) => getDoc(doc(fsdb, 'community_posts', id)))
-                .then(snap => {
-                    if (snap.exists()) {
-                        const post = { id: snap.id, ...snap.data() };
-                        if (pinType === 'feedPinned') {
-                            if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(post);
-                        } else {
-                            if (!window.profilePinnedPosts.find(p => p.id === id)) window.profilePinnedPosts.push(post);
-                        }
-                        if (typeof window.renderFeed === 'function') {
-                            if (!window.usersReady) window._pendingPostRender = true;
-                            else window.renderFeed(false);
-                        }
-                    }
-                });
-        } else {
-            if (pinType === 'feedPinned') {
-                if (!window.globalPinnedPosts.find(p => p.id === id)) window.globalPinnedPosts.push(existingPost);
-            } else {
-                if (!window.profilePinnedPosts.find(p => p.id === id)) window.profilePinnedPosts.push(existingPost);
+        // Start a real-time listener for this pinned post
+        const postRef = doc(fsdb, 'community_posts', id);
+        const unsub = onSnapshot(postRef, (snap) => {
+            if (!snap.exists()) return;
+            const post = { id: snap.id, ...snap.data() };
+
+            // Update in globalPinnedPosts
+            const gpIdx = window.globalPinnedPosts.findIndex(p => p.id === id);
+            if (gpIdx !== -1) window.globalPinnedPosts[gpIdx] = post;
+            else if (pinType === 'feedPinned') window.globalPinnedPosts.push(post);
+
+            // Update in profilePinnedPosts
+            const ppIdx = window.profilePinnedPosts.findIndex(p => p.id === id);
+            if (ppIdx !== -1) window.profilePinnedPosts[ppIdx] = post;
+            else if (pinType === 'profilePinned') window.profilePinnedPosts.push(post);
+
+            // Also update in allPosts if this post happens to be in the live feed too
+            const apIdx = window.allPosts.findIndex(p => p.id === id);
+            if (apIdx !== -1) window.allPosts[apIdx] = post;
+
+            if (typeof window.renderFeed === 'function') {
+                if (!window.usersReady) window._pendingPostRender = true;
+                else window.renderFeed(false);
             }
-        }
+        });
+        window._pinnedListeners[id] = unsub;
     });
 
-    // Cleanup posts that are no longer pinned
+    // Cleanup: unsubscribe and remove posts that are no longer pinned
     if (pinType === 'feedPinned') {
         const removed = window.globalPinnedPosts.filter(p => !ids.includes(p.id));
         window.globalPinnedPosts = window.globalPinnedPosts.filter(p => ids.includes(p.id));
-        // If a previously-pinned post was fetched out-of-band into allPosts, remove it
-        // so it doesn't appear as an orphan at the bottom of every paginated batch.
         removed.forEach(rp => {
-            // Only remove if it was injected purely for pinning (i.e., it's not in _historyPosts from normal pagination)
+            // Unsubscribe the live listener
+            if (window._pinnedListeners[rp.id]) {
+                window._pinnedListeners[rp.id]();
+                delete window._pinnedListeners[rp.id];
+            }
             const inHistory = (window._historyPosts || []).some(p => p.id === rp.id);
             if (!inHistory) window.allPosts = window.allPosts.filter(p => p.id !== rp.id);
         });
@@ -533,6 +536,10 @@ window._applyPinnedIds = (ids, pinType) => {
         const removed = window.profilePinnedPosts.filter(p => !ids.includes(p.id));
         window.profilePinnedPosts = window.profilePinnedPosts.filter(p => ids.includes(p.id));
         removed.forEach(rp => {
+            if (window._pinnedListeners[rp.id]) {
+                window._pinnedListeners[rp.id]();
+                delete window._pinnedListeners[rp.id];
+            }
             const inHistory = (window._historyPosts || []).some(p => p.id === rp.id);
             if (!inHistory) window.allPosts = window.allPosts.filter(p => p.id !== rp.id);
         });

@@ -1199,7 +1199,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 } else {
                     // bring_me_emoji: show the NAME to all (players send the emoji CHAR)
                     // Host can see the answer emoji char
-                    displayContent = `<div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">${post.gameEmojiName || 'Emoji'}</div>`;
+                    displayContent = `<div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2 text-center">${post.gameEmojiName || 'Emoji'}</div>`;
                     gameTitle = 'Find and send this emoji!';
                     if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiChar || '(no char stored)'}</div>`;
                     answerHint = `<p class="text-xs text-gray-400 mt-1">Paste or type the emoji character</p>`;
@@ -2255,7 +2255,21 @@ window.renderRankings = async (resetLimit = true) => {
                 }
 
                 hostedArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                window._hostedGamesCache = hostedArray;
+
+                // Filter to only show games with a monetary prize (PHP amount > 0)
+                const prizedGames = hostedArray.filter(e => {
+                    const prizeStr = (e.prize || '').toString().split('+')[0].trim();
+                    const num = parseFloat(prizeStr.replace(/[^0-9.]/g, ''));
+                    return !isNaN(num) && num > 0;
+                });
+
+                if (prizedGames.length === 0) {
+                    list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">No games with monetary prizes yet.</p>`;
+                    window._hostedGamesCache = [];
+                    return;
+                }
+
+                window._hostedGamesCache = prizedGames;
             } catch (error) {
                 console.error(error);
                 loader.classList.add('hidden');
