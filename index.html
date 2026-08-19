@@ -357,13 +357,18 @@
                 
                 <div class="grid grid-cols-2 gap-2 mb-3">
                     <div>
-                        <label id="game-prize-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Prize</label>
-                        <input type="text" id="game-prize" placeholder="e.g. PHP 100 or Secret" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                        <label id="game-prize-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">🎁 Prize (PHP)</label>
+                        <input type="number" id="game-prize" placeholder="0" min="0" step="any" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                     </div>
                     <div>
-                        <label id="game-lb-points-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">LB Points</label>
+                        <label id="game-lb-points-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">🏆 LB Points</label>
                         <input type="number" id="game-lb-points" placeholder="0" min="0" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                     </div>
+                </div>
+
+                <div class="mb-3" id="game-bonus-container">
+                    <label id="game-bonus-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">✨ Bonus Prize (Optional)</label>
+                    <input type="text" id="game-bonus-prize" placeholder="e.g. VIP Pass, Surprise Gift, etc." class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                 </div>
 
                 <div id="game-target-user-container" class="hidden mb-3">
@@ -677,10 +682,10 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=2"></script>
-    <script type="module" src="js/helpers.js?v=2"></script>
-    <script type="module" src="js/games.js?v=2"></script>
-    <script type="module" src="js/main.js?v=2"></script>
+    <script type="module" src="js/renderers.js?v=7"></script>
+    <script type="module" src="js/helpers.js?v=7"></script>
+    <script type="module" src="js/games.js?v=7"></script>
+    <script type="module" src="js/main.js?v=7"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

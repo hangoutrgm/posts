@@ -3,17 +3,21 @@ import { ref, update, set, push, get, increment } from "https://www.gstatic.com/
 import { collection, doc, addDoc, getDoc, updateDoc, deleteField, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 window.logEarnings = (uid, postId, title, prize, lbPoints) => {
-    push(ref(db, `earnings/${uid}`), {
+    if (!uid) return;
+    const payload = {
         postId: postId || '',
         title: title || 'Game Reward',
         prize: prize || '',
         lbPoints: lbPoints || 0,
         timestamp: Date.now()
-    });
+    };
+    push(ref(db, `users/${uid}/earnings`), payload).catch(e => console.warn('users/earnings write error:', e));
+    push(ref(db, `earnings/${uid}`), payload).catch(e => console.warn('earnings write error:', e));
 };
 
 window.logHostedGame = (hostUid, postId, title, prize, winnerUid, winnerName) => {
-    push(ref(db, `hostedGames/${hostUid}`), {
+    if (!hostUid) return;
+    const payload = {
         postId: postId || '',
         title: title || 'Game',
         prize: prize || '',
@@ -21,7 +25,23 @@ window.logHostedGame = (hostUid, postId, title, prize, winnerUid, winnerName) =>
         winnerName: winnerName || '',
         paymentStatus: 'pending',
         timestamp: Date.now()
-    });
+    };
+    push(ref(db, `users/${hostUid}/hostedGames`), payload).catch(e => console.warn('users/hostedGames write error:', e));
+    push(ref(db, `hostedGames/${hostUid}`), payload).catch(e => console.warn('hostedGames write error:', e));
+};
+
+window.formatPrizeForLog = (prize, bonus) => {
+    const parts = [];
+    const num = (prize !== null && prize !== undefined && prize !== '') ? (typeof prize === 'number' ? prize : parseFloat(String(prize).replace(/^PHP\s*/i, ''))) : 0;
+    if (!isNaN(num) && num > 0) {
+        parts.push(`PHP ${num}`);
+    } else if (typeof prize === 'string' && prize.trim() && prize.trim() !== '0') {
+        parts.push(prize.trim().toUpperCase().startsWith('PHP') ? prize.trim() : `PHP ${prize.trim()}`);
+    }
+    if (bonus && typeof bonus === 'string' && bonus.trim()) {
+        parts.push(`Bonus: ${bonus.trim()}`);
+    }
+    return parts.join(' + ') || (typeof prize === 'string' && prize ? prize : '');
 };
 
 // ============================================================
@@ -293,6 +313,8 @@ window.openPostGameModal = () => {
     
     // Reset form
     document.getElementById('game-prize').value = '';
+    const bonusPrizeEl = document.getElementById('game-bonus-prize');
+    if (bonusPrizeEl) bonusPrizeEl.value = '';
     document.getElementById('game-target-user').value = '';
     document.getElementById('game-emoji-name').value = '';
     document.getElementById('game-target-reacts').value = '';
@@ -332,10 +354,10 @@ window.openPostGameModal = () => {
     
     const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
     document.getElementById('game-lb-points').max = maxLb;
-    document.getElementById('game-lb-points-label').innerText = `LB Points (Max ${maxLb})`;
+    document.getElementById('game-lb-points-label').innerText = `🏆 LB Points (Max ${maxLb})`;
 
     const prizeLabel = document.getElementById('game-prize-label');
-    if(prizeLabel) prizeLabel.innerText = `Prize`;
+    if(prizeLabel) prizeLabel.innerText = `🎁 Prize (PHP)`;
 
     // Populate Users Datalist
     const userDatalist = document.getElementById('game-users-datalist');
@@ -571,14 +593,27 @@ window.submitGame = async () => {
     if (!window.currentUser) return;
     
     const type = document.getElementById('game-type').value;
-    const prize = document.getElementById('game-prize').value.trim();
-    // spin_names uses per-winner prizes; ncl prize is set in the global field
-    if (!prize && type !== 'spin_names') return window.showAlert("Please enter a prize amount.");
+    const rawPrize = document.getElementById('game-prize').value.trim();
+    const bonusPrize = document.getElementById('game-bonus-prize') ? document.getElementById('game-bonus-prize').value.trim() : '';
+
+    let prize = 0;
+    if (rawPrize !== '') {
+        const num = parseFloat(rawPrize);
+        if (isNaN(num) || num < 0) {
+            return window.showAlert("Please enter a valid numeric prize amount (e.g. 50, 100).");
+        }
+        prize = num;
+    }
 
     const maxLbAllowed = window.siteSettings.maxLbPointsPrize ?? 5;
     const lbPointsReward = parseInt(document.getElementById('game-lb-points').value) || 0;
     if (lbPointsReward < 0 || lbPointsReward > maxLbAllowed) {
         return window.showAlert(`LB Points reward must be between 0 and ${maxLbAllowed}.`);
+    }
+
+    // Require at least prize, bonus, or lb points for non-spin_names games
+    if (type !== 'spin_names' && prize <= 0 && !bonusPrize && lbPointsReward <= 0) {
+        return window.showAlert("Please enter a prize amount (PHP), bonus prize, or LB points.");
     }
 
     // type already read above
@@ -803,7 +838,10 @@ window.submitGame = async () => {
         const prizeLines = spinNamesPrizes.map(p => `Spin #${p.target}: ${p.prize}`).join(' | ');
         text = `🎡 Spin the Names! Join for a chance to win! — ${prizeLines}`;
     }
-    else if (type === 'ncl') text = `ncl - ${prize} - @${targetUserName}. Congrats!! 🎉`;
+    else if (type === 'ncl') {
+        const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
+        text = `ncl - ${nclPrizeFormatted ? nclPrizeFormatted + ' - ' : ''}@${targetUserName}. Congrats!! 🎉`;
+    }
 
     const postData = {
         authorId: window.currentUser.uid,
@@ -814,6 +852,7 @@ window.submitGame = async () => {
         isGame: true,
         gameType: type,
         gamePrize: prize,
+        gameBonusPrize: bonusPrize,
         gameLbPoints: lbPointsReward,
         gameStatus: type === 'ncl' ? 'completed' : 'active',
         gameWinner: type === 'ncl' ? targetUserUid : null
@@ -890,9 +929,10 @@ window.submitGame = async () => {
 
         // For NCL: log the earning immediately since it's awarded on post creation
         if (type === 'ncl' && targetUserUid) {
-            window.logEarnings(targetUserUid, newPostRef.id, 'NCL Reward', prize, lbPointsReward);
+            const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
+            window.logEarnings(targetUserUid, newPostRef.id, 'NCL Reward', nclPrizeFormatted, lbPointsReward);
             const nclWinnerName = window.globalUsersCache?.[targetUserUid]?.name || targetUserUid;
-            window.logHostedGame(window.currentUser.uid, newPostRef.id, 'NCL Reward', prize, targetUserUid, nclWinnerName);
+            window.logHostedGame(window.currentUser.uid, newPostRef.id, 'NCL Reward', nclPrizeFormatted, targetUserUid, nclWinnerName);
         }
 
         // Close modal first — post was created successfully
@@ -901,6 +941,7 @@ window.submitGame = async () => {
         // Send notification separately so failures here don't show a fake error
         if (targetUserUid) {
             try {
+                const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
                 const notifRef = push(ref(db, `notifications/${targetUserUid}`));
                 await set(notifRef, {
                     type: 'game_challenge',
@@ -909,7 +950,7 @@ window.submitGame = async () => {
                     postId: newPostRef.key,
                     timestamp: Date.now(),
                     read: false,
-                    message: type === 'ncl' ? `awarded you ${prize} via ncl!` : `challenged you to a game!`
+                    message: type === 'ncl' ? `awarded you ${nclPrizeFormatted || 'a reward'} via ncl!` : `challenged you to a game!`
                 });
             } catch(notifErr) {
                 console.warn('Notification write failed (non-critical):', notifErr);
@@ -959,17 +1000,21 @@ window.mineGame = async (postId) => {
         });
 
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) update(ref(db, `users/${window.currentUser.uid}`), { lbPoints: increment(lbPoints) });
-        window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
+        window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
         if (post.authorId && post.authorId !== window.currentUser.uid) {
             const myName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Someone';
-            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, window.currentUser.uid, myName);
+            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, window.currentUser.uid, myName);
         }
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId && post.authorId !== window.currentUser.uid) {
             update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
         }
-        window.showAlert(`You won! +${lbPoints} LB points!`);
+        let winMsg = `You won!`;
+        if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+        if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+        window.showAlert(winMsg);
     } catch(e) {
         console.error("Mine error:", e);
         window.showAlert("Error playing game: " + e.message);
@@ -1019,11 +1064,12 @@ window.endLastCommentGame = async (postId) => {
 
         if (lastCommenterId) {
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) update(ref(db, `users/${lastCommenterId}`), { lbPoints: increment(lbPoints) });
-            window.logEarnings(lastCommenterId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
+            window.logEarnings(lastCommenterId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
             if (post.authorId) {
                 const lcWinnerName = window.globalUsersCache?.[lastCommenterId]?.name || 'Someone';
-                window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lastCommenterId, lcWinnerName);
+                window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lastCommenterId, lcWinnerName);
             }
             // Reward host only if someone actually won
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
@@ -1106,11 +1152,12 @@ window.checkChallenge = async (postId) => {
             });
             if (isWinner) {
                 const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) update(ref(db, `users/${post.gameTargetUser}`), { lbPoints: increment(lbPoints) });
-                window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
+                window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
                 const winnerName = window.globalUsersCache[post.gameTargetUser]?.name || post.gameTargetUser;
                 if (post.authorId) {
-                    window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, post.gameTargetUser, winnerName);
+                    window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, post.gameTargetUser, winnerName);
                 }
                 const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                 if (hostLbReward > 0 && post.authorId) {
@@ -1211,18 +1258,22 @@ window.answerGame = async (postId, answer) => {
         });
 
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) update(ref(db, `users/${window.currentUser.uid}`), { lbPoints: increment(lbPoints) });
-        window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
+        window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
         if (post.authorId && post.authorId !== window.currentUser.uid) {
             const myAnswerName = window.globalUsersCache?.[window.currentUser.uid]?.name || 'Someone';
-            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, window.currentUser.uid, myAnswerName);
+            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, window.currentUser.uid, myAnswerName);
         }
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId && post.authorId !== window.currentUser.uid) {
             update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
         }
         document.getElementById('game-answer-modal').classList.add('hidden');
-        window.showAlert(`Correct! 🎉 You won ${lbPoints} LB points!`);
+        let winMsg = `Correct! 🎉 You won!`;
+        if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+        if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+        window.showAlert(winMsg);
     } catch(e) {
         console.error("Answer error:", e);
         window.showAlert("Error submitting answer: " + e.message);
@@ -1488,11 +1539,12 @@ window.spinBingoWheel = async (postId) => {
         updates.locked = true;
         
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) update(ref(db, `users/${winnerId}`), { lbPoints: increment(lbPoints) });
-        window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, lbPoints);
+        window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
         if (post.authorId) {
             const bingoWinnerName = window.globalUsersCache?.[winnerId]?.name || 'Someone';
-            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), post.gamePrize, winnerId, bingoWinnerName);
+            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, winnerId, bingoWinnerName);
         }
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId) {
@@ -1969,18 +2021,22 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
             });
 
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) update(ref(db, `users/${winnerUid}`), { lbPoints: increment(lbPoints) });
-            window.logEarnings(winnerUid, postId, 'Tic Tac Toe', post.gamePrize, lbPoints);
+            window.logEarnings(winnerUid, postId, 'Tic Tac Toe', prizeLogged, lbPoints);
             if (post.authorId && post.authorId !== winnerUid) {
                 const winnerName = window.globalUsersCache?.[winnerUid]?.name || 'Someone';
-                window.logHostedGame(post.authorId, postId, 'Tic Tac Toe', post.gamePrize, winnerUid, winnerName);
+                window.logHostedGame(post.authorId, postId, 'Tic Tac Toe', prizeLogged, winnerUid, winnerName);
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
                 update(ref(db, `users/${post.authorId}`), { lbPoints: increment(hostLbReward) });
             }
 
-            window.showAlert(`🎉 You won the Tic Tac Toe match! +${lbPoints} LB points!`);
+            let winMsg = `🎉 You won the Tic Tac Toe match!`;
+            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+            window.showAlert(winMsg);
         } else if (!board.includes('')) {
             // Draw
             await updateDoc(postRef, {
@@ -2106,11 +2162,12 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     });
 
                     const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                    const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                     if (lbPoints > 0) update(ref(db, `users/${uid}`), { lbPoints: increment(lbPoints) });
-                    window.logEarnings(uid, postId, 'Hangman', post.gamePrize, lbPoints);
+                    window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);
                     if (post.authorId && post.authorId !== uid) {
                         const winnerName = window.globalUsersCache?.[uid]?.name || 'Someone';
-                        window.logHostedGame(post.authorId, postId, 'Hangman', post.gamePrize, uid, winnerName);
+                        window.logHostedGame(post.authorId, postId, 'Hangman', prizeLogged, uid, winnerName);
                     }
                     const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                     if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
@@ -2118,7 +2175,10 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     }
 
                     document.getElementById('hangman-guess-modal').classList.add('hidden');
-                    window.showAlert(`🎉 Amazing! You revealed the last letter and WON the Hangman game! +${lbPoints} LB points!`);
+                    let winMsg = `🎉 Amazing! You revealed the last letter and WON the Hangman game!`;
+                    if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                    if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                    window.showAlert(winMsg);
                 } else {
                     await updateDoc(postRef, {
                         hangmanGuessedLetters: newGuessed
@@ -2159,11 +2219,12 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                 });
 
                 const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) update(ref(db, `users/${uid}`), { lbPoints: increment(lbPoints) });
-                window.logEarnings(uid, postId, 'Hangman', post.gamePrize, lbPoints);
+                window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);
                 if (post.authorId && post.authorId !== uid) {
                     const winnerName = window.globalUsersCache?.[uid]?.name || 'Someone';
-                    window.logHostedGame(post.authorId, postId, 'Hangman', post.gamePrize, uid, winnerName);
+                    window.logHostedGame(post.authorId, postId, 'Hangman', prizeLogged, uid, winnerName);
                 }
                 const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                 if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
@@ -2171,7 +2232,10 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                 }
 
                 document.getElementById('hangman-guess-modal').classList.add('hidden');
-                window.showAlert(`🏆 BINGO! You guessed the entire word correctly and WON! +${lbPoints} LB points!`);
+                let winMsg = `🏆 BINGO! You guessed the entire word correctly and WON!`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
             } else {
                 // Wrong word
                 const newWordCount = wordFailCount + 1;

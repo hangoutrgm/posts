@@ -2,6 +2,32 @@ import { db, fsdb } from "./firebase-config.js";
 import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
+const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+window.escapeHtml = escapeHtml;
+
+window.formatLogPrizeBadges = (prize, lbPoints) => {
+    const badges = [];
+    if (prize) {
+        const str = String(prize).trim();
+        if (str.includes(' + Bonus: ') || str.startsWith('Bonus: ')) {
+            const parts = str.split(' + Bonus: ');
+            if (parts[0] && !parts[0].startsWith('Bonus: ')) {
+                badges.push(`<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"><i class="fa-solid fa-gift text-emerald-500"></i> ${escapeHtml(parts[0])}</span>`);
+            }
+            const bonusPart = parts.length > 1 ? parts[1] : parts[0].replace(/^Bonus:\s*/, '');
+            if (bonusPart) {
+                badges.push(`<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30"><i class="fa-solid fa-wand-magic-sparkles text-purple-500"></i> Bonus: ${escapeHtml(bonusPart)}</span>`);
+            }
+        } else {
+            badges.push(`<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"><i class="fa-solid fa-gift text-emerald-500"></i> ${escapeHtml(str)}</span>`);
+        }
+    }
+    if (lbPoints && Number(lbPoints) > 0) {
+        badges.push(`<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"><i class="fa-solid fa-trophy text-amber-500"></i> +${Number(lbPoints)} LB</span>`);
+    }
+    return badges.join('');
+};
+
 // Notifications
 window.updateNotifBadge = () => {
     if(!window.currentUser) return;
@@ -1006,10 +1032,43 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 </button>
             </div>`;
     } else if (post.isGame) {
-        let prizeText = '';
-        if (post.gamePrize) prizeText += `PRIZE: ${post.gamePrize}`;
-        if (post.gameLbPoints) prizeText += (prizeText ? ' + ' : '') + `${post.gameLbPoints} LB Points`;
-        const prizeStr = prizeText ? `<div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center py-1.5 px-3 rounded-lg text-xs font-bold shadow-sm mb-2"><i class="fa-solid fa-gift mr-1"></i> ${prizeText}</div>` : '';
+        const badges = [];
+
+        // 1. Gift Icon: Prize Amount (PHP)
+        let numPrize = 0;
+        let isLegacyTextPrize = false;
+        if (post.gamePrize !== undefined && post.gamePrize !== null && post.gamePrize !== '') {
+            if (typeof post.gamePrize === 'number') {
+                numPrize = post.gamePrize;
+            } else {
+                const str = String(post.gamePrize).trim();
+                const parsed = parseFloat(str.replace(/^PHP\s*/i, ''));
+                if (!isNaN(parsed) && parsed > 0 && (str === String(parsed) || str.toUpperCase() === `PHP ${parsed}` || str.toUpperCase() === `PHP${parsed}`)) {
+                    numPrize = parsed;
+                } else if (str && str !== '0') {
+                    isLegacyTextPrize = true;
+                }
+            }
+        }
+        if (numPrize > 0) {
+            badges.push(`<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 backdrop-blur-sm shadow-sm"><i class="fa-solid fa-gift text-emerald-500 text-xs"></i> PHP ${numPrize.toLocaleString()}</span>`);
+        } else if (isLegacyTextPrize && post.gamePrize) {
+            badges.push(`<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 backdrop-blur-sm shadow-sm"><i class="fa-solid fa-gift text-emerald-500 text-xs"></i> ${escapeHtml(String(post.gamePrize))}</span>`);
+        }
+
+        // 2. Trophy Icon: LB Points
+        const lb = (post.gameLbPoints !== undefined && post.gameLbPoints !== null) ? Number(post.gameLbPoints) : 0;
+        if (lb > 0) {
+            badges.push(`<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 backdrop-blur-sm shadow-sm"><i class="fa-solid fa-trophy text-amber-500 text-xs"></i> +${lb} LB Points</span>`);
+        }
+
+        // 3. Magic Icon: Bonus Prize
+        const bonus = (post.gameBonusPrize || post.gameBonus || '').trim();
+        if (bonus) {
+            badges.push(`<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 backdrop-blur-sm shadow-sm"><i class="fa-solid fa-wand-magic-sparkles text-purple-500 text-xs"></i> Bonus: ${escapeHtml(bonus)}</span>`);
+        }
+
+        const prizeStr = badges.length ? `<div class="flex flex-wrap items-center justify-center gap-2 mb-3">${badges.join('')}</div>` : '';
         
         if (post.gameType === 'first_to_mine') {
             if (post.gameStatus === 'active') {
@@ -1023,7 +1082,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
                         ${prizeStr}
-                        <div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} mined it first!</div>
+                        <div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} mined it first!</span></div>
                     </div>`;
             }
         } else if (post.gameType === 'last_comment') {
@@ -1046,10 +1105,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             } else {
                 let outcomeHtml = '';
                 if (post.gameWinner === 'none' || !post.gameWinner) {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> Game forfeited! (No winners)</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-xmark"></i> Game forfeited! (No winners)</div>`;
                 } else {
                     const winnerName = window.globalUsersCache[post.gameWinner]?.name || "Someone";
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won the Last Comment!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} won the Last Comment!</span></div>`;
                 }
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
@@ -1082,10 +1141,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             } else {
                 let outcomeHtml = '';
                 if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> @${targetUserName} failed the challenge!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-xmark"></i> @${targetUserName} failed the challenge!</div>`;
                 } else {
                     const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> Challenge Completed by ${winnerName}!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-trophy text-amber-400"></i> <span>Challenge Completed by ${winnerName}!</span></div>`;
                 }
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
@@ -1113,10 +1172,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             } else {
                 let outcomeHtml = '';
                 if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> @${targetUserName} failed the challenge!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-xmark"></i> @${targetUserName} failed the challenge!</div>`;
                 } else {
                     const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} mined it!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} mined it!</span></div>`;
                 }
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
@@ -1159,10 +1218,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 const revealedChar = post.gameEmojiChar || '';
                 let outcomeHtml = '';
                 if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-xmark mr-1"></i> No one guessed it!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-xmark"></i> No one guessed it!</div>`;
                 } else {
                     const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} won!</span></div>`;
                 }
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
@@ -1223,10 +1282,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             } else {
                 let outcomeHtml = '';
                 if (post.gameWinner === 'none') {
-                    outcomeHtml = `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> No one got it in time!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-xmark"></i> No one got it in time!</div>`;
                 } else {
                     const winnerName = window.globalUsersCache[post.gameWinner]?.name || post.gameWinner;
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} won!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} won!</span></div>`;
                 }
                 
                 let answerReveal = '';
@@ -1428,9 +1487,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 <div class="mt-3 mb-2 p-4 bg-gradient-to-r from-pink-100 to-rose-100 dark:from-pink-900/40 dark:to-rose-900/40 rounded-xl border-2 border-pink-300 dark:border-pink-700/50 flex flex-col items-center text-center shadow-sm">
                     <div class="text-3xl mb-2">🎁</div>
                     <h4 class="font-black text-pink-800 dark:text-pink-300 text-lg mb-1">ncl @${winnerName}</h4>
-                    <div class="mt-2 bg-white dark:bg-slate-800/80 px-4 py-2 rounded-lg font-bold text-pink-600 dark:text-pink-400 shadow-inner text-sm">
-                        ${post.gamePrize}
-                    </div>
+                    ${prizeStr ? `<div class="mt-2">${prizeStr}</div>` : (post.gamePrize ? `<div class="mt-2 bg-white dark:bg-slate-800/80 px-4 py-2 rounded-lg font-bold text-pink-600 dark:text-pink-400 shadow-inner text-sm">${escapeHtml(String(post.gamePrize))}</div>` : '')}
                 </div>`;
         } else if (post.gameType === 'count_dots') {
             if (post.gameStatus === 'active') {
@@ -1456,8 +1513,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
                     : 'No one';
                 const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
-                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} guessed correctly!</div>`
-                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No correct guess.</div>`;
+                    ? `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} guessed correctly!</span></div>`
+                    : `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-xmark"></i> Game ended! No correct guess.</div>`;
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
@@ -1548,11 +1605,11 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             } else {
                 let outcomeHtml = '';
                 if (post.gameWinner === 'draw') {
-                    outcomeHtml = `<div class="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-handshake mr-1"></i> Match ended in a Draw!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-1.5 bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-handshake"></i> Match ended in a Draw!</div>`;
                 } else {
                     const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone') : 'Someone';
                     const winnerSymbol = post.gameWinner === playerX ? '❌' : '⭕';
-                    outcomeHtml = `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerSymbol} ${winnerName} won the match!</div>`;
+                    outcomeHtml = `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerSymbol} ${winnerName} won the match!</span></div>`;
                 }
 
                 const gridSize = Number(post.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
@@ -1643,8 +1700,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
                     : 'No one';
                 const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
-                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} solved the word!</div>`
-                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No one solved it.</div>`;
+                    ? `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} solved the word!</span></div>`
+                    : `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-xmark"></i> Game ended! No one solved it.</div>`;
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
@@ -1682,8 +1739,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
                     : 'No one';
                 const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
-                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} got the right answer!</div>`
-                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No one got it.</div>`;
+                    ? `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} got the right answer!</span></div>`
+                    : `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-xmark"></i> Game ended! No one got it.</div>`;
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
@@ -1730,8 +1787,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     ? (window.globalUsersCache[post.gameWinner]?.name || 'Someone')
                     : 'No one';
                 const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
-                    ? `<div class="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-trophy mr-1"></i> ${winnerName} solved the riddle!</div>`
-                    : `<div class="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-bold px-4 py-2 rounded-full text-sm text-center mt-2"><i class="fa-solid fa-xmark mr-1"></i> Game ended! No one solved it.</div>`;
+                    ? `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${winnerName} solved the riddle!</span></div>`
+                    : `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-xmark"></i> Game ended! No one solved it.</div>`;
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
@@ -2035,13 +2092,24 @@ window.renderRankings = async (resetLimit = true) => {
                 loader.classList.add('hidden');
                 
                 let earningsArray = [];
+                const seenEarningsKeys = new Set();
                 if (newSnap && newSnap.exists()) {
-                    newSnap.forEach(child => earningsArray.push({ id: child.key, ...child.val() }));
+                    newSnap.forEach(child => {
+                        const val = child.val();
+                        earningsArray.push({ id: child.key, ...val });
+                        if (val && val.postId) seenEarningsKeys.add(`${val.postId}_${val.title}`);
+                        seenEarningsKeys.add(child.key);
+                    });
                 }
                 if (legacySnap && legacySnap.exists()) {
-                    const existingIds = new Set(earningsArray.map(e => e.id));
                     legacySnap.forEach(child => {
-                        if (!existingIds.has(child.key)) earningsArray.push({ id: child.key, ...child.val() });
+                        const val = child.val();
+                        const postKey = val && val.postId ? `${val.postId}_${val.title}` : null;
+                        if (!seenEarningsKeys.has(child.key) && (!postKey || !seenEarningsKeys.has(postKey))) {
+                            earningsArray.push({ id: child.key, ...val });
+                            seenEarningsKeys.add(child.key);
+                            if (postKey) seenEarningsKeys.add(postKey);
+                        }
                     });
                 }
 
@@ -2051,7 +2119,7 @@ window.renderRankings = async (resetLimit = true) => {
                     return;
                 }
                 
-                earningsArray.sort((a, b) => b.timestamp - a.timestamp);
+                earningsArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 window._earningsCache = earningsArray;
             } catch (error) {
                 console.error(error);
@@ -2068,7 +2136,8 @@ window.renderRankings = async (resetLimit = true) => {
         if (resetLimit && earningsArray.length > 0) {
             const totalLb = earningsArray.reduce((sum, e) => sum + (e.lbPoints || 0), 0);
             const totalPrize = earningsArray.reduce((sum, e) => {
-                const num = parseFloat((e.prize || '').toString().replace(/[^0-9.]/g, ''));
+                const str = (e.prize || '').toString().split(' + Bonus:')[0];
+                const num = parseFloat(str.replace(/[^0-9.]/g, ''));
                 return sum + (isNaN(num) ? 0 : num);
             }, 0);
 
@@ -2081,7 +2150,7 @@ window.renderRankings = async (resetLimit = true) => {
                 </div>
                 <div class="w-px h-10 bg-yellow-200 dark:bg-yellow-800/50"></div>
                 <div class="text-center">
-                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? totalPrize : earningsArray.filter(e => e.prize).length + ' reward(s)'}</div>
+                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? 'PHP ' + totalPrize.toLocaleString() : (earningsArray.filter(e => e.prize).length + ' reward(s)')}</div>
                     <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Value</div>
                 </div>
                 <div class="w-px h-10 bg-yellow-200 dark:bg-yellow-800/50"></div>
@@ -2102,18 +2171,17 @@ window.renderRankings = async (resetLimit = true) => {
             
             const ts = e.timestamp?.toMillis ? e.timestamp.toMillis() : e.timestamp;
             const date = new Date(ts).toLocaleDateString();
-            const prizeStr = e.prize ? `<span class="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded text-xs font-bold mr-1">🎁 ${e.prize}</span>` : '';
-            const lbStr = e.lbPoints ? `<span class="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-2 py-0.5 rounded text-xs font-bold">🏆 +${e.lbPoints}</span>` : '';
+            const badgesHtml = window.formatLogPrizeBadges(e.prize, e.lbPoints);
             
             el.innerHTML = `
                 <div class="flex justify-between items-start mb-1">
                     <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight">
-                        ${e.title}
+                        ${escapeHtml(e.title)}
                     </h4>
                     <span class="text-[10px] text-gray-400 shrink-0 ml-2">${date}</span>
                 </div>
-                <div class="flex items-center mb-1">
-                    ${prizeStr}${lbStr}
+                <div class="flex flex-wrap items-center gap-1 mb-1">
+                    ${badgesHtml}
                 </div>
                 ${e.postId ? `<button onclick="window.goToPost('${e.postId}'); document.getElementById('ranking-modal').classList.add('hidden');" class="text-[10px] text-blue-500 hover:underline mt-1 self-start">View Game</button>` : ''}
             `;
@@ -2159,13 +2227,24 @@ window.renderRankings = async (resetLimit = true) => {
                 loader.classList.add('hidden');
 
                 let hostedArray = [];
+                const seenHostedKeys = new Set();
                 if (newSnap && newSnap.exists()) {
-                    newSnap.forEach(child => hostedArray.push({ id: child.key, ...child.val() }));
+                    newSnap.forEach(child => {
+                        const val = child.val();
+                        hostedArray.push({ id: child.key, ...val });
+                        if (val && val.postId) seenHostedKeys.add(`${val.postId}_${val.title}`);
+                        seenHostedKeys.add(child.key);
+                    });
                 }
                 if (legacySnap && legacySnap.exists()) {
-                    const existingIds = new Set(hostedArray.map(e => e.id));
                     legacySnap.forEach(child => {
-                        if (!existingIds.has(child.key)) hostedArray.push({ id: child.key, ...child.val() });
+                        const val = child.val();
+                        const postKey = val && val.postId ? `${val.postId}_${val.title}` : null;
+                        if (!seenHostedKeys.has(child.key) && (!postKey || !seenHostedKeys.has(postKey))) {
+                            hostedArray.push({ id: child.key, ...val });
+                            seenHostedKeys.add(child.key);
+                            if (postKey) seenHostedKeys.add(postKey);
+                        }
                     });
                 }
 
@@ -2175,7 +2254,7 @@ window.renderRankings = async (resetLimit = true) => {
                     return;
                 }
 
-                hostedArray.sort((a, b) => b.timestamp - a.timestamp);
+                hostedArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 window._hostedGamesCache = hostedArray;
             } catch (error) {
                 console.error(error);
@@ -2191,7 +2270,8 @@ window.renderRankings = async (resetLimit = true) => {
         // Summary banner
         if (resetLimit && hostedArray.length > 0) {
             const totalPrize = hostedArray.reduce((sum, e) => {
-                const num = parseFloat((e.prize || '').toString().replace(/[^0-9.]/g, ''));
+                const str = (e.prize || '').toString().split(' + Bonus:')[0];
+                const num = parseFloat(str.replace(/[^0-9.]/g, ''));
                 return sum + (isNaN(num) ? 0 : num);
             }, 0);
             const pendingCount = hostedArray.filter(e => e.paymentStatus !== 'paid').length;
@@ -2205,7 +2285,7 @@ window.renderRankings = async (resetLimit = true) => {
                 </div>
                 <div class="w-px h-10 bg-indigo-200 dark:bg-indigo-800/50"></div>
                 <div class="text-center">
-                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? totalPrize : hostedArray.filter(e => e.prize).length + ' prize(s)'}</div>
+                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? 'PHP ' + totalPrize.toLocaleString() : (hostedArray.filter(e => e.prize).length + ' prize(s)')}</div>
                     <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Given</div>
                 </div>
                 <div class="w-px h-10 bg-indigo-200 dark:bg-indigo-800/50"></div>
@@ -2226,7 +2306,7 @@ window.renderRankings = async (resetLimit = true) => {
 
             const ts = e.timestamp?.toMillis ? e.timestamp.toMillis() : e.timestamp;
             const date = new Date(ts).toLocaleDateString();
-            const prizeStr = e.prize ? `<span class="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded text-xs font-bold">🎁 ${e.prize}</span>` : '';
+            const badgesHtml = window.formatLogPrizeBadges(e.prize, e.lbPoints);
             const isPaid = e.paymentStatus === 'paid';
             const payBtn = `<button
                 id="pay-btn-${e.id}"
@@ -2238,14 +2318,16 @@ window.renderRankings = async (resetLimit = true) => {
 
             el.innerHTML = `
                 <div class="flex justify-between items-start mb-1">
-                    <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight truncate pr-2">${e.title}</h4>
+                    <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight truncate pr-2">${escapeHtml(e.title)}</h4>
                     <span class="text-[10px] text-gray-400 shrink-0">${date}</span>
                 </div>
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-                    🏆 Winner: <span class="font-semibold text-gray-700 dark:text-gray-300">${e.winnerName || 'Unknown'}</span>
+                    🏆 Winner: <span class="font-semibold text-gray-700 dark:text-gray-300">${escapeHtml(e.winnerName || 'Unknown')}</span>
                 </div>
-                <div class="flex items-center gap-2">
-                    ${prizeStr}
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex flex-wrap items-center gap-1">
+                        ${badgesHtml}
+                    </div>
                     ${payBtn}
                 </div>
                 ${e.postId ? `<button onclick="window.goToPost('${e.postId}'); document.getElementById('ranking-modal').classList.add('hidden');" class="text-[10px] text-blue-500 hover:underline mt-1 self-start">View Game</button>` : ''}

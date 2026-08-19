@@ -111,6 +111,8 @@ document.querySelectorAll('.ranking-filter-btn').forEach(btn => {
         targetBtn.classList.add('bg-blue-600', 'text-white', 'border-transparent'); 
         targetBtn.classList.remove('bg-gray-100', 'text-gray-700', 'dark:bg-slate-900', 'dark:text-gray-300', 'border-gray-200', 'dark:border-slate-700');
         window.currentRankingFilter = targetBtn.getAttribute('data-filter');
+        window._earningsCache = null;
+        window._hostedGamesCache = null;
         if (window.renderRankings) window.renderRankings(true);
     });
 });
