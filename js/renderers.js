@@ -132,12 +132,52 @@ window.goToPost = (postId) => {
     window.closeProfile(); 
     window.currentFilter = "All"; 
     window.isolatedPostId = postId;
+    window.isolatedPostData = window.allPosts.find(p => p.id === postId) 
+        || (window.globalPinnedPosts || []).find(p => p.id === postId) 
+        || (window.profilePinnedPosts || []).find(p => p.id === postId) 
+        || null;
+
+    if (window.isolatedPostUnsubscribe) {
+        window.isolatedPostUnsubscribe();
+        window.isolatedPostUnsubscribe = null;
+    }
+
+    window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb, 'community_posts', postId), (snapshot) => {
+        if (snapshot.exists()) {
+            const post = { id: snapshot.id, ...snapshot.data() };
+            window.isolatedPostData = post;
+            const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+            if (existingIndex >= 0) {
+                window.allPosts[existingIndex] = post;
+            } else {
+                window.allPosts.push(post);
+            }
+
+            if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                if (!window.usersReady) {
+                    window._pendingPostRender = true;
+                } else {
+                    window.renderFeed(false);
+                }
+            }
+        } else {
+            const feed = document.getElementById('feed');
+            if (feed) {
+                feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+            }
+        }
+    }, (err) => {
+        console.error("Error fetching isolated post:", err);
+    });
+
     window.renderFeed(true);
     window.scrollTo(0,0);
 };
 
 window.clearIsolatedPost = () => {
     window.isolatedPostId = null;
+    window.isolatedPostData = null;
     window.feedRenderLimit = 15;
     if (window.isolatedPostUnsubscribe) {
         window.isolatedPostUnsubscribe();
@@ -217,14 +257,16 @@ window.renderPostList = (container, postsToRender, prefix, filterContext) => {
     const validIds = new Set(postsToRender.map(p => `post-${prefix}-${p.id}`));
     const banner = container.querySelector('#isolated-banner');
     
+    // Clean up loaders
+    container.querySelectorAll('#spotlight-loader, .sentinel-loader').forEach(el => el.remove());
+    
     Array.from(container.children).forEach(child => {
         if (child.id && child.id.startsWith(`post-${prefix}-`) && !validIds.has(child.id)) {
             container.removeChild(child);
+        } else if (child.id !== 'isolated-banner' && !child.id.startsWith(`post-${prefix}-`)) {
+            container.removeChild(child);
         }
     });
-
-    const sentinel = container.querySelector('.sentinel-loader');
-    if (sentinel) container.removeChild(sentinel);
 
     let prevNode = banner || null;
     
@@ -295,54 +337,64 @@ window.renderFeed = (resetLimit = true) => {
     if (resetLimit) window.feedRenderLimit = 15;
     
     if (window.isolatedPostId) {
-        const singlePost = window.allPosts.find(p => p.id === window.isolatedPostId);
+        const singlePost = window.isolatedPostData || window.allPosts.find(p => p.id === window.isolatedPostId);
         searchBarContainer.classList.add('hidden');
         catFilters.classList.add('hidden');
 
         if (!singlePost) {
-            feed.innerHTML = `<div class="text-center text-gray-500 py-10">
-                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-blue-600"></i>
-                <p>Loading spotlight post...</p>
-            </div>`;
-            if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
-            
-            window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb, 'community_posts', window.isolatedPostId), (snapshot) => {
-                if (snapshot.exists()) {
-                    const post = { id: snapshot.id, ...snapshot.data() };
-                    
-                    const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
-                    if (existingIndex >= 0) {
-                        window.allPosts[existingIndex] = post;
-                    } else {
-                        window.allPosts.push(post);
-                    }
-
-                    if (!window.isUserTyping && !window._bingoGlobalSpinning) {
-                        if (!window.usersReady) {
-                            window._pendingPostRender = true;
+            let loader = feed.querySelector('#spotlight-loader');
+            if (!loader) {
+                feed.innerHTML = `<div id="spotlight-loader" class="text-center text-gray-500 py-10">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-blue-600"></i>
+                    <p>Loading spotlight post...</p>
+                </div>`;
+            }
+            if (!window.isolatedPostUnsubscribe) {
+                window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb, 'community_posts', window.isolatedPostId), (snapshot) => {
+                    if (snapshot.exists()) {
+                        const post = { id: snapshot.id, ...snapshot.data() };
+                        window.isolatedPostData = post;
+                        const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                        if (existingIndex >= 0) {
+                            window.allPosts[existingIndex] = post;
                         } else {
-                            window.renderFeed(false);
+                            window.allPosts.push(post);
                         }
+
+                        if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                            if (!window.usersReady) {
+                                window._pendingPostRender = true;
+                            } else {
+                                window.renderFeed(false);
+                            }
+                        }
+                    } else {
+                        feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                        <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
                     }
-                } else {
-                    feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                }, (err) => {
+                    console.error("Error fetching isolated post:", err);
+                    feed.innerHTML = `<p class="text-center text-gray-500 py-10">Failed to load post.</p>
                     <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
-                }
-            }, (err) => {
-                console.error("Error fetching isolated post:", err);
-                feed.innerHTML = `<p class="text-center text-gray-500 py-10">Failed to load post.</p>
-                <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
-            });
+                });
+            }
             return;
         }
 
+        feed.querySelectorAll('#spotlight-loader').forEach(el => el.remove());
+
         const bannerId = 'isolated-banner';
         let banner = document.getElementById(bannerId);
-        if(!banner) {
-            feed.innerHTML = `<div id="${bannerId}" class="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 p-3 rounded-xl mb-3 flex items-center justify-between shadow-sm border border-blue-100 dark:border-blue-800/50">
+        if (!banner) {
+            const bannerEl = document.createElement('div');
+            bannerEl.id = bannerId;
+            bannerEl.className = 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 p-3 rounded-xl mb-3 flex items-center justify-between shadow-sm border border-blue-100 dark:border-blue-800/50';
+            bannerEl.innerHTML = `
                 <span class="text-sm font-bold"><i class="fa-solid fa-magnifying-glass mr-2"></i>Post Spotlight ✨</span>
                 <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition">Back to Feed</button>
-            </div>`;
+            `;
+            if (feed.firstChild) feed.insertBefore(bannerEl, feed.firstChild);
+            else feed.appendChild(bannerEl);
         }
 
         // Guard against the race condition: don't render if users cache isn't loaded yet

@@ -15,6 +15,7 @@ window.openComments = new Set();
 window.openReplies = new Set();
 window.openRepliesList = new Set();
 window.isolatedPostId = null;
+window.isolatedPostData = null;
 
 // Pagination Core States
 window.feedRenderLimit = 15;

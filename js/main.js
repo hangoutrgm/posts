@@ -513,7 +513,7 @@ window._applyPinnedIds = (ids, pinType) => {
 
             if (typeof window.renderFeed === 'function') {
                 if (!window.usersReady) window._pendingPostRender = true;
-                else window.renderFeed(false);
+                else if (!window.isolatedPostId) window.renderFeed(false);
             }
         });
         window._pinnedListeners[id] = unsub;
@@ -546,7 +546,7 @@ window._applyPinnedIds = (ids, pinType) => {
     }
     if (typeof window.renderFeed === 'function') {
         if (!window.usersReady) window._pendingPostRender = true;
-        else window.renderFeed(false);
+        else if (!window.isolatedPostId) window.renderFeed(false);
     }
 };
 
@@ -599,12 +599,17 @@ window.listenPosts = () => {
         const mergedLive = livePosts.filter(p => !historyIds.has(p.id));
         window.allPosts = [...mergedLive, ...(window._historyPosts || [])];
 
+        // Ensure currently isolated spotlight post is retained in allPosts
+        if (window.isolatedPostId && window.isolatedPostData && !window.allPosts.some(p => p.id === window.isolatedPostId)) {
+            window.allPosts.push(window.isolatedPostData);
+        }
+
         if (!window.isUserTyping && !window._bingoGlobalSpinning) {
             if (!window.usersReady) {
                 window._pendingPostRender = true;
             } else {
                 if (window.activeProfileUid) window.renderProfileData(false);
-                else window.renderFeed(false);
+                else if (!window.isolatedPostId) window.renderFeed(false);
                 if (window.processBingoAnimations) window.processBingoAnimations();
             }
         }
