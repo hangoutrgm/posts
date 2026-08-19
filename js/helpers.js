@@ -71,18 +71,32 @@ window.showConfirm = (msg, onConfirm) => {
     document.getElementById('custom-confirm-modal').classList.remove('hidden');
 };
 
-window.logActivity = (actionText) => {
+window.logActivity = async (actionText) => {
     if (!window.currentUser) return;
     try {
         const userName = window.globalUsersCache?.[window.currentUser.uid]?.name 
                       || window.currentUser.displayName 
                       || (window.currentUser.email ? window.currentUser.email.split('@')[0] : 'Unknown User');
-        push(ref(db, 'activity_log'), {
+        await push(ref(db, 'activity_log'), {
             user: userName,
             userId: window.currentUser.uid,
             action: actionText,
             timestamp: Date.now()
         });
+
+        // Auto-prune activity_log: keep only the latest 50 logs
+        const snap = await get(ref(db, 'activity_log'));
+        if (snap.exists()) {
+            const allLogs = snap.val();
+            const keys = Object.keys(allLogs);
+            if (keys.length > 50) {
+                keys.sort((a, b) => (allLogs[a].timestamp || 0) - (allLogs[b].timestamp || 0));
+                const toDelete = keys.slice(0, keys.length - 50);
+                const updates = {};
+                toDelete.forEach(k => updates[k] = null);
+                await update(ref(db, 'activity_log'), updates);
+            }
+        }
     } catch(e) {
         console.warn('logActivity failed:', e);
     }

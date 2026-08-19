@@ -438,12 +438,12 @@ get(ref(db, 'users')).then((snap) => {
     });
 });
 
-// Dedicated notifications listener — only for the logged-in user, limited to last 100.
+// Dedicated notifications listener — only for the logged-in user, limited to last 50.
 // Kept separate from /users so that notification changes don't re-download all user profiles.
 window._notifUnsubscribe = null;
 window._startNotifListener = (uid) => {
     if (window._notifUnsubscribe) window._notifUnsubscribe();
-    const notifQuery = dbQuery(ref(db, `notifications/${uid}`), limitToLast(100));
+    const notifQuery = dbQuery(ref(db, `notifications/${uid}`), limitToLast(50));
     window._notifUnsubscribe = onValue(notifQuery, (snap) => {
         window.myNotifications = snap.val() || {};
         window.updateNotifBadge();
@@ -1432,16 +1432,16 @@ onAuthStateChanged(auth, (user) => {
             setTimeout(() => window.migrateUserEarningsAndHostedGames(user.uid), 2000);
         }
 
-        // Auto-cleanup: keep only the latest 100 notifications in the database
+        // Auto-cleanup: keep only the latest 50 notifications in the database
         setTimeout(() => {
             get(ref(db, `notifications/${user.uid}`)).then(snap => {
                 const allNotifs = snap.val();
                 if (allNotifs) {
                     const keys = Object.keys(allNotifs);
-                    if (keys.length > 100) {
+                    if (keys.length > 50) {
                         // Sort by timestamp (oldest first)
                         keys.sort((a, b) => (allNotifs[a].timestamp || 0) - (allNotifs[b].timestamp || 0));
-                        const keysToDelete = keys.slice(0, keys.length - 100);
+                        const keysToDelete = keys.slice(0, keys.length - 50);
                         const updates = {};
                         keysToDelete.forEach(k => updates[k] = null);
                         update(ref(db, `notifications/${user.uid}`), updates).catch(e => console.warn("Failed to prune notifications", e));

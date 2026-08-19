@@ -1600,8 +1600,8 @@ onAuthStateChanged(auth, async (user) => {
     startOwnPresence();
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
-    // Mirror Hangout Posts notification badge on the back button
-    state.stopPostsNotif = onValue(ref(db, `notifications/${user.uid}`), (snapshot) => {
+    // Mirror Hangout Posts notification badge on the back button (limited to latest 50)
+    state.stopPostsNotif = onValue(query(ref(db, `notifications/${user.uid}`), limitToLast(50)), (snapshot) => {
       const notifs = snapshot.val() || {};
       const unread = Object.values(notifs).filter(n => !n.read).length;
       const badge = $('back-notif-badge');
