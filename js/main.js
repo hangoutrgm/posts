@@ -10,6 +10,10 @@ import "./renderers.js";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
+
+// Track our own session start time locally — avoids a get() RTDB download every heartbeat
+const presenceSessionStart = Date.now();
+
 onValue(ref(db, '.info/serverTimeOffset'), snap => {
     serverTimeOffset = snap.val() || 0;
 });
@@ -28,29 +32,8 @@ function startOwnPresence(user = auth.currentUser) {
     
     presenceInterval = setInterval(async () => {
         try {
+            // Just write our own heartbeat — no get() download needed
             await set(sessionRef, serverTimestamp());
-            
-            const snap = await get(ref(db, `presence/${user.uid}`));
-            if (snap.exists()) {
-                const sessions = snap.val();
-                const now = Date.now() + serverTimeOffset;
-                const updates = {};
-                let hasChanges = false;
-                
-                Object.entries(sessions).forEach(([key, val]) => {
-                    if (key.startsWith('posts_') && typeof val === 'number') {
-                        // Estimate server time difference roughly, 3 minutes is safe
-                        if (now - val > 3 * 60000) {
-                            updates[key] = null;
-                            hasChanges = true;
-                        }
-                    }
-                });
-                
-                if (hasChanges) {
-                    await update(ref(db, `presence/${user.uid}`), updates);
-                }
-            }
         } catch(e) {}
     }, 60000);
 }
@@ -366,11 +349,36 @@ onValue(ref(db, 'settings'), (snap) => {
     }
 });
 
-onValue(ref(db, 'presence'), (snap) => {
-    window.onlineUsers = snap.val() || {};
-    document.getElementById('online-count').innerText = snap.size || 0;
-    if(!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
-    if(window.activeProfileUid) window.renderProfileData(false);
+// ============================================================
+// PRESENCE LISTENER — Granular child listeners instead of full-tree onValue.
+// onValue(ref(db, 'presence')) downloads the ENTIRE presence tree on every
+// heartbeat (~every 60s), causing hundreds of MB of RTDB downloads per session.
+// Using onChildAdded/Changed/Removed only streams the individual user entry
+// that changed (~50 bytes), not the full tree.
+// ============================================================
+window.onlineUsers = {};
+
+onChildAdded(ref(db, 'presence'), (snap) => {
+    window.onlineUsers[snap.key] = snap.val();
+    const count = Object.keys(window.onlineUsers).length;
+    const countEl = document.getElementById('online-count');
+    if (countEl) countEl.innerText = count;
+    if (!document.getElementById('members-modal')?.classList.contains('hidden')) window.renderMembers(false);
+    if (window.activeProfileUid) window.renderProfileData(false);
+});
+
+onChildChanged(ref(db, 'presence'), (snap) => {
+    // Only update memory cache, do not trigger DOM reflow on every 60s heartbeat
+    window.onlineUsers[snap.key] = snap.val();
+});
+
+onChildRemoved(ref(db, 'presence'), (snap) => {
+    delete window.onlineUsers[snap.key];
+    const count = Object.keys(window.onlineUsers).length;
+    const countEl = document.getElementById('online-count');
+    if (countEl) countEl.innerText = count;
+    if (!document.getElementById('members-modal')?.classList.contains('hidden')) window.renderMembers(false);
+    if (window.activeProfileUid) window.renderProfileData(false);
 });
 
 window._updateNavUserUI = () => {
