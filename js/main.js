@@ -1427,6 +1427,11 @@ onAuthStateChanged(auth, (user) => {
         // Start the dedicated notifications listener for this user
         if (window._startNotifListener) window._startNotifListener(user.uid);
 
+        // Auto-migrate user's legacy earnings and hostedGames out of /users
+        if (window.migrateUserEarningsAndHostedGames) {
+            setTimeout(() => window.migrateUserEarningsAndHostedGames(user.uid), 2000);
+        }
+
         // Auto-cleanup: keep only the latest 100 notifications in the database
         setTimeout(() => {
             get(ref(db, `notifications/${user.uid}`)).then(snap => {

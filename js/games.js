@@ -11,7 +11,6 @@ window.logEarnings = (uid, postId, title, prize, lbPoints) => {
         lbPoints: lbPoints || 0,
         timestamp: Date.now()
     };
-    push(ref(db, `users/${uid}/earnings`), payload).catch(e => console.warn('users/earnings write error:', e));
     push(ref(db, `earnings/${uid}`), payload).catch(e => console.warn('earnings write error:', e));
 };
 
@@ -26,7 +25,6 @@ window.logHostedGame = (hostUid, postId, title, prize, winnerUid, winnerName) =>
         paymentStatus: 'pending',
         timestamp: Date.now()
     };
-    push(ref(db, `users/${hostUid}/hostedGames`), payload).catch(e => console.warn('users/hostedGames write error:', e));
     push(ref(db, `hostedGames/${hostUid}`), payload).catch(e => console.warn('hostedGames write error:', e));
 };
 

@@ -727,3 +727,88 @@ window.clearNotifications = () => {
     }
     document.getElementById('notif-modal').classList.add('hidden');
 };
+
+// ============================================================
+// DATABASE MIGRATION: Move legacy earnings & hostedGames out of /users
+// ============================================================
+window.migrateUserEarningsAndHostedGames = async (uid) => {
+    if (!uid) return;
+    try {
+        const updates = {};
+        let needsUpdate = false;
+
+        // 1. Migrate earnings
+        const earningsSnap = await get(ref(db, `users/${uid}/earnings`));
+        if (earningsSnap.exists()) {
+            const earningsData = earningsSnap.val();
+            for (const key in earningsData) {
+                updates[`earnings/${uid}/${key}`] = earningsData[key];
+            }
+            updates[`users/${uid}/earnings`] = null;
+            needsUpdate = true;
+        }
+
+        // 2. Migrate hostedGames
+        const hostedSnap = await get(ref(db, `users/${uid}/hostedGames`));
+        if (hostedSnap.exists()) {
+            const hostedData = hostedSnap.val();
+            for (const key in hostedData) {
+                updates[`hostedGames/${uid}/${key}`] = hostedData[key];
+            }
+            updates[`users/${uid}/hostedGames`] = null;
+            needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+            await update(ref(db), updates);
+            console.log(`[Migration] Successfully transferred legacy logs for user: ${uid}`);
+        }
+    } catch(e) {
+        console.warn(`[Migration] Skipped/Failed for ${uid}:`, e);
+    }
+};
+
+window.migrateAllLegacyData = async () => {
+    if (!window.currentUser) return window.showAlert("Please log in as admin.");
+    const role = window.getRole(window.currentUser.uid);
+    if (role.level < 3) return window.showAlert("Only Admins can run the full migration.");
+
+    window.showAlert("Starting database migration... Please wait.");
+    try {
+        const usersSnap = await get(ref(db, 'users'));
+        if (!usersSnap.exists()) return window.showAlert("No users found.");
+        const users = usersSnap.val();
+        let migratedCount = 0;
+        const rootUpdates = {};
+
+        for (const uid in users) {
+            const u = users[uid];
+            let userHadData = false;
+            if (u.earnings && typeof u.earnings === 'object') {
+                for (const k in u.earnings) {
+                    rootUpdates[`earnings/${uid}/${k}`] = u.earnings[k];
+                }
+                rootUpdates[`users/${uid}/earnings`] = null;
+                userHadData = true;
+            }
+            if (u.hostedGames && typeof u.hostedGames === 'object') {
+                for (const k in u.hostedGames) {
+                    rootUpdates[`hostedGames/${uid}/${k}`] = u.hostedGames[k];
+                }
+                rootUpdates[`users/${uid}/hostedGames`] = null;
+                userHadData = true;
+            }
+            if (userHadData) migratedCount++;
+        }
+
+        if (Object.keys(rootUpdates).length > 0) {
+            await update(ref(db), rootUpdates);
+            window.showAlert(`🎉 Migration complete! Successfully transferred legacy logs for ${migratedCount} users to separate /earnings and /hostedGames nodes.`);
+        } else {
+            window.showAlert("Database is already fully migrated! No legacy logs found in /users.");
+        }
+    } catch(e) {
+        console.error("Migration error:", e);
+        window.showAlert("Migration error: " + e.message);
+    }
+};
