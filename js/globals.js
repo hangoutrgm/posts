@@ -29,6 +29,10 @@ window.deviceId = localStorage.getItem('hangout_device_id') || ('dev_' + Math.ra
 localStorage.setItem('hangout_device_id', window.deviceId);
 window.activeEditTarget = null;
 
+// Leaderboard periods (v1.4)
+window.lbScope = 'overall'; // 'overall' | 'weekly' | 'monthly'
+window.lbPeriodKey = '';    // selected period key for weekly/monthly (history)
+
 // ==========================================
 // V6.1 NEW STATES
 // ==========================================
@@ -47,6 +51,7 @@ window.siteSettings = {
     starsPerLike: 1,
     starsPerPoked: 5,
     lbPointsPerWin: 5,
+    gameHostLbReward: 0,
     maxLbPointsPrize: 100,
     imageUploadLimit: 10,
     videoUploadLimit: 3,
@@ -54,5 +59,6 @@ window.siteSettings = {
     chatImageLimit: 10,
     chatVideoLimit: 3,
     chatVoiceLimit: 10,
-    chatVideoSizeLimitMB: 20
+    chatVideoSizeLimitMB: 20,
+    gameLimits: {}
 };

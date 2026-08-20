@@ -2428,6 +2428,7 @@ window.openRankingModal = () => {
     // Clear caches so data is fresh on every open
     window._earningsCache = null;
     window._hostedGamesCache = null;
+    if (window.updateLbPeriodBar) window.updateLbPeriodBar();
     window.renderRankings(true);
 };
 
@@ -2743,7 +2744,22 @@ window.renderRankings = async (resetLimit = true) => {
         let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name);
         
         if (window.currentRankingFilter === "Leaderboards") {
-            usersArray.sort((a, b) => (b.lbPoints || 0) - (a.lbPoints || 0));
+            const scope = window.lbScope || 'overall';
+            let lbMap = null;
+            if (scope !== 'overall') {
+                const period = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
+                const snap = await get(ref(db, `lb${scope === 'weekly' ? 'Weekly' : 'Monthly'}/${period}`)).catch(() => null);
+                if (snap && snap.exists()) lbMap = snap.val();
+            }
+            const emptyPeriod = scope !== 'overall' && !lbMap;
+            usersArray.forEach(u => {
+                u.displayLb = scope === 'overall' ? (u.lbPoints || 0) : Number((lbMap || {})[u.uid] || 0);
+            });
+            usersArray.sort((a, b) => (b.displayLb || 0) - (a.displayLb || 0));
+            if (emptyPeriod) {
+                list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-4">No LB points recorded in this ${scope === 'weekly' ? 'week' : 'month'} yet.</p>`;
+                return;
+            }
         } else if (window.currentRankingFilter === "Stars") {
             usersArray.sort((a, b) => (b.points || 0) - (a.points || 0));
         }
@@ -2767,7 +2783,7 @@ window.renderRankings = async (resetLimit = true) => {
             el.className = `flex items-center justify-between p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2`;
             
             const highlightValue = window.currentRankingFilter === "Leaderboards" 
-                ? `<span class="text-yellow-600 dark:text-yellow-500 font-bold">🏆 ${u.lbPoints || 0}</span>` 
+                ? `<span class="text-yellow-600 dark:text-yellow-500 font-bold">🏆 ${u.displayLb !== undefined ? u.displayLb : (u.lbPoints || 0)}</span>` 
                 : `<span class="text-yellow-600 dark:text-yellow-500 font-bold">⭐ ${u.points || 0}</span>`;
             
             el.innerHTML = `
@@ -2811,6 +2827,56 @@ window.renderRankings = async (resetLimit = true) => {
     
     if(resetLimit) list.scrollTop = currentScroll;
     requestAnimationFrame(() => list.style.minHeight = '');
+};
+
+// ============================================================
+// LEADERBOARD PERIOD CONTROLS (Weekly / Monthly / Overall)
+// ============================================================
+window.updateLbPeriodBar = () => {
+    const bar = document.getElementById('ranking-period-bar');
+    if (!bar) return;
+    const isFilter = window.currentRankingFilter === 'Leaderboards';
+    bar.classList.toggle('hidden', !isFilter);
+    if (!isFilter) return;
+    const scope = window.lbScope || 'overall';
+    ['overall', 'weekly', 'monthly'].forEach(s => {
+        const b = document.getElementById('lb-scope-' + s);
+        if (!b) return;
+        const on = s === scope;
+        if (on) {
+            b.classList.add('bg-blue-600', 'text-white', 'border-transparent');
+            b.classList.remove('bg-gray-100', 'text-gray-700', 'dark:bg-slate-900', 'dark:text-gray-300');
+        } else {
+            b.classList.remove('bg-blue-600', 'text-white', 'border-transparent');
+            b.classList.add('bg-gray-100', 'text-gray-700', 'dark:bg-slate-900', 'dark:text-gray-300');
+        }
+    });
+    const nav = document.getElementById('lb-period-nav');
+    const lbl = document.getElementById('lb-period-label');
+    if (scope === 'overall') {
+        if (nav) nav.classList.add('hidden');
+        if (lbl) lbl.textContent = '';
+    } else {
+        const key = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
+        if (nav) nav.classList.remove('hidden');
+        if (lbl) lbl.textContent = window.lbPeriodLabel(scope, key);
+    }
+};
+
+window.setLbScope = (scope) => {
+    window.lbScope = scope;
+    window.lbPeriodKey = scope === 'overall' ? '' : window.lbPeriodKeyFor(scope);
+    window.renderRankings(true);
+    window.updateLbPeriodBar();
+};
+
+window.shiftLbPeriodView = (delta) => {
+    const scope = window.lbScope;
+    if (!scope || scope === 'overall') return;
+    const cur = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
+    window.lbPeriodKey = window.shiftLbPeriod(scope, cur, delta);
+    window.renderRankings(true);
+    window.updateLbPeriodBar();
 };
 
 window.markHostedGamePaid = async (entryId, btn) => {

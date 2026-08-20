@@ -96,6 +96,7 @@ document.querySelectorAll('.ranking-filter-btn').forEach(btn => {
         window.currentRankingFilter = targetBtn.getAttribute('data-filter');
         window._earningsCache = null;
         window._hostedGamesCache = null;
+        if (window.updateLbPeriodBar) window.updateLbPeriodBar();
         if (window.renderRankings) window.renderRankings(true);
     });
 });

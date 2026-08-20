@@ -271,10 +271,33 @@
                     </div>
                 </div>
 
+                <!-- Game Posting Limits -->
+                <div class="bg-white dark:bg-slate-800/90 border border-indigo-200 dark:border-indigo-900/50 p-4 rounded-xl shadow-sm flex flex-col">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                        <div class="flex items-center">
+                            <div class="w-7 h-7 rounded-md bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center mr-2">
+                                <i class="fa-solid fa-gamepad text-sm"></i>
+                            </div>
+                            <h3 class="text-base font-bold text-slate-800 dark:text-white">Game Posting Limits</h3>
+                        </div>
+                        <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                            Max game posts each user can create per day. <strong>Blank or 0 = unlimited. Resets at 12:00 AM.</strong>
+                        </span>
+                    </div>
+                    <form id="game-limits-form">
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" id="game-limits-grid">
+                            <!-- Limit inputs injected here by admin.js -->
+                        </div>
+                        <button type="submit" class="mt-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg transition shadow-md shadow-indigo-500/25 flex items-center justify-center text-sm">
+                            <i class="fa-solid fa-check mr-2"></i> Save Limits
+                        </button>
+                    </form>
+                </div>
+
             </div>
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=2"></script>
+    <script type="module" src="admin.js?v=3"></script>
 </body>
 </html>

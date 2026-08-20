@@ -165,6 +165,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
             document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
             document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
+            renderGameLimitInputs(settings.gameLimits || {});
         } else {
             document.getElementById('set-starsPerPost').value = '';
             document.getElementById('set-starsPerComment').value = '';
@@ -181,6 +182,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = '';
             document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
+            renderGameLimitInputs({});
         }
 
         // Set placeholders
@@ -216,6 +218,7 @@ function initAdminDashboard() {
             chatVideoLimit: parseInt(document.getElementById('set-chatVideoLimit').value) || 3,
             chatVoiceLimit: parseInt(document.getElementById('set-chatVoiceLimit').value) || 10,
             chatVideoSizeLimitMB: parseInt(document.getElementById('set-chatVideoSizeLimitMB').value) || 20,
+            gameLimits: collectGameLimits(),
         };
 
         try {
@@ -224,6 +227,57 @@ function initAdminDashboard() {
         } catch (error) {
             console.error(error);
             alert("Error saving settings: " + error.message);
+        }
+    });
+
+    // 5b. Game Posting Limits — inputs & save
+    function renderGameLimitInputs(values = {}) {
+        const grid = document.getElementById('game-limits-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        (window.gameTypesList || []).forEach(g => {
+            const cell = document.createElement('div');
+            cell.className = "flex items-center gap-2 min-w-0";
+            const val = values[g.type];
+            cell.innerHTML = `
+                <label for="gl-${g.type}" class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-1 truncate" title="${g.label}">${g.label}</label>
+                <input type="number" id="gl-${g.type}" min="0" step="1" placeholder="∞" class="w-16 shrink-0 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition text-center">
+            `;
+            const input = cell.querySelector('input');
+            input.value = (val !== undefined && val !== null) ? Number(val) : '';
+            grid.appendChild(cell);
+        });
+    }
+
+    function collectGameLimits() {
+        const limits = {};
+        (window.gameTypesList || []).forEach(g => {
+            const input = document.getElementById(`gl-${g.type}`);
+            if (!input) return;
+            const val = parseInt(input.value, 10);
+            if (!isNaN(val) && val > 0) limits[g.type] = val;
+        });
+        return limits;
+    }
+
+    // Render the limit grid immediately (settings listener refreshes it)
+    renderGameLimitInputs({});
+
+    document.getElementById('game-limits-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
+        try {
+            await set(ref(db, 'settings/gameLimits'), collectGameLimits());
+            alert("Game posting limits saved successfully!");
+        } catch (error) {
+            console.error(error);
+            alert("Error saving game limits: " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
         }
     });
 
