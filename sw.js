@@ -1,26 +1,34 @@
-const CACHE_NAME = 'hangout-v24';
+const CACHE_NAME = 'hangout-v26';
 
-// All local assets to pre-cache on install
+// All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/chat/index.html',
-  '/js/renderers.js?v=20',
-  '/js/helpers.js?v=22',
-  '/js/games.js?v=23',
-  '/js/main.js?v=18',
-  '/chat/js/app.js?v=4',
-  '/config/emoji_riddles.json',
-  '/config/flags.json',
-  '/config/emojis.json',
-  '/config/elements.json',
+  './',
+  './index.html',
+  './chat/index.html',
+  './css/styles.css',
+  './chat/css/styles.css?v=2',
+  './js/renderers.js?v=20',
+  './js/helpers.js?v=22',
+  './js/games.js?v=23',
+  './js/main.js?v=18',
+  './chat/js/app.js?v=5',
+  './config/emoji_riddles.json',
+  './config/flags.json',
+  './config/emojis.json',
+  './config/elements.json',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './favicon.ico'
 ];
 
 // Install: pre-cache all shell assets
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS).catch(() => {}))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS).catch((err) => {
+      console.warn('[SW] Pre-cache warning:', err);
+    }))
   );
 });
 
@@ -29,7 +37,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-    ).then(() => clients.claim())
+    ).then(() => self.clients.claim())
   );
 });
 
@@ -40,14 +48,14 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin GET requests
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // Skip Firebase, external CDN — let browser handle those
+  // Skip Firebase, external CDNs — let browser handle those
   if (url.hostname !== self.location.hostname) return;
 
   const isVersionedAsset = url.search.includes('v=');
-  const isHtml = request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname === '/';
+  const isHtml = request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname.endsWith('/') || !url.pathname.split('/').pop().includes('.');
 
   if (isVersionedAsset) {
-    // Cache-first: versioned JS files rarely change; serve from cache instantly
+    // Cache-first: versioned JS/CSS files rarely change; serve from cache instantly
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
@@ -69,8 +77,33 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(request))
+        .catch(() => caches.match(request).then((res) => res || caches.match('./index.html')))
+    );
+  } else {
+    // Stale-while-revalidate for other local assets (json, icons, css)
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const fetchPromise = fetch(request).then((response) => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || fetchPromise;
+      })
     );
   }
-  // All other requests (CSS, images, etc.) — pass through unchanged
+});
+
+// Focus or open app window when clicking notifications
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('./');
+    })
+  );
 });
