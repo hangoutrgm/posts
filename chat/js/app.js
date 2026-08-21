@@ -1374,9 +1374,31 @@ async function sendMessage(event) {
 
 async function toggleReaction(messageId, reaction) {
   if (!state.user || !state.activeThreadId) return;
-  const current = Boolean(state.messages[messageId]?.reactions?.[reaction]?.[state.user.uid]);
-  const updates = Object.fromEntries(Object.keys(reactions).map((type) => [`${type}/${state.user.uid}`, current || type !== reaction ? null : true]));
-  try { await update(ref(db, `chatMessages/${state.activeThreadId}/${messageId}/reactions`), updates); } catch (error) { showToast(`Could not react: ${error.message.replace('Firebase: ', '')}`); }
+  const currentReactions = state.messages[messageId]?.reactions || {};
+  const current = Boolean(currentReactions[reaction]?.[state.user.uid]);
+  
+  const updates = {};
+  // Clear any existing reactions by this user on this message (both standard and custom emoji)
+  Object.keys(currentReactions).forEach((key) => {
+    if (currentReactions[key]?.[state.user.uid]) {
+      updates[`${key}/${state.user.uid}`] = null;
+    }
+  });
+  // Clear standard reaction slots for this user as well to be completely robust
+  Object.keys(reactions).forEach((type) => {
+    updates[`${type}/${state.user.uid}`] = null;
+  });
+
+  // If adding/changing reaction (and it wasn't already active), set it to true
+  if (!current) {
+    updates[`${reaction}/${state.user.uid}`] = true;
+  }
+
+  try { 
+    await update(ref(db, `chatMessages/${state.activeThreadId}/${messageId}/reactions`), updates); 
+  } catch (error) { 
+    showToast(`Could not react: ${error.message.replace('Firebase: ', '')}`); 
+  }
 }
 function setReply(message) { 
   if (!message) return; 
