@@ -57,7 +57,7 @@
             <div class="mb-2 flex items-center space-x-2" id="search-bar-container">
                 <div class="relative flex-1">
                     <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
-                    <input type="text" id="post-search" placeholder="Search posts or authors..." class="w-full bg-white dark:bg-slate-800 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none shadow-sm border border-gray-200 dark:border-slate-700">
+                    <input type="text" id="post-search" autocomplete="off" placeholder="Search posts or authors..." class="w-full bg-white dark:bg-slate-800 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none shadow-sm border border-gray-200 dark:border-slate-700">
                 </div>
                 <button onclick="window.openPostGameModal()" class="shrink-0 bg-purple-600 hover:bg-purple-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative mr-2" title="Post a Game">
                     <i class="fa-solid fa-gamepad text-lg"></i>
@@ -217,7 +217,7 @@
 
             <div class="mb-3 relative shrink-0">
                 <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
-                <input type="text" id="member-search" placeholder="Search members..." class="w-full bg-gray-100 dark:bg-slate-900 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                <input type="text" id="member-search" autocomplete="off" placeholder="Search members..." class="w-full bg-gray-100 dark:bg-slate-900 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
             </div>
             <div id="members-list" class="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-hide relative"></div>
         </div>
@@ -397,7 +397,7 @@
 
                 <div id="game-target-user-container" class="hidden mb-3">
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Target User Name (Search)</label>
-                    <input type="text" id="game-target-user" list="game-users-datalist" placeholder="Search by name..." class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                    <input type="text" id="game-target-user" autocomplete="off" list="game-users-datalist" placeholder="Search by name..." class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                     <datalist id="game-users-datalist"></datalist>
                 </div>
                 
