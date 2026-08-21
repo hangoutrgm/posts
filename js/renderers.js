@@ -1904,7 +1904,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     gameHtml = `
                         <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-blue-300 dark:border-blue-900/50 flex flex-col items-center">
                             ${prizeStr}
-                            <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 4 in a Row (7x6 Drop)</h4>
+                            <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 Connect 4</h4>
                             ${playersBadges}
                             ${acceptBtn}
                         </div>`;
@@ -1962,7 +1962,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     gameHtml = `
                         <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border-2 border-blue-300 dark:border-blue-900/50 flex flex-col items-center">
                             ${prizeStr}
-                            <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 4 in a Row (7x6 Drop)</h4>
+                            <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 Connect 4</h4>
                             ${playersBadges}
                             ${turnBadge}
                             ${dropBtnsHtml}
@@ -1998,7 +1998,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
                         ${prizeStr}
-                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🟡🔴 4 in a Row (7x6 Drop) Ended</h4>
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">🟡🔴 Connect 4 Ended</h4>
                         ${gridHtml}
                         ${outcomeHtml}
                     </div>`;

@@ -33,7 +33,7 @@ localStorage.setItem('hangout_device_id', window.deviceId);
 window.activeEditTarget = null;
 
 // Leaderboard periods (v6.4)
-window.lbScope = 'overall'; // 'overall' | 'weekly' | 'monthly'
+window.lbScope = 'weekly'; // 'overall' | 'weekly' | 'monthly' (weekly is default)
 window.lbPeriodKey = '';    // selected period key for weekly/monthly (history)
 
 // ==========================================
@@ -78,7 +78,7 @@ window.gameTypesList = [
     { type: 'count_dots', label: 'Count the Dots' },
     { type: 'tictactoe', label: 'Tic Tac Toe' },
     { type: 'four_in_a_row', label: '4 in a Row (7x7)' },
-    { type: 'drop_four', label: '4 in a Row (7x6 Drop)' },
+    { type: 'drop_four', label: 'Connect 4' },
     { type: 'hangman', label: 'Hangman' },
     { type: 'gibberish', label: 'Gibberish' },
     { type: 'emoji_riddle', label: 'Emoji Riddle (Movie/Song/Idiom)' },

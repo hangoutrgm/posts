@@ -293,7 +293,7 @@ window.gameTypeLabel = (type) => {
         'count_dots': 'Count the Dots',
         'tictactoe': 'Tic Tac Toe',
         'four_in_a_row': '4 in a Row (7x7)',
-        'drop_four': '4 in a Row (7x6 Drop)',
+        'drop_four': 'Connect 4',
         'hangman': 'Hangman',
         'gibberish': 'Guess the Gibberish',
         'emoji_riddle': 'Emoji Riddle',
@@ -1121,8 +1121,8 @@ window.submitGame = async () => {
     }
     else if (type === 'drop_four') {
         text = targetUserName 
-            ? `🟡🔴 4 in a Row (7x6 Drop, ${dropFourPlayerCount} Players) match challenge against @${targetUserName}!`
-            : `🟡🔴 Open 4 in a Row (7x6 Drop, ${dropFourPlayerCount} Players) Challenge! Drop your pieces to connect 4!`;
+            ? `🟡🔴 Connect 4 (7x6 Drop, ${dropFourPlayerCount} Players) match challenge against @${targetUserName}!`
+            : `🟡🔴 Open Connect 4 (7x6 Drop, ${dropFourPlayerCount} Players) Challenge! Drop your pieces to connect 4!`;
     }
     else if (type === 'periodic_table') {
         text = elementGuessMode === 'name'
@@ -2622,7 +2622,7 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
 };
 
 // ============================================================
-// 4 IN A ROW (7x6 DROP) GAME HANDLERS
+// CONNECT 4 (7x6 DROP) GAME HANDLERS
 // ============================================================
 
 window.checkDropFourWinner = (board) => {
@@ -2766,10 +2766,10 @@ window.makeDropFourMove = async (postId, colIndex) => {
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
-            window.logEarnings(winnerUid, postId, '4 in a Row (7x6 Drop)', prizeLogged, lbPoints);
+            window.logEarnings(winnerUid, postId, 'Connect 4', prizeLogged, lbPoints);
             if (post.authorId && post.authorId !== winnerUid) {
                 const winnerName = window.globalUsersCache?.[winnerUid]?.name || 'Someone';
-                window.logHostedGame(post.authorId, postId, '4 in a Row (7x6 Drop)', prizeLogged, winnerUid, winnerName);
+                window.logHostedGame(post.authorId, postId, 'Connect 4', prizeLogged, winnerUid, winnerName);
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {

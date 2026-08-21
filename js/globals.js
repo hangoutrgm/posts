@@ -30,7 +30,7 @@ localStorage.setItem('hangout_device_id', window.deviceId);
 window.activeEditTarget = null;
 
 // Leaderboard periods (v1.4)
-window.lbScope = 'overall'; // 'overall' | 'weekly' | 'monthly'
+window.lbScope = 'weekly'; // 'overall' | 'weekly' | 'monthly' (weekly is default)
 window.lbPeriodKey = '';    // selected period key for weekly/monthly (history)
 
 // ==========================================

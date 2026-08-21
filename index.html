@@ -6,7 +6,7 @@
     <title>Hangout Posts</title>
     <!-- Prefetch chat page resources for faster navigation -->
     <link rel="prefetch" href="chat/index.html">
-    <link rel="prefetch" href="chat/js/app.js?v=2">
+    <link rel="prefetch" href="chat/js/app.js?v=3">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: {} } }
@@ -241,14 +241,14 @@
 
             <div id="ranking-period-bar" class="hidden mb-2 shrink-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                    <button id="lb-scope-overall" onclick="window.setLbScope('overall')" class="bg-blue-600 text-white px-2.5 py-1 rounded-full text-[10px] font-bold border border-transparent">Overall</button>
-                    <button id="lb-scope-weekly" onclick="window.setLbScope('weekly')" class="bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-bold border border-gray-200 dark:border-slate-700">Weekly</button>
+                    <button id="lb-scope-weekly" onclick="window.setLbScope('weekly')" class="bg-blue-600 text-white px-2.5 py-1 rounded-full text-[10px] font-bold border border-transparent">Weekly</button>
                     <button id="lb-scope-monthly" onclick="window.setLbScope('monthly')" class="bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-bold border border-gray-200 dark:border-slate-700">Monthly</button>
-                    <div id="lb-period-nav" class="hidden ml-auto flex items-center gap-1 border border-gray-200 dark:border-slate-700 rounded-full px-2 py-0.5">
-                        <button onclick="window.shiftLbPeriodView(-1)" class="text-gray-500 dark:text-gray-400 px-1 text-[10px]"><i class="fa-solid fa-chevron-left"></i></button>
-                        <span id="lb-period-label" class="text-[10px] font-bold text-gray-600 dark:text-gray-300 whitespace-nowrap"></span>
-                        <button onclick="window.shiftLbPeriodView(1)" class="text-gray-500 dark:text-gray-400 px-1 text-[10px]"><i class="fa-solid fa-chevron-right"></i></button>
-                    </div>
+                    <button id="lb-scope-overall" onclick="window.setLbScope('overall')" class="bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-bold border border-gray-200 dark:border-slate-700">Overall</button>
+                </div>
+                <div id="lb-period-nav" class="hidden w-full mt-1.5 flex items-center justify-center gap-1 border border-gray-200 dark:border-slate-700 rounded-full px-2 py-1 min-w-0">
+                    <button onclick="window.shiftLbPeriodView(-1)" class="text-gray-500 dark:text-gray-400 px-1.5 shrink-0"><i class="fa-solid fa-chevron-left"></i></button>
+                    <span id="lb-period-label" class="text-[10px] font-bold text-gray-600 dark:text-gray-300 truncate min-w-0 flex-1 text-center px-1"></span>
+                    <button onclick="window.shiftLbPeriodView(1)" class="text-gray-500 dark:text-gray-400 px-1.5 shrink-0"><i class="fa-solid fa-chevron-right"></i></button>
                 </div>
             </div>
 
@@ -356,7 +356,7 @@
                     <option value="count_dots">Count the Dots</option>
                     <option value="tictactoe">Tic Tac Toe</option>
                     <option value="four_in_a_row">4 in a Row (7x7)</option>
-                    <option value="drop_four">4 in a Row (7x6 Drop)</option>
+                    <option value="drop_four">Connect 4</option>
                     <option value="hangman">Hangman</option>
                     <option value="gibberish">Gibberish</option>
                     <option value="emoji_riddle">Emoji Riddle (Movie/Song/Idiom)</option>
@@ -630,7 +630,7 @@
                 </div>
 
                 <div id="game-drop-four-container" class="hidden mb-3 border border-blue-300 dark:border-blue-800 rounded-lg p-3 bg-blue-50 dark:bg-blue-950/40">
-                    <p class="text-xs font-bold text-blue-800 dark:text-blue-200 mb-2">🟡🔴 4 in a Row (7x6 Drop)</p>
+                    <p class="text-xs font-bold text-blue-800 dark:text-blue-200 mb-2">🟡🔴 Connect 4</p>
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Player Mode</label>
                     <select id="game-drop-four-players-count" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 font-medium">
                         <option value="2" selected>2 Players (🔴 Red vs 🟡 Yellow)</option>
@@ -771,9 +771,9 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=19"></script>
-    <script type="module" src="js/helpers.js?v=21"></script>
-    <script type="module" src="js/games.js?v=22"></script>
+    <script type="module" src="js/renderers.js?v=20"></script>
+    <script type="module" src="js/helpers.js?v=22"></script>
+    <script type="module" src="js/games.js?v=23"></script>
     <script type="module" src="js/main.js?v=18"></script>
     <script>
         if ('serviceWorker' in navigator) {
