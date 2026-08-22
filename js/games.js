@@ -1,4 +1,4 @@
-import { db, fsdb } from "./firebase-config.js";
+import { db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
 import { ref, update, set, push, get, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -798,7 +798,10 @@ window.scrambleWord = () => {
 
 window.submitGame = async () => {
     if (!window.currentUser) return;
-    
+
+    // Site Control: block game posting for non-admins while posts are paused
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
+
     const type = document.getElementById('game-type').value;
 
     // ============================================================
@@ -832,6 +835,9 @@ window.submitGame = async () => {
     if (type !== 'spin_names' && prize <= 0 && !bonusPrize && lbPointsReward <= 0) {
         return window.showAlert("Please enter a prize amount (PHP), bonus prize, or LB points.");
     }
+
+    // Cooldown gate (settings.postCooldownSec)
+    if (!(await window.checkActionCooldown('post'))) return;
 
     // type already read above
     let endTime = null;
@@ -1254,7 +1260,10 @@ window.submitGame = async () => {
     }
 
     try {
-        const newPostRef = await addDoc(collection(fsdb, 'community_posts'), postData);
+        const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
+        postData._dbSource = dbSource;
+        const newPostRef = await addDoc(collection(targetFs, 'community_posts'), postData);
+        window._postDbMap.set(newPostRef.id, dbSource);
 
         // ===== Daily game limit gate (atomic RTDB counter) =====
         if (typeLimit > 0) {
@@ -1332,7 +1341,7 @@ window.submitGame = async () => {
 
 window.mineGame = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -1360,7 +1369,7 @@ window.mineGame = async (postId) => {
             gameWinner: window.currentUser.uid
         });
 
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${window.currentUser.uid}/lbPoints`), increment(lbPoints));
         window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -1390,7 +1399,7 @@ window.endLastCommentGame = async (postId) => {
         if (localPost && localPost.gameStatus !== 'active') return;
         
         // Update gameStatus to evaluating to lock out further entries
-        await updateDoc(doc(fsdb, 'community_posts', postId), {
+        await updateDoc(getPostDocRef(postId), {
             gameStatus: 'evaluating',
             locked: true
         });
@@ -1399,7 +1408,7 @@ window.endLastCommentGame = async (postId) => {
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         // Single read to evaluate the final winner
-        const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+        const snap = await getDoc(getPostDocRef(postId));
         const post = snap.data();
         if (!post) return;
 
@@ -1418,13 +1427,13 @@ window.endLastCommentGame = async (postId) => {
             }
         }
 
-        await updateDoc(doc(fsdb, 'community_posts', postId), {
+        await updateDoc(getPostDocRef(postId), {
             gameStatus: 'ended',
             gameWinner: lastCommenterId || "none"
         });
 
         if (lastCommenterId) {
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${lastCommenterId}/lbPoints`), increment(lbPoints));
             window.logEarnings(lastCommenterId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -1454,7 +1463,7 @@ window.checkGameTimers = (postsData) => {
             } else {
                 // For quick_challenge, challenge, guess_emoji, bring_me_emoji
                 if (p.gameEndTime && p.gameStatus === 'active' && Date.now() > p.gameEndTime) {
-                    updateDoc(doc(fsdb, 'community_posts', key), {
+                    updateDoc(getPostDocRef(key), {
                         gameStatus: 'ended',
                         gameWinner: "none",
                         locked: true
@@ -1486,7 +1495,7 @@ setInterval(() => {
 
 window.checkChallenge = async (postId) => {
     if (!window.currentUser) return;
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
     const snap = await getDoc(postRef);
     if (!snap.exists()) return;
     const post = snap.data();
@@ -1499,7 +1508,7 @@ window.checkChallenge = async (postId) => {
     if (currentReacts >= post.gameTargetReacts && currentComments >= post.gameTargetComments) {
         let isWinner = false;
         try {
-            await fsRunTransaction(fsdb, async (transaction) => {
+            await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
                 const tSnap = await transaction.get(postRef);
                 if (!tSnap.exists()) return;
                 const p = tSnap.data();
@@ -1512,7 +1521,7 @@ window.checkChallenge = async (postId) => {
                 }
             });
             if (isWinner) {
-                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${post.gameTargetUser}/lbPoints`), increment(lbPoints));
                 window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -1553,7 +1562,7 @@ window.answerGame = async (postId, answer) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
     if (!answer || !answer.trim()) return window.showAlert("Please enter an answer.");
 
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
     const submitBtn = document.getElementById('game-answer-submit-btn');
     const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
     if (submitBtn) {
@@ -1621,7 +1630,7 @@ window.answerGame = async (postId, answer) => {
             gameWinner: window.currentUser.uid
         });
 
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${window.currentUser.uid}/lbPoints`), increment(lbPoints));
         window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -1662,7 +1671,7 @@ window._bingoEntryNumberCount = 0;
 window.openBingoEntryModal = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
     
-    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+    const snap = await getDoc(getPostDocRef(postId));
     if (!snap.exists()) return;
     const post = snap.data();
 
@@ -1757,7 +1766,7 @@ window.submitBingoEntry = async () => {
     const numbers = [...window._bingoSelectedNumbers].map(Number).sort((a, b) => a - b).map(String);
     const entryKey = letters.join('') + '-' + numbers.join('');
 
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         // Re-check phase and deadline
@@ -1789,7 +1798,7 @@ window.submitBingoEntry = async () => {
 };
 
 window.closeBingoSubmissions = async (postId) => {
-    await updateDoc(doc(fsdb, 'community_posts', postId), { bingoPhase: 'drawing' });
+    await updateDoc(getPostDocRef(postId), { bingoPhase: 'drawing' });
 };
 
 // ---- GLOBAL SPIN WHEEL & ANIMATIONS ----
@@ -1866,7 +1875,7 @@ window.getBingoPool = (post) => {
 };
 
 window.spinBingoWheel = async (postId) => {
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
     const snap = await getDoc(postRef);
     if (!snap.exists()) return;
     const post = snap.data();
@@ -1902,7 +1911,7 @@ window.spinBingoWheel = async (postId) => {
         updates.bingoPhase = 'ended';
         updates.locked = true;
         
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${winnerId}/lbPoints`), increment(lbPoints));
         window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2035,7 +2044,7 @@ window.checkBingoWinner = (entries, calledItems) => {
 
 window.resetBingoGame = async (postId) => {
     if (!postId) return;
-    await updateDoc(doc(fsdb, 'community_posts', postId), {
+    await updateDoc(getPostDocRef(postId), {
         gameStatus: 'ended',
         gameWinner: 'none',
         bingoPhase: 'ended',
@@ -2048,7 +2057,7 @@ window.resetBingoGame = async (postId) => {
 window.joinSpinNames = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to join.");
     
-    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+    const snap = await getDoc(getPostDocRef(postId));
     if (!snap.exists()) return;
     const post = snap.data();
     
@@ -2058,7 +2067,7 @@ window.joinSpinNames = async (postId) => {
     const existingEntry = post.spinNamesJoined && post.spinNamesJoined[window.currentUser.uid];
     if (existingEntry) return window.showAlert("You have already joined this wheel!");
 
-    await updateDoc(doc(fsdb, 'community_posts', postId), {
+    await updateDoc(getPostDocRef(postId), {
         [`spinNamesJoined.${window.currentUser.uid}`]: { 
             uid: window.currentUser.uid,
             name: window.globalUsersCache[window.currentUser.uid]?.name || window.currentUser.uid,
@@ -2070,7 +2079,7 @@ window.joinSpinNames = async (postId) => {
 
 window.closeSpinNames = async (postId) => {
     if (!window.currentUser) return;
-    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+    const snap = await getDoc(getPostDocRef(postId));
     if (!snap.exists()) return;
     const post = snap.data();
     if (post.authorId !== window.currentUser.uid) return;
@@ -2086,12 +2095,12 @@ window.closeSpinNames = async (postId) => {
         }
     }
 
-    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [], spinNamesSpinCount: 0, spinNamesAllPicked: [], spinNamesSpinHistory: [] });
+    await updateDoc(getPostDocRef(postId), { spinNamesPhase: 'drawing', spinNamesWinners: [], spinNamesSpinCount: 0, spinNamesAllPicked: [], spinNamesSpinHistory: [] });
 };
 
 window.startSpinNamesWheel = async (postId) => {
     if (!window.currentUser) return;
-    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+    const snap = await getDoc(getPostDocRef(postId));
     if (!snap.exists()) return;
     const post = snap.data();
     
@@ -2107,12 +2116,12 @@ window.startSpinNamesWheel = async (postId) => {
         }
     }
 
-    await updateDoc(doc(fsdb, 'community_posts', postId), { spinNamesPhase: 'drawing', spinNamesWinners: [], spinNamesSpinCount: 0, spinNamesAllPicked: [], spinNamesSpinHistory: [] });
+    await updateDoc(getPostDocRef(postId), { spinNamesPhase: 'drawing', spinNamesWinners: [], spinNamesSpinCount: 0, spinNamesAllPicked: [], spinNamesSpinHistory: [] });
 };
 
 window.drawSpinNamesItem = async (postId) => {
     if (!window.currentUser) return;
-    const snap = await getDoc(doc(fsdb, 'community_posts', postId));
+    const snap = await getDoc(getPostDocRef(postId));
     if (!snap.exists()) return;
     const post = snap.data();
     if (post.authorId !== window.currentUser.uid) return;
@@ -2177,7 +2186,7 @@ window.drawSpinNamesItem = async (postId) => {
             const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId) window.awardHostBonus(post.authorId, hostLbReward);
         }
-        await updateDoc(doc(fsdb, 'community_posts', postId), autoUpdates);
+        await updateDoc(getPostDocRef(postId), autoUpdates);
         return;
     }
 
@@ -2231,7 +2240,7 @@ window.drawSpinNamesItem = async (postId) => {
         // (The auto-declare logic above handles this on the next drawSpinNamesItem call)
     }
 
-    await updateDoc(doc(fsdb, 'community_posts', postId), updates);
+    await updateDoc(getPostDocRef(postId), updates);
 };
 
 // ===================== SPIN NAMES CANVAS DRAWING =====================
@@ -2301,7 +2310,7 @@ window.drawSpinNamesWheelCanvas = (canvas, players, angle) => {
 
 window.acceptTicTacToeChallenge = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -2334,7 +2343,7 @@ window.acceptTicTacToeChallenge = async (postId) => {
 
 window.makeTicTacToeMove = async (postId, cellIndex) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -2404,7 +2413,7 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
                 gameWinner: winnerUid
             });
 
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Tic Tac Toe', prizeLogged, lbPoints);
@@ -2495,7 +2504,7 @@ window.checkFourInARowWinner = (board) => {
 
 window.acceptFourInARowChallenge = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -2538,7 +2547,7 @@ window.acceptFourInARowChallenge = async (postId) => {
 
 window.makeFourInARowMove = async (postId, cellIndex) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -2575,7 +2584,7 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
                 gameWinner: winnerUid
             });
 
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, '4 in a Row', prizeLogged, lbPoints);
@@ -2672,7 +2681,7 @@ window.checkDropFourWinner = (board) => {
 
 window.acceptDropFourChallenge = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -2715,7 +2724,7 @@ window.acceptDropFourChallenge = async (postId) => {
 
 window.makeDropFourMove = async (postId, colIndex) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
 
     try {
         const snap = await getDoc(postRef);
@@ -2763,7 +2772,7 @@ window.makeDropFourMove = async (postId, colIndex) => {
                 gameWinner: winnerUid
             });
 
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Connect 4', prizeLogged, lbPoints);
@@ -2853,7 +2862,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
         if (!/^[A-Z\s]+$/.test(guess)) return window.showAlert("Please enter letters only.");
     }
 
-    const postRef = doc(fsdb, 'community_posts', postId);
+    const postRef = getPostDocRef(postId);
     const submitBtn = document.getElementById('hangman-guess-submit-btn');
     const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
     if (submitBtn) {
@@ -2910,7 +2919,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                         gameWinner: uid
                     });
 
-                    const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                    const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
                     const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                     if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
                     window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);
@@ -2967,7 +2976,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     gameWinner: uid
                 });
 
-                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : (window.siteSettings.lbPointsPerWin ?? 5);
+                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
                 window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);

@@ -1,4 +1,4 @@
-import { db, fsdb } from "./firebase-config.js";
+import { db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
 import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -142,9 +142,12 @@ window.goToPost = (postId) => {
         window.isolatedPostUnsubscribe = null;
     }
 
-    window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb, 'community_posts', postId), (snapshot) => {
+    const targetRef = getPostDocRef(postId);
+    window.isolatedPostUnsubscribe = onSnapshot(targetRef, (snapshot) => {
         if (snapshot.exists()) {
-            const post = { id: snapshot.id, ...snapshot.data() };
+            const dbSource = snapshot.ref.firestore === fsdb2 ? 2 : 1;
+            const post = { id: snapshot.id, ...snapshot.data(), _dbSource: dbSource };
+            window._postDbMap.set(postId, dbSource);
             window.isolatedPostData = post;
             const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
             if (existingIndex >= 0) {
@@ -160,6 +163,28 @@ window.goToPost = (postId) => {
                     window.renderFeed(false);
                 }
             }
+        } else if (snapshot.ref.firestore === fsdb) {
+            if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+            window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb2, 'community_posts', postId), (snap2) => {
+                if (snap2.exists()) {
+                    const post = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
+                    window._postDbMap.set(postId, 2);
+                    window.isolatedPostData = post;
+                    const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                    if (existingIndex >= 0) window.allPosts[existingIndex] = post;
+                    else window.allPosts.push(post);
+                    if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                        if (!window.usersReady) window._pendingPostRender = true;
+                        else window.renderFeed(false);
+                    }
+                } else {
+                    const feed = document.getElementById('feed');
+                    if (feed) {
+                        feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                        <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+                    }
+                }
+            });
         } else {
             const feed = document.getElementById('feed');
             if (feed) {
@@ -249,6 +274,7 @@ window.openEditProfile = () => {
         });
     }
 
+    window.updateAdminButtons && window.updateAdminButtons();
     document.getElementById('profile-modal').classList.remove('hidden');
 };
 
@@ -329,6 +355,10 @@ window.renderPostList = (container, postsToRender, prefix, filterContext) => {
 };
 
 window.renderFeed = (resetLimit = true) => {
+    if (!window.usersReady) {
+        window._pendingPostRender = true;
+        return;
+    }
     if(window.activeProfileUid) return; 
     const feed = document.getElementById('feed');
     const searchBarContainer = document.getElementById('search-bar-container');
@@ -350,9 +380,12 @@ window.renderFeed = (resetLimit = true) => {
                 </div>`;
             }
             if (!window.isolatedPostUnsubscribe) {
-                window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb, 'community_posts', window.isolatedPostId), (snapshot) => {
+                const targetRef = getPostDocRef(window.isolatedPostId);
+                window.isolatedPostUnsubscribe = onSnapshot(targetRef, (snapshot) => {
                     if (snapshot.exists()) {
-                        const post = { id: snapshot.id, ...snapshot.data() };
+                        const dbSource = snapshot.ref.firestore === fsdb2 ? 2 : 1;
+                        const post = { id: snapshot.id, ...snapshot.data(), _dbSource: dbSource };
+                        window._postDbMap.set(window.isolatedPostId, dbSource);
                         window.isolatedPostData = post;
                         const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
                         if (existingIndex >= 0) {
@@ -368,6 +401,25 @@ window.renderFeed = (resetLimit = true) => {
                                 window.renderFeed(false);
                             }
                         }
+                    } else if (snapshot.ref.firestore === fsdb) {
+                        if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+                        window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb2, 'community_posts', window.isolatedPostId), (snap2) => {
+                            if (snap2.exists()) {
+                                const post = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
+                                window._postDbMap.set(window.isolatedPostId, 2);
+                                window.isolatedPostData = post;
+                                const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                                if (existingIndex >= 0) window.allPosts[existingIndex] = post;
+                                else window.allPosts.push(post);
+                                if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                                    if (!window.usersReady) window._pendingPostRender = true;
+                                    else window.renderFeed(false);
+                                }
+                            } else {
+                                feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                                <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+                            }
+                        });
                     } else {
                         feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
                         <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
@@ -532,6 +584,10 @@ window.renderFeed = (resetLimit = true) => {
 };
 
 window.renderProfileData = (resetLimit = true) => {
+    if (!window.usersReady) {
+        window._pendingPostRender = true;
+        return;
+    }
     if(!window.activeProfileUid) return;
     const uData = window.globalUsersCache[window.activeProfileUid] || { name: "Unknown User", pic: window.generateAvatar(window.activeProfileUid), points: 0 };
     const role = window.getRole(window.activeProfileUid);
@@ -567,9 +623,12 @@ window.renderProfileData = (resetLimit = true) => {
         pokeStats += `<p id="personal-poke-stats" class="text-[10px] text-gray-400 mt-0.5">Loading your pokes...</p>`;
         
         get(ref(db, `users/${window.activeProfileUid}/pokesFrom/${window.currentUser.uid}`)).then(snap => {
-            const pokes = snap.val()?.count || 0;
+            const d = snap.val();
+            const pokedToday = d && d.lastPokedDate === new Date().toLocaleDateString();
+            const used = pokedToday ? Number(d.count || 0) : 0;
+            const limit = Number(window.siteSettings.pokeLimit ?? 3);
             const el = document.getElementById('personal-poke-stats');
-            if(el) el.innerHTML = `You poked them: <span class="font-bold text-orange-400">${pokes} times</span>`;
+            if(el) el.innerHTML = `Poked today: <span class="font-bold text-orange-400">${used}${limit > 0 ? ' / ' + limit : ''}</span>`;
         }).catch(err => console.error("Error fetching pokes:", err));
     }
 
@@ -2196,7 +2255,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         
         <div id="post-body-${prefix}-${post.id}">
             ${post.text ? `<p class="text-sm text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-wrap break-words leading-snug">${safePostText} ${post.edited ? '<span class="text-[10px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>${window.generateEmbed(post.text)}` : ''}
-            ${post.image ? ((post.image.includes('/video/upload/') || post.image.match(/\.(mp4|webm|mov|ogg)$/i)) ? `<video src="${post.image}" controls class="w-full rounded-lg mb-2 max-h-96 bg-black mt-2"></video>` : `<img src="${post.image}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${post.image}')">`) : ''}
+            ${window.renderPostMedia(post)}
             ${gameHtml}
         </div>
         
