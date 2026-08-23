@@ -160,6 +160,7 @@ function initAdminDashboard() {
             document.getElementById('set-commentCooldownSec').value = settings.commentCooldownSec ?? window.siteSettings.commentCooldownSec ?? '';
             document.getElementById('set-chatCooldownSec').value = settings.chatCooldownSec ?? window.siteSettings.chatCooldownSec ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
+            document.getElementById('set-starsPerLike').value = settings.starsPerLike ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
             document.getElementById('set-pokeLimit').value = settings.pokeLimit ?? window.siteSettings.pokeLimit ?? '';
             document.getElementById('set-starsPerFollow').value = settings.starsPerFollow ?? '';
@@ -181,6 +182,7 @@ function initAdminDashboard() {
             document.getElementById('set-commentCooldownSec').value = '';
             document.getElementById('set-chatCooldownSec').value = '';
             document.getElementById('set-starsPerComment').value = '';
+            document.getElementById('set-starsPerLike').value = '';
             document.getElementById('set-starsPerPoked').value = '';
             document.getElementById('set-pokeLimit').value = '';
             document.getElementById('set-starsPerFollow').value = '';
@@ -204,6 +206,7 @@ function initAdminDashboard() {
         document.getElementById('set-commentCooldownSec').placeholder = window.siteSettings.commentCooldownSec ?? 60;
         document.getElementById('set-chatCooldownSec').placeholder = window.siteSettings.chatCooldownSec ?? 60;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
+        document.getElementById('set-starsPerLike').placeholder = window.siteSettings.starsPerLike ?? 1;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
         document.getElementById('set-pokeLimit').placeholder = window.siteSettings.pokeLimit ?? 3;
         document.getElementById('set-starsPerFollow').placeholder = window.siteSettings.starsPerFollow ?? '5';
@@ -227,6 +230,7 @@ function initAdminDashboard() {
             commentCooldownSec: parseInt(document.getElementById('set-commentCooldownSec').value) || 0,
             chatCooldownSec: parseInt(document.getElementById('set-chatCooldownSec').value) || 0,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
+            starsPerLike: parseInt(document.getElementById('set-starsPerLike').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,
             pokeLimit: parseInt(document.getElementById('set-pokeLimit').value) || 0,
             starsPerFollow: parseInt(document.getElementById('set-starsPerFollow').value) || 0,

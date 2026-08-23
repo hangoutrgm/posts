@@ -1297,6 +1297,10 @@ window.submitGame = async () => {
             }
         }
 
+        // Award stars for posting a game (same reward as a regular post)
+        const starsToAdd = window.siteSettings.starsPerPost ?? 10;
+        update(ref(db, `users/${window.currentUser.uid}`), { points: increment(starsToAdd) });
+
         // For NCL: log the earning immediately since it's awarded on post creation
         if (type === 'ncl' && targetUserUid) {
             const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
