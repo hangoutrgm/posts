@@ -12,12 +12,15 @@ const state = {
     lend: {},
     buysell: {},
     savings: {},
+    revealGcash: false,
     rewardFilter: 'all',
     myUid: null,
     viewingUid: null,
     users: {},
     sponsors: [],
-    detachers: []
+    detachers: [],
+    contacts: {},
+    contactDetacher: null
 };
 
 // Path helper: whose treasury is currently on screen
@@ -41,6 +44,12 @@ const STATUS_BADGE = {
 
 function money(n) {
     return '₱' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// Privacy: show only the last 3 digits of a GCash number unless revealed
+function maskGcash(num) {
+    const s = String(num || '').trim();
+    if (!s || s === '—') return s || '—';
+    return '••• ' + s.slice(-3);
 }
 function fmtDate(ts) {
     if (!ts) return '—';
@@ -83,6 +92,11 @@ function switchTreasury(uid) {
         onValue(ref(db, tPath('buysell')), (s) => { state.buysell = s.val() || {}; renderBuysell(); }),
         onValue(ref(db, tPath('savings')), (s) => { state.savings = s.val() || {}; renderSavings(); })
     ];
+    // Contacts follow the account on screen: mine normally, the sponsor's while managing theirs
+    if (state.contactDetacher) state.contactDetacher();
+    state.contactDetacher = onValue(ref(db, `treasury_contacts/${state.viewingUid}`), (s) => { state.contacts = s.val() || {}; });
+    const fab = $('btn-contacts');
+    if (fab) fab.classList.remove('hidden');
     updateViewBanner();
 }
 
@@ -91,8 +105,12 @@ function updateViewBanner() {
     if (!bar) return;
     if (state.viewingUid === state.myUid) { bar.classList.add('hidden'); return; }
     bar.innerHTML =
-        `<span><i class="fa-solid fa-user-pen mr-1"></i>Managing <b>${escapeHtml(state.users[state.viewingUid]?.name || 'sponsor')}'s</b> treasury — changes are saved to their account.</span>` +
-        `<button onclick="window.openSponsorTreasury('${state.myUid}')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition shrink-0">Back to Mine</button>`;
+        `<span class="flex items-center gap-2 min-w-0">` +
+            `<span class="managing-pulse w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0"></span>` +
+            `<i class="fa-solid fa-user-pen text-[10px] shrink-0 opacity-70"></i>` +
+            `<span class="truncate">Managing <b>${escapeHtml(state.users[state.viewingUid]?.name || 'sponsor')}'s</b> treasury</span>` +
+        `</span>` +
+        `<button onclick="window.openSponsorTreasury('${state.myUid}')" class="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 transition shrink-0"><i class="fa-solid fa-arrow-left text-[9px]"></i>Back to Mine</button>`;
     bar.classList.remove('hidden');
 }
 
@@ -140,10 +158,15 @@ function watchDeputyOffers() {
 function renderSponsorChips() {
     const wrap = $('deputy-bar');
     if (!wrap) return;
-    wrap.innerHTML = state.sponsors.map(uid =>
-        `<button onclick="window.openSponsorTreasury('${uid}')" class="${state.viewingUid === uid ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800/90 text-emerald-600 dark:text-emerald-400'} border border-emerald-200 dark:border-emerald-900/40 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-[11px] font-bold px-3 py-1.5 rounded-full transition shadow-sm flex items-center gap-1.5">` +
-        `<i class="fa-solid fa-vault"></i>Manage ${escapeHtml(state.users[uid]?.name || 'sponsor')}'s Treasury</button>`
-    ).join('');
+    wrap.innerHTML = state.sponsors.map(uid => {
+        const active = state.viewingUid === uid;
+        const cls = active
+            ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-400/50 shadow-md'
+            : 'bg-white dark:bg-slate-800/90 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400';
+        return `<button onclick="window.openSponsorTreasury('${uid}')" class="${cls} text-[11px] font-bold px-3 py-1.5 rounded-full transition flex items-center gap-1.5">` +
+        (active ? `<span class="managing-pulse w-1.5 h-1.5 rounded-full bg-white inline-block shrink-0"></span>` : `<i class="fa-solid fa-vault opacity-60"></i>`) +
+        `Manage ${escapeHtml(state.users[uid]?.name || 'sponsor')}'s Treasury</button>`;
+    }).join('');
     wrap.classList.toggle('hidden', !state.sponsors.length);
 }
 window.openSponsorTreasury = (uid) => switchTreasury(uid);
@@ -200,6 +223,15 @@ function initTreasury() {
     }
     document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
     switchTab('rewards');
+    const revealBtn = $('btn-reveal-gcash');
+    if (revealBtn) revealBtn.addEventListener('click', () => {
+        state.revealGcash = !state.revealGcash;
+        revealBtn.innerHTML = `<i class="fa-solid ${state.revealGcash ? 'fa-eye-slash' : 'fa-eye'}"></i>`;
+        revealBtn.classList.toggle('bg-indigo-600', state.revealGcash);
+        revealBtn.classList.toggle('text-white', state.revealGcash);
+        revealBtn.classList.toggle('border-indigo-600', state.revealGcash);
+        renderRewards();
+    });
     document.querySelectorAll('.reward-filter').forEach(btn => btn.addEventListener('click', () => {
         state.rewardFilter = btn.dataset.rewardFilter;
         document.querySelectorAll('.reward-filter').forEach(b => {
@@ -216,6 +248,7 @@ function initTreasury() {
     $('btn-bs-sell').addEventListener('click', () => openBuySellForm('sell'));
     $('btn-savings-add').addEventListener('click', () => openSavingsForm());
     $('btn-treasurers').addEventListener('click', () => openTreasurersModal());
+    $('btn-contacts').addEventListener('click', () => openContactsModal());
     $('modal-close').addEventListener('click', closeModal);
     $('modal-cancel').addEventListener('click', closeModal);
     $('modal-form').addEventListener('submit', (e) => e.preventDefault());
@@ -257,9 +290,89 @@ const select = (label, id, options, selected) =>
     options.map(o => `<option value="${o.v}" ${o.v === selected ? 'selected' : ''}>${o.l}</option>`).join('') + `</select></div>`;
 
 // ── Rewards ──
+// ── Contacts (address book of the account on screen — sponsor's list when delegated) ──
+const CONTACTS_PATH = () => `treasury_contacts/${state.viewingUid}`;
+
+const sortedContacts = () => Object.keys(state.contacts || {})
+    .map(k => ({ id: k, ...state.contacts[k] }))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+
+// Dropdown shown above the Name field — fills Name (and GCash) from a saved contact
+const contactPicker = (nameInputId, gcashInputId = null) => {
+    const list = sortedContacts();
+    if (!list.length) return '';
+    const opts = list.map(c =>
+        `<option value="${c.id}">${escapeHtml((c.name || '(no name)') + (c.gcash ? ' \u00b7 ' + c.gcash : ''))}</option>`).join('');
+    return `<div><label class="block text-[10px] font-semibold text-indigo-500 dark:text-indigo-400 mb-1 ml-0.5"><i class="fa-solid fa-bolt mr-0.5"></i>Quick Fill from Contacts</label>` +
+        `<select onchange="window.pickContact('${nameInputId}','${gcashInputId || ''}',this.value)" class="w-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-slate-800 dark:text-white focus:border-indigo-500 rounded-lg px-2.5 py-2 text-xs outline-none cursor-pointer">` +
+        `<option value="">Select a contact\u2026</option>${opts}</select></div>`;
+};
+window.pickContact = (nameId, gcashId, cid) => {
+    const c = (state.contacts || {})[cid];
+    if (!c) return;
+    if (c.name) { const n = $(nameId); if (n) n.value = c.name; }
+    if (gcashId && c.gcash) { const g = $(gcashId); if (g) g.value = c.gcash; }
+};
+
+const contactFormFields = (rec) =>
+    field('Name', 'ct-name', 'text', 'e.g. Maria', rec?.name || '') +
+    field('Email', 'ct-email', 'email', 'optional', rec?.email || '') +
+    field('GCash Number', 'ct-gcash', 'text', 'e.g. 09171234567', rec?.gcash || '');
+
+function contactListHtml() {
+    const list = sortedContacts();
+    if (!list.length) return `<p class="text-xs text-slate-400 text-center py-3 bg-slate-50 dark:bg-slate-900 rounded-lg">No contacts yet \u2014 add your first one below.</p>`;
+    return '<div class="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">' + list.map(c =>
+        `<div class="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
+            <div class="min-w-0">
+                <p class="text-xs font-bold text-slate-800 dark:text-white truncate">${escapeHtml(c.name || '(no name)')}</p>
+                <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate">${escapeHtml([c.email, c.gcash].filter(Boolean).join(' \u00b7 ') || '\u2014')}</p>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+                <button type="button" onclick="window.editContact('${c.id}')" title="Edit" class="w-6 h-6 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                <button type="button" onclick="window.deleteContact('${c.id}')" title="Delete" class="w-6 h-6 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+            </div>
+        </div>`).join('') + '</div>';
+}
+
+function openContactsModal(editId = null) {
+    const rec = editId ? (state.contacts || {})[editId] : null;
+    const isDelegate = state.viewingUid !== state.myUid;
+    const ownerTag = isDelegate ? `Contacts \u00b7 ${escapeHtml(state.users[state.viewingUid]?.name || 'sponsor')}` : 'Contacts';
+    const header = rec ? '' :
+        contactListHtml() +
+        '<p class="text-[10px] font-bold uppercase tracking-wide text-slate-400 pt-1">Add New Contact</p>';
+    openModal(rec ? 'Edit Contact' : ownerTag,
+        header + contactFormFields(rec),
+        rec ? 'Save Changes' : 'Add Contact', async () => {
+            const name = $('ct-name').value.trim();
+            const email = $('ct-email').value.trim();
+            const gcash = $('ct-gcash').value.trim();
+            if (!name && !gcash) return toast('Enter at least a name or a GCash number.');
+            try {
+                if (rec) {
+                    await update(ref(db, `${CONTACTS_PATH()}/${editId}`), { name, email, gcash });
+                    closeModal(); toast('Contact updated.');
+                } else {
+                    await push(ref(db, CONTACTS_PATH()), { name, email, gcash, createdAt: Date.now() });
+                    closeModal(); toast('Contact added.');
+                }
+            } catch (e) { toast('Could not save contact: ' + e.message); }
+        });
+}
+window.editContact = (id) => openContactsModal(id);
+window.deleteContact = (id) => {
+    if (!confirm('Delete this contact?')) return;
+    remove(ref(db, `${CONTACTS_PATH()}/${id}`))
+        .then(() => { toast('Contact deleted.'); closeModal(); })
+        .catch(() => toast('Delete failed.'));
+};
+
+// ── Rewards ──
 function openRewardForm(id = null) {
     const rec = id ? state.rewards[id] : null;
     openModal(rec ? 'Edit Reward' : 'Add Reward',
+        contactPicker('rw-name', 'rw-gcash') +
         field('User Name', 'rw-name', 'text', 'e.g. Juan or registered name', rec?.name || '') +
         field('GCash Number', 'rw-gcash', 'text', 'e.g. 09171234567', rec?.gcash || '') +
         field('Prize Amount', 'rw-amount', 'number', '0', rec?.amount ?? '') +
@@ -327,11 +440,11 @@ function renderRewards() {
     let html = '';
     filtered.forEach(r => {
         html += `<tr>
-            <td class="px-4 py-3"><div class="font-semibold text-slate-800 dark:text-white">${escapeHtml(r.name)}</div>${r.note ? `<div class="text-[10px] text-slate-400">${escapeHtml(r.note)}</div>` : ''}</td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${escapeHtml(r.gcash || '—')}</td>
+            <td class="px-4 py-3"><div class="font-semibold text-slate-800 dark:text-white"><span class="block max-w-[96px] sm:max-w-[180px] truncate" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span></div>${r.note ? `<div class="text-[10px] text-slate-400">${escapeHtml(r.note)}</div>` : ''}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-slate-500 dark:text-slate-400">${state.revealGcash ? escapeHtml(r.gcash || '—') : maskGcash(r.gcash)}</td>
             <td class="px-4 py-3 text-right font-bold text-slate-800 dark:text-white">${money(r.amount)}</td>
-            <td class="px-4 py-3"><span class="text-[10px] font-bold px-2 py-1 rounded-full ${STATUS_BADGE[r.status] || STATUS_BADGE.pending}">${STATUS_LABEL[r.status] || r.status}</span></td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${fmtDate(r.createdAt)}</td>
+            <td class="px-4 py-3"><span class="whitespace-nowrap text-[10px] font-bold px-2 py-1 rounded-full ${STATUS_BADGE[r.status] || STATUS_BADGE.pending}">${STATUS_LABEL[r.status] || r.status}</span></td>
+            <td class="px-4 py-3 text-slate-500 dark:text-slate-400 hidden md:table-cell">${fmtDate(r.createdAt)}</td>
             <td class="px-4 py-3"><div class="flex items-center justify-end gap-1">
                 <button onclick="window.editReward('${r.id}')" title="Edit" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-pen text-xs"></i></button>
                 ${r.status !== 'sent' ? `<button onclick="window.setRewardStatus('${r.id}','sent')" title="Mark as Sent" class="w-7 h-7 rounded-lg bg-green-600 hover:bg-green-500 text-white flex items-center justify-center transition"><i class="fa-solid fa-check text-xs"></i></button>` : ''}
@@ -353,6 +466,7 @@ function openKeepForm(type, id = null) {
     const isDeposit = type === 'deposit';
     const rec = id ? state.keep[id] : null;
     openModal(rec ? 'Edit Deposit (Keep)' : (isDeposit ? 'Deposit (Keep)' : 'Withdraw (Keep)'),
+        contactPicker('kp-name') +
         field('Name', 'kp-name', 'text', 'e.g. Maria', rec?.name || '') +
         field('Amount', 'kp-amount', 'number', '0', rec?.amount ?? '') +
         field('Date', 'kp-date', 'date', '', rec?.date || today()) +
@@ -404,11 +518,11 @@ function renderKeep() {
     rows.forEach(r => {
         const isW = r.type === 'withdraw';
         html += `<tr>
-            <td class="px-4 py-3"><span class="text-[10px] font-bold px-2 py-1 rounded-full ${isW ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'}">${isW ? 'Withdraw' : 'Deposit'}</span></td>
+            <td class="px-4 py-3"><span class="whitespace-nowrap text-[10px] font-bold px-2 py-1 rounded-full ${isW ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'}">${isW ? 'Withdraw' : 'Deposit'}</span></td>
             <td class="px-4 py-3 font-semibold text-slate-800 dark:text-white">${escapeHtml(r.name)}</td>
             <td class="px-4 py-3 text-right font-bold ${isW ? 'text-rose-500' : 'text-emerald-500'}">${isW ? '-' : '+'}${money(r.amount)}</td>
             <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${escapeHtml(r.remarks || '—')}</td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${fmtDate(r.date)}</td>
+            <td class="px-4 py-3 text-slate-500 dark:text-slate-400 hidden md:table-cell">${fmtDate(r.date)}</td>
             <td class="px-4 py-3 text-right"><div class="flex items-center justify-end gap-1">
                 <button onclick="window.editKeep('${r.id}')" title="Edit" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-pen text-xs"></i></button>
                 <button onclick="window.deleteKeep('${r.id}')" title="Delete" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-trash-can text-xs"></i></button>
@@ -422,6 +536,7 @@ function renderKeep() {
 function openLoanForm(id = null) {
     const rec = id ? state.lend[id] : null;
     openModal(rec ? 'Edit Loan' : 'Add Loan',
+        contactPicker('ln-name') +
         field('Name', 'ln-name', 'text', 'e.g. Pedro', rec?.name || '') +
         field('Lent Amount', 'ln-principal', 'number', '0', rec?.principal ?? '') +
         field('Interest (₱)', 'ln-interest', 'number', '0', rec?.interest ?? '') +
@@ -484,8 +599,8 @@ function renderLend() {
             <td class="px-4 py-3 text-right font-bold text-slate-800 dark:text-white">${money(r.principal)}</td>
             <td class="px-4 py-3 text-right text-slate-500 dark:text-slate-400">${money(r.interest)}</td>
             <td class="px-4 py-3 text-right font-bold text-blue-600 dark:text-blue-400">${money(collect)}</td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${fmtDate(r.date)}</td>
-            <td class="px-4 py-3"><span class="text-[10px] font-bold px-2 py-1 rounded-full ${repaid ? 'bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'}">${repaid ? 'Paid' : 'Active'}</span></td>
+            <td class="px-4 py-3 text-slate-500 dark:text-slate-400 hidden md:table-cell">${fmtDate(r.date)}</td>
+            <td class="px-4 py-3"><span class="whitespace-nowrap text-[10px] font-bold px-2 py-1 rounded-full ${repaid ? 'bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'}">${repaid ? 'Paid' : 'Active'}</span></td>
             <td class="px-4 py-3"><div class="flex items-center justify-end gap-1">
                 <button onclick="window.editLoan('${r.id}')" title="Edit" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-pen text-xs"></i></button>
                 ${!repaid ? `<button onclick="window.toggleLoanRepaid('${r.id}','repaid')" title="Mark as Paid" class="w-7 h-7 rounded-lg bg-green-600 hover:bg-green-500 text-white flex items-center justify-center transition"><i class="fa-solid fa-check text-xs"></i></button>` : `<button onclick="window.toggleLoanRepaid('${r.id}','active')" title="Reopen" class="w-7 h-7 rounded-lg bg-amber-600 hover:bg-amber-500 text-white flex items-center justify-center transition"><i class="fa-solid fa-rotate-left text-xs"></i></button>`}
@@ -501,6 +616,7 @@ function openBuySellForm(type, id = null) {
     const isBuy = type === 'buy';
     const rec = id ? state.buysell[id] : null;
     openModal(rec ? (isBuy ? 'Edit Purchase' : 'Edit Sale') : (isBuy ? 'Add Purchase' : 'Add Sale'),
+        contactPicker('bs-name') +
         field('Item / Name', 'bs-name', 'text', isBuy ? 'e.g. Load wallet top-up' : 'e.g. Mobile data 1GB — Maria', rec?.name || '') +
         field('Amount', 'bs-amount', 'number', '0', rec?.amount ?? '') +
         field('Date', 'bs-date', 'date', '', rec?.date || today()) +
@@ -535,6 +651,7 @@ window.editBuysell = (id) => { const r = state.buysell[id]; if (r) openBuySellFo
 function openSavingsForm(id = null) {
     const rec = id ? state.savings[id] : null;
     openModal(rec ? 'Edit Savings' : 'Add Savings',
+        contactPicker('sv-name') +
         field('Name / Source', 'sv-name', 'text', 'e.g. Salary cut — January', rec?.name || '') +
         field('Amount', 'sv-amount', 'number', '0', rec?.amount ?? '') +
         field('Date', 'sv-date', 'date', '', rec?.date || today()) +
@@ -584,7 +701,7 @@ function renderSavings() {
             <td class="px-4 py-3 font-semibold text-slate-800 dark:text-white">${escapeHtml(r.name)}</td>
             <td class="px-4 py-3 text-right font-bold text-emerald-500">+${money(r.amount)}</td>
             <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${escapeHtml(r.remarks || '—')}</td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${fmtDate(r.date)}</td>
+            <td class="px-4 py-3 text-slate-500 dark:text-slate-400 hidden md:table-cell">${fmtDate(r.date)}</td>
             <td class="px-4 py-3"><div class="flex items-center justify-end gap-1">
                 <button onclick="window.editSavings('${r.id}')" title="Edit" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-pen text-xs"></i></button>
                 <button onclick="window.deleteSavings('${r.id}')" title="Delete" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-trash-can text-xs"></i></button>
@@ -615,11 +732,11 @@ function renderBuysell() {
     rows.forEach(r => {
         const isSell = r.type === 'sell';
         html += `<tr>
-            <td class="px-4 py-3"><span class="text-[10px] font-bold px-2 py-1 rounded-full ${isSell ? 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300' : 'bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300'}">${isSell ? 'Sale' : 'Buy'}</span></td>
+            <td class="px-4 py-3"><span class="whitespace-nowrap text-[10px] font-bold px-2 py-1 rounded-full ${isSell ? 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300' : 'bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300'}">${isSell ? 'Sale' : 'Buy'}</span></td>
             <td class="px-4 py-3 font-semibold text-slate-800 dark:text-white">${escapeHtml(r.name)}</td>
             <td class="px-4 py-3 text-right font-bold ${isSell ? 'text-emerald-500' : 'text-rose-500'}">${isSell ? '+' : '-'}${money(r.amount)}</td>
             <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${escapeHtml(r.remarks || '—')}</td>
-            <td class="px-4 py-3 text-slate-500 dark:text-slate-400">${fmtDate(r.date)}</td>
+            <td class="px-4 py-3 text-slate-500 dark:text-slate-400 hidden md:table-cell">${fmtDate(r.date)}</td>
             <td class="px-4 py-3 text-right"><div class="flex items-center justify-end gap-1">
                 <button onclick="window.editBuysell('${r.id}')" title="Edit" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-pen text-xs"></i></button>
                 <button onclick="window.deleteBuysell('${r.id}')" title="Delete" class="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center transition"><i class="fa-solid fa-trash-can text-xs"></i></button>

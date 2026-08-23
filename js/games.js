@@ -8,6 +8,13 @@ const todayStr = () => {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
+// Admin check (games): Super Admin UID or role level 3.
+// Used to bypass the Max LB Prize cap — admins may award more LB points when hosting games.
+const isGameAdmin = () => {
+    const uid = window.currentUser?.uid;
+    return uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2' || (uid && window.getRole ? window.getRole(uid).level === 3 : false);
+};
+
 // ============================================================
 // LEADERBOARD PERIOD HELPERS
 // weekly = ISO year-week (Mon–Sun), monthly = YYYY-MM
@@ -511,7 +518,7 @@ window.openPostGameModal = () => {
 
     document.getElementById('game-type').value = 'first_to_mine';
     
-    const maxLb = window.siteSettings.maxLbPointsPrize ?? 5;
+    const maxLb = isGameAdmin() ? 999 : (window.siteSettings.maxLbPointsPrize ?? 5);
     document.getElementById('game-lb-points').max = maxLb;
     document.getElementById('game-lb-points-label').innerText = `🏆 LB Points (Max ${maxLb})`;
 
@@ -825,7 +832,7 @@ window.submitGame = async () => {
         prize = num;
     }
 
-    const maxLbAllowed = window.siteSettings.maxLbPointsPrize ?? 5;
+    const maxLbAllowed = isGameAdmin() ? 999 : (window.siteSettings.maxLbPointsPrize ?? 5);
     const lbPointsReward = parseInt(document.getElementById('game-lb-points').value) || 0;
     if (lbPointsReward < 0 || lbPointsReward > maxLbAllowed) {
         return window.showAlert(`LB Points reward must be between 0 and ${maxLbAllowed}.`);
