@@ -44,13 +44,17 @@ window.isUserTyping = false;
 window.typingTimer = null;
 
 // Dynamic Settings (loaded from Firebase /settings)
+// pausePosts / pauseChat: Site Control switches in /config — when true, non-admin
+// users cannot post/comment/react (posts) or send messages (chat). Admins bypass.
 window.siteSettings = {
+    pausePosts: false,
+    pauseChat: false,
     starsPerPost: 10,
     starsPerComment: 1,
     starsPerReply: 1,
     starsPerLike: 1,
     starsPerPoked: 5,
-    lbPointsPerWin: 5,
+    pokeLimit: 3,
     gameHostLbReward: 0,
     maxLbPointsPrize: 100,
     imageUploadLimit: 10,
@@ -60,5 +64,7 @@ window.siteSettings = {
     chatVideoLimit: 3,
     chatVoiceLimit: 10,
     chatVideoSizeLimitMB: 20,
+    postCooldownSec: 60,
+    commentCooldownSec: 60,
     gameLimits: {}
 };

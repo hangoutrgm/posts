@@ -1,6 +1,6 @@
 // main.js
-import { app, auth, db, fsdb } from "./firebase-config.js";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { app, auth, db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
@@ -396,6 +396,7 @@ window._updateNavUserUI = () => {
         const catSelect = document.getElementById('post-category');
         if (role.level === 1 && (catSelect.value === 'Announcements' || catSelect.value === 'Rules')) catSelect.value = 'General';
     }
+    window.updateAdminButtons && window.updateAdminButtons();
 };
 
 // Granular Users Loading: 1 initial get() + granular child event updates
@@ -501,29 +502,25 @@ window._applyPinnedIds = (ids, pinType) => {
         if (window._pinnedListeners[id]) return;
 
         // Start a real-time listener for this pinned post
-        const postRef = doc(fsdb, 'community_posts', id);
+        const postRef = getPostDocRef(id);
         const unsub = onSnapshot(postRef, (snap) => {
-            if (!snap.exists()) return;
-            const post = { id: snap.id, ...snap.data() };
-
-            // Update in globalPinnedPosts
-            const gpIdx = window.globalPinnedPosts.findIndex(p => p.id === id);
-            if (gpIdx !== -1) window.globalPinnedPosts[gpIdx] = post;
-            else if (pinType === 'feedPinned') window.globalPinnedPosts.push(post);
-
-            // Update in profilePinnedPosts
-            const ppIdx = window.profilePinnedPosts.findIndex(p => p.id === id);
-            if (ppIdx !== -1) window.profilePinnedPosts[ppIdx] = post;
-            else if (pinType === 'profilePinned') window.profilePinnedPosts.push(post);
-
-            // Also update in allPosts if this post happens to be in the live feed too
-            const apIdx = window.allPosts.findIndex(p => p.id === id);
-            if (apIdx !== -1) window.allPosts[apIdx] = post;
-
-            if (typeof window.renderFeed === 'function') {
-                if (!window.usersReady) window._pendingPostRender = true;
-                else if (!window.isolatedPostId) window.renderFeed(false);
+            if (!snap.exists()) {
+                // If not found in primary and not yet checked secondary, fallback check
+                if (snap.ref.firestore === fsdb) {
+                    const postRef2 = doc(fsdb2, 'community_posts', id);
+                    onSnapshot(postRef2, (snap2) => {
+                        if (!snap2.exists()) return;
+                        const post2 = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
+                        window._postDbMap.set(id, 2);
+                        window._updatePinnedPostInState(post2, pinType);
+                    });
+                }
+                return;
             }
+            const dbSource = snap.ref.firestore === fsdb2 ? 2 : 1;
+            const post = { id: snap.id, ...snap.data(), _dbSource: dbSource };
+            window._postDbMap.set(id, dbSource);
+            window._updatePinnedPostInState(post, pinType);
         });
         window._pinnedListeners[id] = unsub;
     });
@@ -533,7 +530,6 @@ window._applyPinnedIds = (ids, pinType) => {
         const removed = window.globalPinnedPosts.filter(p => !ids.includes(p.id));
         window.globalPinnedPosts = window.globalPinnedPosts.filter(p => ids.includes(p.id));
         removed.forEach(rp => {
-            // Unsubscribe the live listener
             if (window._pinnedListeners[rp.id]) {
                 window._pinnedListeners[rp.id]();
                 delete window._pinnedListeners[rp.id];
@@ -559,9 +555,28 @@ window._applyPinnedIds = (ids, pinType) => {
     }
 };
 
-// Build a base Firestore query with optional filter/author constraints (no limit yet)
-window._buildBaseQuery = () => {
-    const postsRef = collection(fsdb, 'community_posts');
+window._updatePinnedPostInState = (post, pinType) => {
+    const id = post.id;
+    const gpIdx = window.globalPinnedPosts.findIndex(p => p.id === id);
+    if (gpIdx !== -1) window.globalPinnedPosts[gpIdx] = post;
+    else if (pinType === 'feedPinned') window.globalPinnedPosts.push(post);
+
+    const ppIdx = window.profilePinnedPosts.findIndex(p => p.id === id);
+    if (ppIdx !== -1) window.profilePinnedPosts[ppIdx] = post;
+    else if (pinType === 'profilePinned') window.profilePinnedPosts.push(post);
+
+    const apIdx = window.allPosts.findIndex(p => p.id === id);
+    if (apIdx !== -1) window.allPosts[apIdx] = post;
+
+    if (typeof window.renderFeed === 'function') {
+        if (!window.usersReady) window._pendingPostRender = true;
+        else if (!window.isolatedPostId) window.renderFeed(false);
+    }
+};
+
+// Build a base Firestore query with optional filter/author constraints for a specific Firestore instance
+window._buildBaseQueryForDb = (targetFs) => {
+    const postsRef = collection(targetFs, 'community_posts');
     if (window.activeProfileUid) {
         return query(postsRef, where('authorId', '==', window.activeProfileUid), orderBy('timestamp', 'desc'));
     } else if (window.currentFilter === 'My Posts' && window.currentUser) {
@@ -573,40 +588,62 @@ window._buildBaseQuery = () => {
     }
 };
 
-// listenPosts: sets a live onSnapshot on the FIRST 15 posts only (for real-time new post updates)
-window.listenPosts = () => {
-    if (window.postsUnsubscribe) window.postsUnsubscribe();
+// Backward-compatibility wrapper
+window._buildBaseQuery = () => window._buildBaseQueryForDb(fsdb);
 
-    // Reset pagination state when starting fresh
-    window._lastPostDoc = null;
+// listenPosts: sets live onSnapshot listeners on both Firestore 1 and Firestore 2 (merged real-time stream)
+window.listenPosts = () => {
+    if (window.postsUnsubscribe1) { window.postsUnsubscribe1(); window.postsUnsubscribe1 = null; }
+    if (window.postsUnsubscribe2) { window.postsUnsubscribe2(); window.postsUnsubscribe2 = null; }
+    if (typeof window.postsUnsubscribe === 'function') { window.postsUnsubscribe(); window.postsUnsubscribe = null; }
+
+    window._lastPostDoc1 = null;
+    window._lastPostDoc2 = null;
+    window._liveLastDoc1 = null;
+    window._liveLastDoc2 = null;
+    window._historyPosts1 = [];
+    window._historyPosts2 = [];
     window._historyPosts = [];
 
-    const dbQuery = query(window._buildBaseQuery(), limit(15));
+    let livePosts1 = [];
+    let livePosts2 = [];
+    let initialSnap1 = false;
+    let initialSnap2 = false;
+    let initialGraceElapsed = false;
+    setTimeout(() => {
+        initialGraceElapsed = true;
+        mergeAndRender();
+    }, 400);
 
-    window.postsUnsubscribe = onSnapshot(dbQuery, { includeMetadataChanges: false }, (snapshot) => {
+    const safeMergeAndRender = () => {
+        if ((initialSnap1 && initialSnap2) || initialGraceElapsed) {
+            mergeAndRender();
+        }
+    };
+
+    const mergeAndRender = () => {
         const rawDocs = {};
-        snapshot.forEach(child => rawDocs[child.id] = child.data());
+        [...livePosts1, ...livePosts2].forEach(p => { if (p && p.id) rawDocs[p.id] = p; });
         if (window.checkGameTimers) window.checkGameTimers(rawDocs);
 
-        const livePosts = [];
-        snapshot.forEach(child => {
-            const p = { id: child.id, ...child.data() };
-            livePosts.push(p);
+        const allLive = [...livePosts1, ...livePosts2];
+        allLive.sort((a, b) => {
+            const tA = (a.timestamp && a.timestamp.toMillis) ? a.timestamp.toMillis() : (typeof a.timestamp === 'number' ? a.timestamp : 0);
+            const tB = (b.timestamp && b.timestamp.toMillis) ? b.timestamp.toMillis() : (typeof b.timestamp === 'number' ? b.timestamp : 0);
+            return tB - tA;
         });
 
-        // Store the last doc from the live batch so history pagination knows where to start
-        const snapDocs = snapshot.docs;
-        if (snapDocs.length > 0) {
-            window._liveLastDoc = snapDocs[snapDocs.length - 1];
-        }
+        const allHistory = [...(window._historyPosts1 || []), ...(window._historyPosts2 || [])];
+        allHistory.sort((a, b) => {
+            const tA = (a.timestamp && a.timestamp.toMillis) ? a.timestamp.toMillis() : (typeof a.timestamp === 'number' ? a.timestamp : 0);
+            const tB = (b.timestamp && b.timestamp.toMillis) ? b.timestamp.toMillis() : (typeof b.timestamp === 'number' ? b.timestamp : 0);
+            return tB - tA;
+        });
+        window._historyPosts = allHistory;
 
-        // hasMorePosts: true if we got a full page of 15 (there may be history beyond)
-        window.hasMorePosts = (snapshot.size >= 15);
-
-        // Merge: live posts at top, history pages below (deduplicate)
-        const historyIds = new Set((window._historyPosts || []).map(p => p.id));
-        const mergedLive = livePosts.filter(p => !historyIds.has(p.id));
-        window.allPosts = [...mergedLive, ...(window._historyPosts || [])];
+        const historyIds = new Set(allHistory.map(p => p.id));
+        const mergedLive = allLive.filter(p => !historyIds.has(p.id));
+        window.allPosts = [...mergedLive, ...allHistory];
 
         // Ensure currently isolated spotlight post is retained in allPosts
         if (window.isolatedPostId && window.isolatedPostData && !window.allPosts.some(p => p.id === window.isolatedPostId)) {
@@ -624,62 +661,130 @@ window.listenPosts = () => {
         }
         window.handleDeepLinks();
         window.isLoadingHistory = false;
+    };
+
+    const q1 = query(window._buildBaseQueryForDb(fsdb), limit(15));
+    const q2 = query(window._buildBaseQueryForDb(fsdb2), limit(15));
+
+    window.postsUnsubscribe1 = onSnapshot(q1, { includeMetadataChanges: false }, (snapshot) => {
+        livePosts1 = [];
+        snapshot.forEach(child => {
+            const p = { id: child.id, ...child.data(), _dbSource: 1 };
+            window._postDbMap.set(child.id, 1);
+            livePosts1.push(p);
+        });
+        if (snapshot.docs.length > 0) {
+            window._liveLastDoc1 = snapshot.docs[snapshot.docs.length - 1];
+        }
+        window.hasMorePosts1 = (snapshot.size >= 15);
+        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2;
+        initialSnap1 = true;
+        safeMergeAndRender();
+    }, (err) => {
+        console.warn("FS1 snapshot warning:", err);
+        initialSnap1 = true;
+        safeMergeAndRender();
     });
+
+    window.postsUnsubscribe2 = onSnapshot(q2, { includeMetadataChanges: false }, (snapshot) => {
+        livePosts2 = [];
+        snapshot.forEach(child => {
+            const p = { id: child.id, ...child.data(), _dbSource: 2 };
+            window._postDbMap.set(child.id, 2);
+            livePosts2.push(p);
+        });
+        if (snapshot.docs.length > 0) {
+            window._liveLastDoc2 = snapshot.docs[snapshot.docs.length - 1];
+        }
+        window.hasMorePosts2 = (snapshot.size >= 15);
+        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2;
+        initialSnap2 = true;
+        safeMergeAndRender();
+    }, (err) => {
+        console.warn("FS2 snapshot warning:", err);
+        initialSnap2 = true;
+        safeMergeAndRender();
+    });
+
+    window.postsUnsubscribe = () => {
+        if (window.postsUnsubscribe1) window.postsUnsubscribe1();
+        if (window.postsUnsubscribe2) window.postsUnsubscribe2();
+    };
 };
 
-// loadMorePosts: fetches the next page of 15 older posts using cursor-based pagination
-// This is a one-time getDocs call, NOT a live listener — old posts don't need live updates
+// loadMorePosts: fetches the next page of older posts from both Firestore instances using cursor pagination
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     window.isLoadingHistory = true;
 
     try {
-        // Start after the last doc we have (either last history doc, or last live doc)
-        const cursor = window._lastPostDoc || window._liveLastDoc;
-        if (!cursor) {
-            window.isLoadingHistory = false;
-            return;
-        }
-
-        const pageQuery = query(window._buildBaseQuery(), startAfter(cursor), limit(15));
-        const pageSnap = await window._getDocsFS(pageQuery);
-
-        if (pageSnap.empty) {
-            window.hasMorePosts = false;
-            window.isLoadingHistory = false;
-            if (window.activeProfileUid) window.renderProfileData(false);
-            else window.renderFeed(false);
-            return;
-        }
-
-        // Remember the last doc in this page for the next scroll
-        const pageDocs = pageSnap.docs;
-        window._lastPostDoc = pageDocs[pageDocs.length - 1];
-
-        // hasMorePosts: true only if we got a full page
-        window.hasMorePosts = (pageSnap.size >= 15);
-
-        // Append new page posts to history (avoiding duplicates)
-        const existingIds = new Set(window.allPosts.map(p => p.id));
-        const newHistoryPosts = [];
-        pageDocs.forEach(child => {
-            if (!existingIds.has(child.id)) {
-                const p = { id: child.id, ...child.data() };
-                newHistoryPosts.push(window.pinnedFreshData && window.pinnedFreshData[p.id] ? window.pinnedFreshData[p.id] : p);
+        const cursor1 = window._lastPostDoc1 || window._liveLastDoc1;
+        if (window.hasMorePosts1 !== false && cursor1) {
+            try {
+                const pageQuery1 = query(window._buildBaseQueryForDb(fsdb), startAfter(cursor1), limit(15));
+                const pageSnap1 = await window._getDocsFS(pageQuery1);
+                if (!pageSnap1.empty) {
+                    window._lastPostDoc1 = pageSnap1.docs[pageSnap1.docs.length - 1];
+                    const existingIds = new Set((window._historyPosts1 || []).map(p => p.id));
+                    pageSnap1.forEach(docSnap => {
+                        if (!existingIds.has(docSnap.id)) {
+                            const p = { id: docSnap.id, ...docSnap.data(), _dbSource: 1 };
+                            window._postDbMap.set(docSnap.id, 1);
+                            window._historyPosts1.push(p);
+                        }
+                    });
+                }
+                window.hasMorePosts1 = (pageSnap1.size >= 15);
+            } catch (e) {
+                console.warn("Error fetching page from fsdb 1:", e);
+                window.hasMorePosts1 = false;
             }
+        }
+
+        const cursor2 = window._lastPostDoc2 || window._liveLastDoc2;
+        if (window.hasMorePosts2 !== false && cursor2) {
+            try {
+                const pageQuery2 = query(window._buildBaseQueryForDb(fsdb2), startAfter(cursor2), limit(15));
+                const pageSnap2 = await window._getDocsFS(pageQuery2);
+                if (!pageSnap2.empty) {
+                    window._lastPostDoc2 = pageSnap2.docs[pageSnap2.docs.length - 1];
+                    const existingIds = new Set((window._historyPosts2 || []).map(p => p.id));
+                    pageSnap2.forEach(docSnap => {
+                        if (!existingIds.has(docSnap.id)) {
+                            const p = { id: docSnap.id, ...docSnap.data(), _dbSource: 2 };
+                            window._postDbMap.set(docSnap.id, 2);
+                            window._historyPosts2.push(p);
+                        }
+                    });
+                }
+                window.hasMorePosts2 = (pageSnap2.size >= 15);
+            } catch (e) {
+                console.warn("Error fetching page from fsdb 2:", e);
+                window.hasMorePosts2 = false;
+            }
+        }
+
+        window.hasMorePosts = (window.hasMorePosts1 || window.hasMorePosts2);
+
+        const allHistory = [...(window._historyPosts1 || []), ...(window._historyPosts2 || [])];
+        allHistory.sort((a, b) => {
+            const tA = (a.timestamp && a.timestamp.toMillis) ? a.timestamp.toMillis() : (typeof a.timestamp === 'number' ? a.timestamp : 0);
+            const tB = (b.timestamp && b.timestamp.toMillis) ? b.timestamp.toMillis() : (typeof b.timestamp === 'number' ? b.timestamp : 0);
+            return tB - tA;
         });
+        window._historyPosts = allHistory;
 
-        window._historyPosts = [...(window._historyPosts || []), ...newHistoryPosts];
-        window.allPosts = [...window.allPosts, ...newHistoryPosts];
+        const historyIds = new Set(allHistory.map(p => p.id));
+        const livePosts = (window.allPosts || []).filter(p => !historyIds.has(p.id));
+        window.allPosts = [...livePosts, ...allHistory];
 
-        // Expand the render window to show the newly loaded posts immediately
         window.feedRenderLimit = window.allPosts.length;
         window.profileRenderLimit = window.allPosts.length;
 
         if (window.activeProfileUid) window.renderProfileData(false);
         else window.renderFeed(false);
-    } catch (e) {
-        console.error('loadMorePosts error:', e);
+    } catch (err) {
+        console.error("Error loading more posts:", err);
     } finally {
         window.isLoadingHistory = false;
     }
@@ -767,61 +872,96 @@ window.incrementVideoUploadLimit = () => {
 };
 
 document.getElementById('post-image-file').addEventListener('change', function() {
-    const file = this.files[0];
-    document.getElementById('file-name').innerText = file ? file.name : '';
-    const previewContainer = document.getElementById('media-preview-container');
-    previewContainer.innerHTML = '';
-    
-    if (file) {
-        if (file.type.startsWith('video/')) {
-            const sizeLimitMB = window.siteSettings.videoSizeLimitMB ?? 20;
-            if (file.size > sizeLimitMB * 1024 * 1024) {
-                window.showAlert(`Video is too large. Max size is ${sizeLimitMB}MB.`);
-                this.value = '';
-                document.getElementById('file-name').innerText = '';
-                previewContainer.classList.add('hidden');
-                return;
-            }
-            previewContainer.classList.remove('hidden');
-            const video = document.createElement('video');
-            video.src = URL.createObjectURL(file);
-            video.controls = true;
-            video.className = "w-full max-h-48 object-contain rounded bg-black";
-            previewContainer.appendChild(video);
-        } else if (file.type.startsWith('image/')) {
-            previewContainer.classList.remove('hidden');
-            const img = document.createElement('img');
-            img.src = URL.createObjectURL(file);
-            img.className = "w-full max-h-48 object-contain rounded bg-gray-100 dark:bg-slate-800";
-            previewContainer.appendChild(img);
-        }
-    } else {
-        previewContainer.classList.add('hidden');
+    const files = Array.from(this.files || []);
+    const preview = document.getElementById('media-preview-container');
+    const fileNameEl = document.getElementById('file-name');
+    const clearPreview = () => {
+        if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+        if (fileNameEl) fileNameEl.innerText = '';
+    };
+    if (!files.length) { clearPreview(); return; }
+    // Collage mode: photos only, max 4. Videos must be posted individually.
+    if (files.some(f => f.type.startsWith('video/'))) {
+        window.showAlert("Videos can't be combined into a collage. Please post the video by itself.");
+        this.value = '';
+        clearPreview();
+        return;
     }
+    if (files.length > 4) {
+        window.showAlert("You can attach up to 4 photos per post. Only the first 4 will be used.");
+        // Keep only the first 4 via DataTransfer so submit stays consistent with what the user sees
+        try {
+            const dt = new DataTransfer();
+            files.slice(0, 4).forEach(f => dt.items.add(f));
+            this.files = dt.files;
+        } catch (e) { /* older browsers: submit handler also enforces the cap */ }
+    }
+    const kept = Array.from(this.files || []).slice(0, 4);
+    if (!kept.length) { clearPreview(); return; }
+    if (fileNameEl) fileNameEl.innerText = kept.length === 1 ? kept[0].name : `${kept.length} photos selected`;
+    if (!preview) return;
+    preview.classList.remove('hidden');
+    preview.style.display = 'flex';
+    preview.style.gap = '6px';
+    preview.style.flexWrap = 'wrap';
+    preview.innerHTML = kept.map((f, i) => {
+        const media = f.type.startsWith('video/')
+            ? `<video src="${URL.createObjectURL(f)}" class="w-full h-full object-cover" muted></video>`
+            : `<img src="${URL.createObjectURL(f)}" class="w-full h-full object-cover" alt="preview ${i + 1}">`;
+        return `
+        <div class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-slate-600 shrink-0">
+            ${media}
+            <button type="button" onclick="window.removeCollageFile(${i})" class="absolute top-0.5 right-0.5 w-4 h-4 bg-black/70 text-white rounded-full text-[9px] flex items-center justify-center opacity-80 hover:opacity-100 transition" title="Remove">&times;</button>
+        </div>
+    `;}).join('');
 });
+
+// Remove one photo from the pending multi-file selection while keeping the others
+window.removeCollageFile = (index) => {
+    const input = document.getElementById('post-image-file');
+    const files = Array.from(input.files || []);
+    files.splice(index, 1);
+    try {
+        const dt = new DataTransfer();
+        files.forEach(f => dt.items.add(f));
+        input.files = dt.files;
+    } catch (e) { input.value = ''; }
+    input.dispatchEvent(new Event('change'));
+};
 
 document.getElementById('submit-post-btn').addEventListener('click', async () => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return; 
+    // Site Control: block when posts are paused (admins bypass)
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
     
     const text = document.getElementById('post-text').value.trim();
     const fileInput = document.getElementById('post-image-file');
-    const file = fileInput.files[0];
+    const files = Array.from(fileInput.files || []).slice(0, 4);
     let imgUrl = document.getElementById('post-image-url').value.trim();
     
-    if (!text && !imgUrl && !file) return;
+    if (!text && !imgUrl && !files.length) return;
     
-    let isVideo = false;
-    if (file) {
-        isVideo = file.type.startsWith('video/');
-        if (isVideo && !window.checkVideoUploadLimit()) return;
-        if (!isVideo && !window.checkUploadLimit()) return;
-        
+    // Cooldown gate (settings.postCooldownSec)
+    if (!(await window.checkActionCooldown('post'))) return;
+
+    const isVideo = files.length === 1 && files[0].type.startsWith('video/');
+    if (isVideo) {
+        if (!window.checkVideoUploadLimit()) return;
         const sizeLimitMB = window.siteSettings.videoSizeLimitMB ?? 20;
-        if (isVideo && file.size > sizeLimitMB * 1024 * 1024) {
+        if (files[0].size > sizeLimitMB * 1024 * 1024) {
             window.showAlert(`Video is too large. Max size is ${sizeLimitMB}MB.`);
             return;
         }
+    } else if (files.length === 1) {
+        if (!window.checkUploadLimit()) return;
+    } else if (files.length > 1) {
+        // Collage mode: photos only — every photo counts toward the daily upload limit
+        if (files.some(f => f.type.startsWith('video/'))) {
+            window.showAlert("Videos can't be combined into a collage. Please post the video by itself.");
+            return;
+        }
+        for (let i = 0; i < files.length; i++) { if (!window.checkUploadLimit()) return; }
     }
     
     const btn = document.getElementById('submit-post-btn');
@@ -830,24 +970,39 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
 
     try {
         let finalImage = imgUrl; 
-        if (file) {
+        let collageImages = [];
+        if (files.length === 1) {
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             if (isVideo) {
-                finalImage = await window.uploadToCloudinary(file, window.currentUser.uid);
+                finalImage = await window.uploadToCloudinary(files[0], window.currentUser.uid);
                 window.incrementVideoUploadLimit();
             } else {
-                const base64Img = await window.compressImage(file); 
+                const base64Img = await window.compressImage(files[0]); 
                 finalImage = await window.uploadToCloudinary(base64Img, window.currentUser.uid);
                 window.incrementUploadLimit();
             }
+        } else if (files.length > 1) {
+            // Collage upload: compress + upload each photo, showing progress
+            for (let i = 0; i < files.length; i++) {
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${i + 1}/${files.length}`;
+                const base64Img = await window.compressImage(files[i]);
+                collageImages.push(await window.uploadToCloudinary(base64Img, window.currentUser.uid));
+                window.incrementUploadLimit();
+            }
+            finalImage = collageImages[0];
         }
 
-        const newPostRef = await addDoc(collection(fsdb, 'community_posts'), {
+        const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
+        const postData = {
             authorId: window.currentUser.uid, text: text, image: finalImage,
             category: document.getElementById('post-category').value,
             timestamp: Date.now(), pinned: false, edited: false, locked: false, reactions: {},
-            visibility: window.postVisibility || 'public' 
-        });
+            visibility: window.postVisibility || 'public',
+            _dbSource: dbSource
+        };
+        if (collageImages.length > 1) postData.images = collageImages;
+        const newPostRef = await addDoc(collection(targetFs, 'community_posts'), postData);
+        window._postDbMap.set(newPostRef.id, dbSource);
         
         const pointsToAdd = window.siteSettings.starsPerPost ?? 10;
         update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
@@ -857,12 +1012,10 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         document.getElementById('post-text').value = '';
         document.getElementById('post-image-url').value = '';
         fileInput.value = '';
-        document.getElementById('file-name').innerText = '';
-        const previewContainer = document.getElementById('media-preview-container');
-        if (previewContainer) {
-            previewContainer.innerHTML = '';
-            previewContainer.classList.add('hidden');
-        }
+        const previewEl = document.getElementById('media-preview-container');
+        if (previewEl) { previewEl.innerHTML = ''; previewEl.classList.add('hidden'); }
+        const fileNameEl = document.getElementById('file-name');
+        if (fileNameEl) fileNameEl.innerText = '';
         window.clearIsolatedPost();
 
         window.postVisibility = 'public';
@@ -880,6 +1033,8 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
 window.submitComment = async (postId, postAuthorId, prefix) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
+    // Site Control: block when posts are paused (admins bypass)
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
     
     const input = document.getElementById(`comment-input-${prefix}-${postId}`); 
     const text = input.value.trim(); 
@@ -887,6 +1042,8 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     const file = fileInput ? fileInput.files[0] : null;
     
     if (!text && !file) return;
+    // Cooldown gate (settings.commentCooldownSec) — checked before clearing input so text is kept
+    if (!(await window.checkActionCooldown('comment'))) return;
 
     input.value = '';
     if (fileInput) { fileInput.value = ''; document.getElementById(`comment-img-name-${prefix}-${postId}`).innerText = ''; }
@@ -914,8 +1071,9 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
 
     input.focus();
 
-    const commentId = doc(collection(fsdb, 'community_posts')).id;
-    await updateDoc(doc(fsdb, 'community_posts', postId), { 
+    const postDocRef = getPostDocRef(postId);
+    const commentId = doc(collection(postDocRef.firestore, 'community_posts')).id;
+    await updateDoc(postDocRef, { 
         [`comments.${commentId}`]: {
             uid: window.currentUser.uid, 
             text: text, 
@@ -943,11 +1101,14 @@ window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
     if (window.checkBan()) return;
     const input = document.getElementById(`reply-input-${prefix}-${commentId}`); 
     const text = input.value.trim(); if (!text) return;
-    
+    // Cooldown gate (settings.commentCooldownSec) — checked before clearing input so text is kept
+    if (!(await window.checkActionCooldown('comment'))) return;
+
     input.value = '';
     
-    const replyId = doc(collection(fsdb, 'community_posts')).id;
-    await updateDoc(doc(fsdb, 'community_posts', postId), {
+    const postDocRef = getPostDocRef(postId);
+    const replyId = doc(collection(postDocRef.firestore, 'community_posts')).id;
+    await updateDoc(postDocRef, {
         [`comments.${commentId}.replies.${replyId}`]: { uid: window.currentUser.uid, text: text, timestamp: Date.now(), edited: false }
     });
     const pointsToAdd = window.siteSettings.starsPerComment ?? 1;
@@ -969,6 +1130,7 @@ window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
 window.react = (postId, postAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
     let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     
     let userReactCount = 0;
@@ -978,9 +1140,10 @@ window.react = (postId, postAuthorId, type) => {
         }
     }
     
+    const postDocRef = getPostDocRef(postId);
     const hasReacted = post.reactions && post.reactions[type] && post.reactions[type][window.currentUser.uid];
     if(hasReacted) {
-        updateDoc(doc(fsdb, 'community_posts', postId), {
+        updateDoc(postDocRef, {
             [`reactions.${type}.${window.currentUser.uid}`]: deleteField()
         });
         const likePoints = window.siteSettings.starsPerLike ?? 1;
@@ -990,7 +1153,7 @@ window.react = (postId, postAuthorId, type) => {
             window.showAlert("You can only have up to 3 simultaneous reactions on a post.");
             return;
         }
-        updateDoc(doc(fsdb, 'community_posts', postId), {
+        updateDoc(postDocRef, {
             [`reactions.${type}.${window.currentUser.uid}`]: true
         });
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
@@ -1010,6 +1173,7 @@ window.react = (postId, postAuthorId, type) => {
 window.reactComment = (postId, commentId, commentAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
     let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     let comment = post.comments && post.comments[commentId]; if(!comment) return;
     
@@ -1020,9 +1184,10 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
         }
     }
     
+    const postDocRef = getPostDocRef(postId);
     const hasReacted = comment.reactions && comment.reactions[type] && comment.reactions[type][window.currentUser.uid];
     if(hasReacted) {
-        updateDoc(doc(fsdb, 'community_posts', postId), {
+        updateDoc(postDocRef, {
             [`comments.${commentId}.reactions.${type}.${window.currentUser.uid}`]: deleteField()
         });
         const likePoints = window.siteSettings.starsPerLike ?? 1;
@@ -1032,7 +1197,7 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
             window.showAlert("You can only have up to 3 simultaneous reactions on a comment.");
             return;
         }
-        updateDoc(doc(fsdb, 'community_posts', postId), {
+        updateDoc(postDocRef, {
             [`comments.${commentId}.reactions.${type}.${window.currentUser.uid}`]: true
         });
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") {
@@ -1050,6 +1215,7 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
 window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
     let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     let comment = post.comments && post.comments[commentId]; if(!comment) return;
     let reply = comment.replies && comment.replies[replyId]; if(!reply) return;
@@ -1061,9 +1227,10 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
         }
     }
     
+    const postDocRef = getPostDocRef(postId);
     const hasReacted = reply.reactions && reply.reactions[type] && reply.reactions[type][window.currentUser.uid];
     if(hasReacted) {
-        updateDoc(doc(fsdb, 'community_posts', postId), {
+        updateDoc(postDocRef, {
             [`comments.${commentId}.replies.${replyId}.reactions.${type}.${window.currentUser.uid}`]: deleteField()
         });
         const likePoints = window.siteSettings.starsPerLike ?? 1;
@@ -1073,7 +1240,7 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
             window.showAlert("You can only have up to 3 simultaneous reactions on a reply.");
             return;
         }
-        updateDoc(doc(fsdb, 'community_posts', postId), {
+        updateDoc(postDocRef, {
             [`comments.${commentId}.replies.${replyId}.reactions.${type}.${window.currentUser.uid}`]: true
         });
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
@@ -1178,18 +1345,19 @@ document.getElementById('save-edit-btn').addEventListener('click', () => {
         if (dbPath.startsWith('community_posts/')) {
             const parts = dbPath.split('/');
             const postId = parts[1];
+            const postDocRef = getPostDocRef(postId);
             if (parts.length === 2) {
-                updateDoc(doc(fsdb, 'community_posts', postId), { text: newText, edited: true });
+                updateDoc(postDocRef, { text: newText, edited: true });
             } else if (parts.length === 4 && parts[2] === 'comments') {
                 const cId = parts[3];
-                updateDoc(doc(fsdb, 'community_posts', postId), {
+                updateDoc(postDocRef, {
                     [`comments.${cId}.text`]: newText,
                     [`comments.${cId}.edited`]: true
                 });
             } else if (parts.length === 6 && parts[2] === 'comments' && parts[4] === 'replies') {
                 const cId = parts[3];
                 const rId = parts[5];
-                updateDoc(doc(fsdb, 'community_posts', postId), {
+                updateDoc(postDocRef, {
                     [`comments.${cId}.replies.${rId}.text`]: newText,
                     [`comments.${cId}.replies.${rId}.edited`]: true
                 });
@@ -1228,7 +1396,7 @@ window.editReply = (postId, cId, rId) => {
 
 window.togglePostVisibility = (postId, currentVis) => {
     const newVis = currentVis === 'private' ? 'public' : 'private';
-    updateDoc(doc(fsdb, 'community_posts', postId), { visibility: newVis });
+    updateDoc(getPostDocRef(postId), { visibility: newVis });
     if(window.showAlert) window.showAlert(`Post updated to ${newVis === 'private' ? 'Private' : 'Public'}`);
 };
 
@@ -1350,7 +1518,7 @@ document.getElementById('auth-action-btn').addEventListener('click', async () =>
             const newPic = window.generateAvatar(cred.user.uid);
             await updateProfile(cred.user, { displayName: newName, photoURL: newPic });
             
-            update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic });
+            await update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic }).catch(e => console.warn('Profile write failed:', e));
             document.getElementById('nav-avatar').src = newPic;
             window.showAlert("Account created successfully!");
         } else {
@@ -1360,6 +1528,38 @@ document.getElementById('auth-action-btn').addEventListener('click', async () =>
         document.getElementById('auth-modal').classList.add('hidden');
     } catch (error) { 
         showError(error.message.replace('Firebase:', '')); 
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+});
+
+// Google Sign-In
+document.getElementById('google-login-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('google-login-btn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin -ml-1 h-4 w-4 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Connecting...`;
+    try {
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        // First-time Google users get a profile created from their Google account.
+        // Existing users keep their current name/pic (no overwrite).
+        const userSnap = await get(ref(db, `users/${result.user.uid}`));
+        if (!userSnap.exists()) {
+            const newName = result.user.displayName || `User_${Math.floor(Math.random()*999)}`;
+            const newPic = result.user.photoURL || window.generateAvatar(result.user.uid);
+            await updateProfile(result.user, { displayName: newName, photoURL: newPic });
+            await update(ref(db, `users/${result.user.uid}`), { name: newName, pic: newPic });
+            document.getElementById('nav-avatar').src = newPic;
+        }
+        document.getElementById('auth-modal').classList.add('hidden');
+        window.showAlert("Signed in with Google!");
+    } catch (error) {
+        if (error.code === 'auth/account-exists-with-different-credential') showError("This email already has an account with a password. Please sign in using your email and password.");
+        else if (error.code === 'auth/popup-closed-by-user') showError("Google sign-in was closed before finishing.");
+        else if (error.code === 'auth/unauthorized-domain') showError("This domain is not authorized for Google sign-in.");
+        else showError(error.message.replace('Firebase:', ''));
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -1384,7 +1584,7 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
             const newPic = window.generateAvatar(cred.user.uid);
             await updateProfile(cred.user, { displayName: newName, photoURL: newPic });
             
-            update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic, isGuest: true });
+            await update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic, isGuest: true }).catch(e => console.warn('Profile write failed:', e));
             document.getElementById('nav-avatar').src = newPic;
             document.getElementById('auth-modal').classList.add('hidden');
             window.showAlert("Guest account created!");
@@ -1410,12 +1610,27 @@ onAuthStateChanged(auth, (user) => {
             // Give time for globalUsersCache to populate
             setTimeout(() => window.logActivity("logged in"), 1000);
         }
-        update(ref(db, `users/${user.uid}`), { lastSeen: serverTimestamp() });
+        // Profile self-heal: guarantee a usable name/pic always exists for this account.
+        // Fixes the historical "undefined"-name bug where this login write created a bare
+        // {lastSeen} record before/without the signup profile write landing (race condition).
+        // Never overwrites existing values — only fills what's missing.
+        get(ref(db, `users/${user.uid}`)).then((snap) => {
+            const p = snap.val() || {};
+            const patch = { lastSeen: serverTimestamp() };
+            const prefix = user.isAnonymous ? 'Guest_' : 'User_';
+            const hasName = p.name && p.name !== 'undefined' && p.name !== 'null';
+            const hasPic = p.pic && p.pic !== 'undefined' && p.pic !== 'null';
+            if (!hasName) patch.name = (user.displayName && user.displayName !== 'undefined') ? user.displayName : `${prefix}${Math.floor(Math.random() * 999)}`;
+            if (!hasPic) patch.pic = user.photoURL || window.generateAvatar(user.uid);
+            return update(ref(db, `users/${user.uid}`), patch);
+        }).catch(e => console.warn('Profile self-heal failed:', e));
         
         startOwnPresence(user);
         
         document.getElementById('open-login-btn').classList.add('hidden');
         document.getElementById('user-info').classList.remove('hidden');
+        
+        window.updateAdminButtons && window.updateAdminButtons();
         
         if(!window.globalUsersCache[user.uid]?.isBanned) document.getElementById('create-post-box').classList.remove('hidden');
         
@@ -1472,6 +1687,7 @@ onAuthStateChanged(auth, (user) => {
         document.getElementById('open-login-btn').classList.remove('hidden');
         document.getElementById('user-info').classList.add('hidden');
         document.getElementById('create-post-box').classList.add('hidden');
+        window.updateAdminButtons && window.updateAdminButtons();
         if (window.chatInboxUnsubscribe) { window.chatInboxUnsubscribe(); window.chatInboxUnsubscribe = null; }
         if (window._notifUnsubscribe) { window._notifUnsubscribe(); window._notifUnsubscribe = null; }
         window.myNotifications = {};

@@ -92,6 +92,38 @@
                 <p id="metric-online" class="text-3xl font-black text-slate-800 dark:text-white tracking-tight">0</p>
             </div>
         </div>
+        <div class="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 p-5 rounded-xl shadow-sm">
+            <div class="flex items-center mb-4">
+                <div class="w-7 h-7 rounded-md bg-red-500/10 text-red-500 flex items-center justify-center mr-2">
+                    <i class="fa-solid fa-power-off text-sm"></i>
+                </div>
+                <h3 class="text-base font-bold text-slate-800 dark:text-white">Site Control</h3>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-3">Pause activity for everyone except you. Takes effect instantly — no refresh needed.</p>
+            <div class="space-y-2" id="site-control-panel">
+                <button type="button" id="toggle-pause-posts" class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:border-indigo-400 transition">
+                    <span class="text-left">
+                        <span class="block text-xs font-bold text-slate-700 dark:text-slate-200">Pause Posts</span>
+                        <span class="block text-[10px] text-slate-400" id="pause-posts-label">Loading…</span>
+                    </span>
+                    <i id="pause-posts-icon" class="fa-solid fa-circle-notch fa-spin text-slate-400"></i>
+                </button>
+                <button type="button" id="toggle-pause-chat" class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:border-indigo-400 transition">
+                    <span class="text-left">
+                        <span class="block text-xs font-bold text-slate-700 dark:text-slate-200">Pause Chat</span>
+                        <span class="block text-[10px] text-slate-400" id="pause-chat-label">Loading…</span>
+                    </span>
+                    <i id="pause-chat-icon" class="fa-solid fa-circle-notch fa-spin text-slate-400"></i>
+                </button>
+            </div>
+            <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                <button type="button" id="heal-names-btn" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition">
+                    <i class="fa-solid fa-screwdriver-wrench text-xs"></i>
+                    <span class="text-xs font-bold">Fix Broken Usernames</span>
+                </button>
+                <p class="text-[10px] text-slate-400 mt-1.5 leading-snug">One-time cleanup: gives every user with a missing or broken ("undefined") name/pic a proper one. Never touches valid profiles.</p>
+            </div>
+        </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
             
@@ -117,6 +149,10 @@
                                     <input type="number" id="set-starsPerComment" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
                                 </div>
                                 <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Stars/React</label>
+                                    <input type="number" id="set-starsPerLike" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Stars/Poke</label>
                                     <input type="number" id="set-starsPerPoked" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
                                 </div>
@@ -125,8 +161,8 @@
                                     <input type="number" id="set-starsPerFollow" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">LB Pts/Win</label>
-                                    <input type="number" id="set-lbPointsPerWin" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Poke Limit</label>
+                                    <input type="number" id="set-pokeLimit" min="0" placeholder="3" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Max Stars Prize</label>
@@ -139,6 +175,26 @@
                                 <div>
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Host LB Reward</label>
                                     <input type="number" id="set-gameHostLbReward" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                </div>
+                            </div>
+                            <!-- Cooldown -->
+                            <div class="grid grid-cols-2 gap-3 pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
+                                <div class="col-span-2">
+                                    <p class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                                        <i class="fa-solid fa-hourglass-half mr-1"></i> Cooldown
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Posts / Reposts (sec)</label>
+                                    <input type="number" id="set-postCooldownSec" min="0" placeholder="60" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Comments / Replies (sec)</label>
+                                    <input type="number" id="set-commentCooldownSec" min="0" placeholder="60" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Chat Messages (sec)</label>
+                                    <input type="number" id="set-chatCooldownSec" min="0" placeholder="60" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
                                 </div>
                             </div>
                             <!-- Posts Upload Limits -->
@@ -298,6 +354,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=3"></script>
+    <script type="module" src="admin.js?v=10"></script>
 </body>
 </html>
