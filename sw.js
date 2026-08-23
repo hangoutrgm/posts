@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v42';
+const CACHE_NAME = 'hangout-v26';
 
 // All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
@@ -7,11 +7,11 @@ const PRECACHE_ASSETS = [
   './chat/index.html',
   './css/styles.css',
   './chat/css/styles.css?v=2',
-  './js/renderers.js?v=24',
-  './js/helpers.js?v=33',
-  './js/games.js?v=31',
-  './js/main.js?v=25',
-  './chat/js/app.js?v=8',
+  './js/renderers.js?v=20',
+  './js/helpers.js?v=22',
+  './js/games.js?v=23',
+  './js/main.js?v=18',
+  './chat/js/app.js?v=5',
   './config/emoji_riddles.json',
   './config/flags.json',
   './config/emojis.json',
@@ -60,9 +60,8 @@ self.addEventListener('fetch', (event) => {
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          if (response.ok) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
           }
           return response;
         });
@@ -73,9 +72,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          if (response.ok) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
           }
           return response;
         })
@@ -86,9 +84,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then((cached) => {
         const fetchPromise = fetch(request).then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          if (response.ok) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
           }
           return response;
         }).catch(() => cached);

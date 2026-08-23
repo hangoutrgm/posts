@@ -1,4 +1,4 @@
-import { db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { db, fsdb } from "./firebase-config.js";
 import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -53,7 +53,7 @@ window.siteSettings = {
     starsPerReply: 1,
     starsPerLike: 1,
     starsPerPoked: 5,
-    pokeLimit: 3,
+    lbPointsPerWin: 5,
     gameHostLbReward: 0,
     maxLbPointsPrize: 100,
     imageUploadLimit: 10,
@@ -63,8 +63,6 @@ window.siteSettings = {
     chatVideoLimit: 3,
     chatVoiceLimit: 10,
     chatVideoSizeLimitMB: 20,
-    postCooldownSec: 60,
-    commentCooldownSec: 60,
     gameLimits: {}
 };
 
@@ -185,56 +183,12 @@ window.canDelete = function(targetUid) {
     return window.getRole(window.currentUser.uid).level > window.getRole(targetUid).level;
 };
 
-// Toggle admin-only UI buttons (Admin Config in Edit Profile modal). Treasury is for everyone.
-window.updateAdminButtons = () => {
-    const uid = window.currentUser?.uid;
-    const isAdmin = uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2' || (uid && window.getRole ? window.getRole(uid).level === 3 : false);
-    const adminBtn = document.getElementById('admin-config-btn');
-    if (adminBtn) adminBtn.classList.toggle('hidden', !isAdmin);
-};
-
 window.checkBan = function() {
     if (window.globalUsersCache[window.currentUser?.uid]?.isBanned) {
         window.showAlert("Your account has been banned from interacting by a Moderator.");
         return true;
     }
     return false;
-};
-// Site Control (see /config): settings.pausePosts blocks posting/commenting/reacting
-// for everyone except Admins; settings.pauseChat blocks sending messages in Hangout Chat.
-// Admins always bypass both switches.
-window.checkSitePaused = function(kind = 'post') {
-    const isPaused = kind === 'chat' ? window.siteSettings?.pauseChat : window.siteSettings?.pausePosts;
-    if (!isPaused) return false;
-    const myLevel = window.currentUser ? (window.getRole ? window.getRole(window.currentUser.uid).level : 0) : 0;
-    if (myLevel >= 3 || window.currentUser?.uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2') return false;
-    window.showAlert(kind === 'chat'
-        ? "Chat is temporarily paused by the admin. You can read messages, but sending is disabled."
-        : "Posting is temporarily paused by the admin. Browsing, reading and reacting to older content is still available.");
-    return true;
-};
-
-// Cooldown gates for posts/reposts and comments/replies (independent timers).
-// Durations set in /config: settings.postCooldownSec and settings.commentCooldownSec (seconds). 0 = disabled.
-
-// Cooldown gates for posts/reposts and comments/replies (independent timers).
-// Durations set in /config: settings.postCooldownSec and settings.commentCooldownSec (seconds). 0 = disabled.
-// Timers stored in RTDB (users/{uid}/lastPostAt, users/{uid}/lastCommentAt) so they apply per-account across devices.
-// Usage: checkActionCooldown('post') or checkActionCooldown('comment')
-window.checkActionCooldown = async function(kind = 'post') {
-    const isComment = kind === 'comment';
-    const cd = Number(window.siteSettings?.[isComment ? 'commentCooldownSec' : 'postCooldownSec'] ?? 0);
-    if (!cd || cd <= 0 || !window.currentUser) return true;
-    try {
-        const snap = await get(ref(db, `users/${window.currentUser.uid}/${isComment ? 'lastCommentAt' : 'lastPostAt'}`));
-        const waitMs = cd * 1000 - (Date.now() - Number(snap.val() || 0));
-        if (waitMs > 0) {
-            window.showAlert(`Please wait ${Math.ceil(waitMs / 1000)}s before ${isComment ? 'commenting' : 'posting'} again.`);
-            return false;
-        }
-        update(ref(db, `users/${window.currentUser.uid}`), { [isComment ? 'lastCommentAt' : 'lastPostAt']: Date.now() });
-        return true;
-    } catch (e) { return true; } // fail-open on read errors
 };
 
 window.timeAgo = (timestamp) => {
@@ -261,21 +215,14 @@ window.copyPostLink = function(postId) {
 window.repostPost = function(postId) {
     if (!window.currentUser) return window.showAlert("Please sign in to repost.");
     if (window.globalUsersCache[window.currentUser.uid]?.isBanned) return window.showAlert("Banned users cannot repost.");
-    // Site Control: reposts create new posts — blocked for non-admins while paused
-    if (window.checkSitePaused && window.checkSitePaused('post')) return;
 
     window.showConfirm("Are you sure you want to repost this to your profile and bump it in the feed?", async () => {
-        if (!(await window.checkActionCooldown('post'))) return;
         try {
-            const postDocRef = getPostDocRef(postId);
-            let snap = await getDoc(postDocRef);
-            if (!snap.exists()) {
-                const fallbackRef = doc(postDocRef.firestore === fsdb ? fsdb2 : fsdb, 'community_posts', postId);
-                snap = await getDoc(fallbackRef);
-            }
+            const snap = await getDoc(doc(fsdb, 'community_posts', postId));
             if (!snap.exists()) return window.showAlert("Post not found.");
             
             const originalPost = snap.data();
+
 
             // Prevent reposting a repost
             const trueOriginalId = originalPost.isRepost ? originalPost.originalPostId : postId;
@@ -283,12 +230,10 @@ window.repostPost = function(postId) {
 
             const isRepostedGame = originalPost.isGame || originalPost.category === 'Games';
 
-            const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
-            const newPostRef = await addDoc(collection(targetFs, 'community_posts'), {
+            await addDoc(collection(fsdb, 'community_posts'), {
                 authorId: window.currentUser.uid,
                 text: originalPost.text || "",
                 image: originalPost.image || "",
-                ...(Array.isArray(originalPost.images) && originalPost.images.length > 1 ? { images: originalPost.images } : {}),
                 category: originalPost.category || "General",
                 timestamp: Date.now(),
                 pinned: false,
@@ -299,10 +244,8 @@ window.repostPost = function(postId) {
                 isRepost: true,
                 isRepostedGame: isRepostedGame,
                 originalPostId: trueOriginalId,
-                originalAuthorId: trueOriginalAuthorId,
-                _dbSource: dbSource
+                originalAuthorId: trueOriginalAuthorId
             });
-            window._postDbMap.set(newPostRef.id, dbSource);
             window.showAlert("Post reposted successfully!");
         } catch (error) {
             window.showAlert("Failed to repost: " + error.message);
@@ -326,22 +269,13 @@ window.pokeUser = async function(targetUid) {
         const pokeRef = ref(db, `users/${targetUid}/pokesFrom/${window.currentUser.uid}`);
         const snap = await get(pokeRef);
         const data = snap.val() || { count: 0, lastPokedDate: '' };
-
-        // Daily poke limit per target (settings.pokeLimit). 0 = unlimited.
-        const pokedToday = data.lastPokedDate === todayStr;
-        const todayCount = pokedToday ? Number(data.count || 0) : 0;
-        const pokeLimit = Number(window.siteSettings.pokeLimit ?? 3);
-        if (pokeLimit > 0 && todayCount >= pokeLimit) {
-            return window.showAlert(`Daily poke limit reached — you can only poke this user ${pokeLimit} time${pokeLimit === 1 ? '' : 's'} a day.`);
-        }
-
-        // Stars are earned on the first poke of the day only; every allowed poke counts and notifies
-        if (!pokedToday) {
-            await set(pokeRef, { count: 1, lastPokedDate: todayStr });
+        
+        let newCount = data.count;
+        if (data.lastPokedDate !== todayStr) {
+            newCount++;
+            await set(pokeRef, { count: newCount, lastPokedDate: todayStr });
             const pokePoints = window.siteSettings.starsPerPoked ?? 5;
             await update(ref(db, `users/${targetUid}`), { totalPokes: increment(1), points: increment(pokePoints) });
-        } else {
-            await set(pokeRef, { count: todayCount + 1, lastPokedDate: todayStr });
         }
 
         // Always send a notification
@@ -564,10 +498,9 @@ window.deleteItem = (dbPath, targetUid) => {
             if (dbPath.startsWith('community_posts/')) {
                 const parts = dbPath.split('/');
                 const postId = parts[1];
-                const postDocRef = getPostDocRef(postId);
                 if (parts.length === 2) {
                     // It's a post deletion
-                    await deleteDoc(postDocRef);
+                    await deleteDoc(doc(fsdb, 'community_posts', postId));
                     // Clean up pinned settings just in case
                     try {
                         const settingsRef = doc(fsdb, 'settings', 'pinned');
@@ -579,14 +512,14 @@ window.deleteItem = (dbPath, targetUid) => {
                 } else if (parts.length === 4 && parts[2] === 'comments') {
                     // It's a comment deletion
                     const cId = parts[3];
-                    await updateDoc(postDocRef, {
+                    await updateDoc(doc(fsdb, 'community_posts', postId), {
                         [`comments.${cId}`]: deleteField()
                     });
                 } else if (parts.length === 6 && parts[2] === 'comments' && parts[4] === 'replies') {
                     // It's a reply deletion
                     const cId = parts[3];
                     const rId = parts[5];
-                    await updateDoc(postDocRef, {
+                    await updateDoc(doc(fsdb, 'community_posts', postId), {
                         [`comments.${cId}.replies.${rId}`]: deleteField()
                     });
                 }
@@ -645,17 +578,14 @@ window.refreshSinglePost = async (postId) => {
     if (icon) icon.classList.add('fa-spin');
 
     try {
-        const { onSnapshot } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js");
-        const postDocRef = getPostDocRef(postId);
+        const { onSnapshot, doc } = await import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js");
 
-        const unsubscribe = onSnapshot(postDocRef, (snap) => {
+        const unsubscribe = onSnapshot(doc(fsdb, 'community_posts', postId), (snap) => {
             if (icon) icon.classList.remove('fa-spin');
 
             if (!snap.exists()) return;
 
-            const dbSource = snap.ref.firestore === fsdb2 ? 2 : 1;
-            const updatedPost = { id: postId, ...snap.data(), _dbSource: dbSource };
-            window._postDbMap.set(postId, dbSource);
+            const updatedPost = { id: postId, ...snap.data() };
 
             // Update in all local caches
             const indexAll = window.allPosts.findIndex(p => p.id === postId);
@@ -679,17 +609,18 @@ window.refreshSinglePost = async (postId) => {
             if (btn) {
                 btn.classList.remove('text-gray-400');
                 btn.classList.add('text-green-500');
-                btn.title = 'Live Sync Active (Click to stop)';
+                btn.title = 'Live (click to stop)';
             }
-        }, (err) => {
-            console.error("Single post listener error:", err);
+        }, (e) => {
+            console.error("Live post listener error:", e);
             if (icon) icon.classList.remove('fa-spin');
+            delete window._postLiveListeners[postId];
         });
 
         window._postLiveListeners[postId] = unsubscribe;
 
     } catch (e) {
-        console.error("Failed to attach single post listener:", e);
+        console.error("Refresh error:", e);
         if (icon) icon.classList.remove('fa-spin');
     }
 };
@@ -741,7 +672,7 @@ window.openPinModal = (postId, isProfilePinned, isFeedPinned, authorId) => {
 
 window.executePin = (postId, pinType, targetStatus) => {
     // 1. We still optionally flag it on the post itself for older queries, but we don't listen to it globally.
-    updateDoc(getPostDocRef(postId), { [pinType]: targetStatus }).catch(() => {});
+    updateDoc(doc(fsdb, 'community_posts', postId), { [pinType]: targetStatus }).catch(() => {});
 
     // 2. The single source of truth for the active feed listeners is the `settings/pinned` document.
     const settingsRef = doc(fsdb, 'settings', 'pinned');
@@ -787,7 +718,7 @@ window.toggleLock = (postId, currentStatus) => {
         return window.showAlert("Mods cannot lock or unlock Game posts.");
     }
     if (roleLevel >= 2 || isAuthor) {
-        updateDoc(getPostDocRef(postId), { locked: !currentStatus });
+        updateDoc(doc(fsdb, 'community_posts', postId), { locked: !currentStatus });
     }
 };
 
@@ -928,50 +859,4 @@ window.migrateAllLegacyData = async () => {
         console.error("Migration error:", e);
         window.showAlert("Migration error: " + e.message);
     }
-};
-
-// ==========================================
-// POST MEDIA RENDERER — single media OR Facebook-style collage (up to 4 photos)
-// Layout: 1 = full width · 2 = side-by-side · 3 = big + 2 stacked · 4 = 2x2 grid.
-// Legacy posts with a single `image` field render exactly as before.
-// ==========================================
-window.renderPostMedia = function(post) {
-    const isVideoUrl = (url) => url.includes('/video/upload/') || /\.(mp4|webm|mov|ogg)$/i.test(url);
-    const imgs = Array.isArray(post.images) ? post.images.filter(Boolean) : [];
-
-    // Collage post (photos only, 2-4 images).
-    // Geometry uses inline styles (not utility classes) so the grid shapes are
-    // guaranteed: 2 = side-by-side · 3 = big + 2 equal stacked · 4 = 2x2 grid.
-    if (imgs.length >= 2) {
-        const imgTag = (u) => `<img src="${u}" loading="lazy" class="cursor-pointer hover:opacity-90 transition" style="width:100%;height:100%;object-fit:cover;min-height:0;" onclick="window.viewImage('${u}')">`;
-        const wrapStyle = (extra, height) => `style="display:grid;${extra}gap:2px;height:${height}px;border-radius:8px;overflow:hidden;border:1px solid rgba(128,128,128,0.25);margin-top:8px;"`;
-        let inner = '';
-        if (imgs.length === 2) {
-            inner = `<div ${wrapStyle('grid-template-columns:1fr 1fr;', 220)}>
-                ${imgs.map(imgTag).join('')}
-            </div>`;
-        } else if (imgs.length === 3) {
-            inner = `<div ${wrapStyle('grid-template-columns:1fr 1fr;', 280)}>
-                ${imgTag(imgs[0])}
-                <div style="display:grid;grid-template-rows:1fr 1fr;gap:2px;min-height:0;overflow:hidden;">
-                    ${imgTag(imgs[1])}
-                    ${imgTag(imgs[2])}
-                </div>
-            </div>`;
-        } else {
-            inner = `<div ${wrapStyle('grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;', 300)}>
-                ${imgs.slice(0, 4).map(imgTag).join('')}
-            </div>`;
-        }
-        // `image` mirrors the first collage photo — avoid showing it twice
-        return inner;
-    }
-
-    // Single media (photo or video) — original behavior
-    const media = post.image;
-    if (!media) return '';
-    if (isVideoUrl(media)) {
-        return `<video src="${media}" controls class="w-full rounded-lg mb-2 max-h-96 bg-black mt-2"></video>`;
-    }
-    return `<img src="${media}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${media}')">`;
 };

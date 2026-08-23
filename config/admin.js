@@ -1,5 +1,5 @@
 // admin.js
-import { app, auth, db, fsdb, fsdb2 } from "../js/firebase-config.js";
+import { app, auth, db, fsdb } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -11,7 +11,7 @@ const adminContent = document.getElementById('admin-content');
 let globalUsers = {};
 let allPostsCount = 0;
 
-const ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
+const ADMIN_UID = 'IYNhNTCcCsZQSGad3hu9rar0ILC3';
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
@@ -137,13 +137,8 @@ function initAdminDashboard() {
     // 3. Get Posts count from Firestore
     async function fetchPostsCount() {
         try {
-            const [snap1, snap2] = await Promise.allSettled([
-                getCountFromServer(collection(fsdb, 'community_posts')),
-                getCountFromServer(collection(fsdb2, 'community_posts'))
-            ]);
-            const count1 = snap1.status === 'fulfilled' ? (snap1.value.data().count || 0) : 0;
-            const count2 = snap2.status === 'fulfilled' ? (snap2.value.data().count || 0) : 0;
-            allPostsCount = count1 + count2;
+            const snap = await getCountFromServer(collection(fsdb, 'community_posts'));
+            allPostsCount = snap.data().count;
             document.getElementById('metric-posts').innerText = allPostsCount;
         } catch (e) {
             console.error("Error fetching post count", e);
@@ -156,14 +151,10 @@ function initAdminDashboard() {
         if (snap.exists()) {
             const settings = snap.val();
             document.getElementById('set-starsPerPost').value = settings.starsPerPost ?? '';
-            document.getElementById('set-postCooldownSec').value = settings.postCooldownSec ?? window.siteSettings.postCooldownSec ?? '';
-            document.getElementById('set-commentCooldownSec').value = settings.commentCooldownSec ?? window.siteSettings.commentCooldownSec ?? '';
-            document.getElementById('set-chatCooldownSec').value = settings.chatCooldownSec ?? window.siteSettings.chatCooldownSec ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
-            document.getElementById('set-starsPerLike').value = settings.starsPerLike ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
-            document.getElementById('set-pokeLimit').value = settings.pokeLimit ?? window.siteSettings.pokeLimit ?? '';
             document.getElementById('set-starsPerFollow').value = settings.starsPerFollow ?? '';
+            document.getElementById('set-lbPointsPerWin').value = settings.lbPointsPerWin ?? '';
             document.getElementById('set-maxStarsPrize').value = settings.maxStarsPrize ?? '';
             document.getElementById('set-maxLbPointsPrize').value = settings.maxLbPointsPrize ?? '';
             document.getElementById('set-gameHostLbReward').value = settings.gameHostLbReward ?? '';
@@ -175,17 +166,12 @@ function initAdminDashboard() {
             document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
             document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
             renderGameLimitInputs(settings.gameLimits || {});
-            renderSiteControl(settings.pausePosts === true, settings.pauseChat === true);
         } else {
             document.getElementById('set-starsPerPost').value = '';
-            document.getElementById('set-postCooldownSec').value = '';
-            document.getElementById('set-commentCooldownSec').value = '';
-            document.getElementById('set-chatCooldownSec').value = '';
             document.getElementById('set-starsPerComment').value = '';
-            document.getElementById('set-starsPerLike').value = '';
             document.getElementById('set-starsPerPoked').value = '';
-            document.getElementById('set-pokeLimit').value = '';
             document.getElementById('set-starsPerFollow').value = '';
+            document.getElementById('set-lbPointsPerWin').value = '';
             document.getElementById('set-maxStarsPrize').value = '';
             document.getElementById('set-maxLbPointsPrize').value = '';
             document.getElementById('set-gameHostLbReward').value = '';
@@ -197,19 +183,14 @@ function initAdminDashboard() {
             document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
             renderGameLimitInputs({});
-            renderSiteControl(false, false);
         }
 
         // Set placeholders
         document.getElementById('set-starsPerPost').placeholder = window.siteSettings.starsPerPost;
-        document.getElementById('set-postCooldownSec').placeholder = window.siteSettings.postCooldownSec ?? 60;
-        document.getElementById('set-commentCooldownSec').placeholder = window.siteSettings.commentCooldownSec ?? 60;
-        document.getElementById('set-chatCooldownSec').placeholder = window.siteSettings.chatCooldownSec ?? 60;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
-        document.getElementById('set-starsPerLike').placeholder = window.siteSettings.starsPerLike ?? 1;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
-        document.getElementById('set-pokeLimit').placeholder = window.siteSettings.pokeLimit ?? 3;
         document.getElementById('set-starsPerFollow').placeholder = window.siteSettings.starsPerFollow ?? '5';
+        document.getElementById('set-lbPointsPerWin').placeholder = window.siteSettings.lbPointsPerWin;
         document.getElementById('set-maxStarsPrize').placeholder = window.siteSettings.maxStarsPrize || '100';
         document.getElementById('set-maxLbPointsPrize').placeholder = window.siteSettings.maxLbPointsPrize;
         document.getElementById('set-gameHostLbReward').placeholder = window.siteSettings.gameHostLbReward || '0';
@@ -222,18 +203,11 @@ function initAdminDashboard() {
     document.getElementById('settings-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const newSettings = {
-            // Preserve Site Control switches — they are managed by their own buttons
-            pausePosts: currentPauseState.pausePosts === true,
-            pauseChat: currentPauseState.pauseChat === true,
             starsPerPost: parseInt(document.getElementById('set-starsPerPost').value) || 0,
-            postCooldownSec: parseInt(document.getElementById('set-postCooldownSec').value) || 0,
-            commentCooldownSec: parseInt(document.getElementById('set-commentCooldownSec').value) || 0,
-            chatCooldownSec: parseInt(document.getElementById('set-chatCooldownSec').value) || 0,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
-            starsPerLike: parseInt(document.getElementById('set-starsPerLike').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,
-            pokeLimit: parseInt(document.getElementById('set-pokeLimit').value) || 0,
             starsPerFollow: parseInt(document.getElementById('set-starsPerFollow').value) || 0,
+            lbPointsPerWin: parseInt(document.getElementById('set-lbPointsPerWin').value) || 0,
             maxStarsPrize: parseInt(document.getElementById('set-maxStarsPrize').value) || 0,
             maxLbPointsPrize: parseInt(document.getElementById('set-maxLbPointsPrize').value) || 0,
             gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
@@ -256,63 +230,7 @@ function initAdminDashboard() {
         }
     });
 
-    // 5b. Site Control — Pause Posts / Pause Chat switches.
-    // When paused, non-admin users cannot post/comment/react or send chat messages. Admins bypass both.
-    function renderSiteControl(postsPaused, chatPaused) {
-        const ppIcon = document.getElementById('pause-posts-icon');
-        const pcIcon = document.getElementById('pause-chat-icon');
-        const ppLabel = document.getElementById('pause-posts-label');
-        const pcLabel = document.getElementById('pause-chat-label');
-        if (!ppIcon || !pcIcon) return;
-        ppIcon.className = postsPaused ? 'fa-solid fa-pause-circle text-red-500 text-lg' : 'fa-solid fa-play-circle text-emerald-500 text-lg';
-        pcIcon.className = chatPaused ? 'fa-solid fa-pause-circle text-red-500 text-lg' : 'fa-solid fa-play-circle text-emerald-500 text-lg';
-        if (ppLabel) {
-            ppLabel.textContent = postsPaused ? 'PAUSED — only you can post/comment/react' : 'Active — everyone can post';
-            ppLabel.classList.toggle('text-red-500', postsPaused);
-        }
-        if (pcLabel) {
-            pcLabel.textContent = chatPaused ? 'PAUSED — only you can send messages' : 'Active — everyone can chat';
-            pcLabel.classList.toggle('text-red-500', chatPaused);
-        }
-        const ppBtn = document.getElementById('toggle-pause-posts');
-        const pcBtn = document.getElementById('toggle-pause-chat');
-        if (ppBtn) { ppBtn.disabled = false; ppBtn.classList.remove('opacity-50'); }
-        if (pcBtn) { pcBtn.disabled = false; pcBtn.classList.remove('opacity-50'); }
-    }
-
-    async function togglePauseFlag(flag, currentlyPaused) {
-        try {
-            await update(ref(db, 'settings'), { [flag]: !currentlyPaused });
-        } catch (error) {
-            console.error(`Error toggling ${flag}:`, error);
-            alert("Error updating pause state: " + error.message);
-        }
-    }
-
-    const pausePostsBtn = document.getElementById('toggle-pause-posts');
-    const pauseChatBtn = document.getElementById('toggle-pause-chat');
-    let currentPauseState = { pausePosts: false, pauseChat: false };
-    if (pausePostsBtn) {
-        pausePostsBtn.addEventListener('click', () => {
-            const msg = currentPauseState.pausePosts
-                ? "Resume posting for all users?"
-                : "Pause ALL posting, commenting and reactions for users? You will still be able to do everything.";
-            confirm(msg) && togglePauseFlag('pausePosts', currentPauseState.pausePosts);
-        });
-    }
-    if (pauseChatBtn) {
-        pauseChatBtn.addEventListener('click', () => {
-            const msg = currentPauseState.pauseChat
-                ? "Resume chat for all users?"
-                : "Pause ALL chat messages for users? You will still be able to send messages.";
-            confirm(msg) && togglePauseFlag('pauseChat', currentPauseState.pauseChat);
-        });
-    }
-    // Keep latest known state for the confirm dialogs
-    onValue(ref(db, 'settings/pausePosts'), (snap) => { currentPauseState.pausePosts = snap.val() === true; });
-    onValue(ref(db, 'settings/pauseChat'), (snap) => { currentPauseState.pauseChat = snap.val() === true; });
-
-    // 5c. Game Posting Limits — inputs & save
+    // 5b. Game Posting Limits — inputs & save
     function renderGameLimitInputs(values = {}) {
         const grid = document.getElementById('game-limits-grid');
         if (!grid) return;
