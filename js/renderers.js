@@ -613,6 +613,7 @@ window.renderProfileData = (resetLimit = true) => {
 
     let followBtn = '';
     let pokeBtn = '';
+    let msgBtn = '';
     let pokeStats = `<p class="text-xs text-gray-500 mt-1"><span class="text-orange-500"><i class="fa-solid fa-hand-point-right"></i> Total Pokes Received: ${uData.totalPokes || 0}</span></p>`;
 
     if(window.currentUser && window.currentUser.uid !== window.activeProfileUid) {
@@ -620,6 +621,7 @@ window.renderProfileData = (resetLimit = true) => {
         followBtn = `<button onclick="window.toggleFollow('${window.activeProfileUid}')" class="mt-3 ${isFollowing ? 'bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-300' : 'bg-blue-600 text-white'} text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm">${isFollowing ? 'Following' : 'Follow'}</button>`;
         
         pokeBtn = `<button onclick="window.pokeUser('${window.activeProfileUid}')" class="mt-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm ml-2 hover:bg-orange-200 dark:hover:bg-orange-800"><i class="fa-solid fa-hand-point-right"></i> Poke</button>`;
+        msgBtn = `<button onclick="window.location.href='chat/index.html?dm=${window.activeProfileUid}'" class="mt-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-5 py-1.5 rounded-full transition shadow-sm ml-2" title="Message on Hangout Chat"><i class="fa-solid fa-comment-dots"></i> Message</button>`;
         pokeStats += `<p id="personal-poke-stats" class="text-[10px] text-gray-400 mt-0.5">Loading your pokes...</p>`;
         
         get(ref(db, `users/${window.activeProfileUid}/pokesFrom/${window.currentUser.uid}`)).then(snap => {
@@ -661,8 +663,9 @@ window.renderProfileData = (resetLimit = true) => {
             ${uData.bio ? `<div class="mt-2 w-fit mx-auto max-w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-900/60 border-l-2 border-blue-400 dark:border-blue-500 text-[0.9rem] text-gray-600 dark:text-gray-300 italic text-center shadow-inner break-words" style="line-height: 0.9;"><i class="fa-solid fa-quote-left text-blue-300 dark:text-blue-600 mr-1 text-[9px]"></i>${uData.bio}<i class="fa-solid fa-quote-right text-blue-300 dark:text-blue-600 ml-1 text-[9px]"></i></div>` : ''}
             
             ${relStr}
-            <div class="flex items-center justify-center">
+            <div class="flex items-center justify-center flex-wrap gap-y-2">
                 ${followBtn}
+                ${msgBtn}
                 ${pokeBtn}
             </div>
         </div>

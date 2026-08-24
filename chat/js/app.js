@@ -1670,6 +1670,7 @@ get(ref(db, 'users')).then((snapshot) => {
 onValue(ref(db, 'presence'), (snapshot) => { state.online = snapshot.val() || {}; renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('presence', error));
 onValue(ref(db, '.info/connected'), (snapshot) => { state.connected = snapshot.val() === true; if (state.connected) startOwnPresence(); });
 let checkedInvite = false;
+let checkedDmParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
   state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
@@ -1734,6 +1735,23 @@ onAuthStateChanged(auth, async (user) => {
       if (unread > 0) { badge.textContent = unread > 99 ? '99+' : unread; badge.classList.remove('hidden'); }
       else { badge.classList.add('hidden'); }
     });
+    // Deep link from Hangout Posts profile "Message" button: chat/?dm=<peerUid>
+    if (!checkedDmParam) {
+      const dmPeer = new URLSearchParams(window.location.search).get('dm');
+      if (dmPeer && dmPeer !== user.uid) {
+        checkedDmParam = true;
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+        try {
+          if (!state.users[dmPeer]) {
+            const ps = await get(ref(db, `users/${dmPeer}`));
+            if (ps.exists()) state.users[dmPeer] = ps.val();
+          }
+          setTimeout(() => startConversation(dmPeer), 400); // brief pause so the inbox listener attaches first
+        } catch (e) { console.warn('DM deep-link failed:', e); showToast('Could not open that conversation.'); }
+      } else {
+        checkedDmParam = true;
+      }
+    }
   } else closeActiveChat();
   syncAuthUi(); updateUnreadTitle();
 });
