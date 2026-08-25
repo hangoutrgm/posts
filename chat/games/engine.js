@@ -19,10 +19,12 @@ let _getSettings = () => ({});
 export const setSettingsGetter = (fn) => { if (typeof fn === 'function') _getSettings = fn; };
 let _isLbRewardsEnabled = () => false;
 export const setLbRewardsChecker = (fn) => { if (typeof fn === 'function') _isLbRewardsEnabled = fn; };
-const roundCount = () => {
-  const n = Number(_getSettings().chatGameRounds);
+const getRaceTo = () => {
+  const s = _getSettings();
+  const n = Number(s.chatGameRaceTo ?? s.chatGameRounds);
   return Number.isFinite(n) && n >= 1 ? Math.min(20, Math.floor(n)) : ROUNDS_PER_GAME;
 };
+const roundCount = () => getRaceTo();
 
 // ── Leaderboard rewards ──
 // Chat game winners earn LB points into the SAME pool as Hangout Posts games:
@@ -70,12 +72,47 @@ async function maybeAwardLb(mid) {
   if (!allowed) return;
 
   const pts = Number(_getSettings().chatGameLbReward || 0);
-  const hostPts = Number(_getSettings().gameHostLbReward || 0);
+  const hostPts = Number(_getSettings().chatGameHostLbReward || 0);
   if (!(pts > 0 || hostPts > 0)) return;
   try {
-    // Atomically claim BOTH awards in one transaction
+    // Atomically claim awards in one transaction
     const claim = await runTransaction(gRef(mid), (gm) => {
       if (!gm || gm.status !== 'done') return undefined;
+
+      // Anti-abuse check: If host created the game and is the ONLY one who answered/played, reward is 0
+      if (gm.hostId) {
+        let hasOtherParticipants = false;
+        if (gm.type === 'first_to_mine') {
+          hasOtherParticipants = Boolean(gm.winner && gm.winner !== gm.hostId);
+        } else if (gm.type === 'hangman') {
+          const lFails = Object.keys(gm.letterFails || {}).filter((u) => u !== gm.hostId);
+          const wFails = Object.keys(gm.wordFails || {}).filter((u) => u !== gm.hostId);
+          hasOtherParticipants = (lFails.length > 0 || wFails.length > 0 || (gm.winner && gm.winner !== gm.hostId));
+        } else if (gm.players) {
+          const others = Object.keys(gm.players).filter((u) => u !== gm.hostId);
+          hasOtherParticipants = (others.length > 0);
+        } else {
+          // Quiz family / multi-round / gibberish:
+          const scoredOthers = Object.keys(gm.scores || {}).filter((u) => u !== gm.hostId);
+          const solvedOthers = Object.values(gm.solved || {}).filter((u) => u && u !== gm.hostId);
+          let attemptedOthers = false;
+          if (gm.attempts) {
+            Object.values(gm.attempts).forEach((att) => {
+              if (att && typeof att === 'object') {
+                if (Object.keys(att).some((u) => u !== gm.hostId)) attemptedOthers = true;
+              }
+            });
+          }
+          const otherWinner = Boolean(gm.winner && gm.winner !== gm.hostId && gm.winner !== 'tie' && gm.winner !== 'draw' && gm.winner !== 'lost');
+          hasOtherParticipants = (scoredOthers.length > 0 || solvedOthers.length > 0 || attemptedOthers || otherWinner);
+        }
+
+        if (!hasOtherParticipants) {
+          gm.lbAbortedSolo = true;
+          return gm;
+        }
+      }
+
       let changed = false;
       // Single winner only (ties/draws/losses get nothing)
       if (pts > 0) {
@@ -87,7 +124,7 @@ async function maybeAwardLb(mid) {
           changed = true;
         }
       }
-      // Host bonus: any hoax creator earns, regardless of winner, once
+      // Host bonus: host earns once when legitimate multi-player game finishes
       if (hostPts > 0 && gm.hostId && !gm.lbHostAwarded) {
         gm.lbHostAwarded = Date.now();
         gm.lbHostPts = hostPts;
@@ -98,7 +135,7 @@ async function maybeAwardLb(mid) {
     if (!claim || claim.committed !== true) return;
     const snapNow = await get(gRef(mid));
     const gm = snapNow.val();
-    if (!gm) return;
+    if (!gm || gm.lbAbortedSolo) return;
     if (gm.lbWinnerUid && gm.lbRewardPts > 0) {
       creditLb(gm.lbWinnerUid, gm.lbRewardPts);
       _toast(`🏆 +${gm.lbRewardPts} LB points!`);
@@ -218,7 +255,8 @@ const buildGame = async (type) => {
       return { ...base, status: 'active' };      // one big MINE button — first tap wins
     case 'quiz': {
       const rounds = [];
-      const count = roundCount();
+      const raceTo = getRaceTo();
+      const count = Math.max(raceTo * 6, 25);
 
       if (type === 'trivia') {
         const pool = shuffle(await loadTrivia());
@@ -274,7 +312,7 @@ const buildGame = async (type) => {
           rounds.push({ grid: d.grid, emoji: d.emoji, a: [d.a] });
         }
       }
-      return { ...base, rounds, revealed: 0, scores: {}, solved: {} };
+      return { ...base, raceTo, rounds, revealed: 0, scores: {}, solved: {} };
     }
     default:
       return base;
@@ -575,28 +613,40 @@ export const submitGuess = async (mid, value) => {
   const claim = await runTransaction(ref(db, `chatMessages/${tid()}/${mid}/game/solved/${idx}`), (cur) => (cur ? undefined : uid));
   if (!claim.committed) return;
 
-  const isFinalRound = (idx + 1 >= (g.rounds || []).length);
+  let isGameOver = false;
 
   await runTransaction(gRef(mid), (gg) => {
     if (!gg || gg.status !== 'active') return gg;
     // Respect the wrong-choice lockout — a locked-out player can't score this round
     if ((gg.attempts || {})[idx]?.[uid]) return gg;
     gg.scores = gg.scores || {};
-    gg.scores[uid] = (gg.scores[uid] || 0) + 1;
+    const newScore = (gg.scores[uid] || 0) + 1;
+    gg.scores[uid] = newScore;
     gg.roundWinner = uid;
     gg.lastAnswer = String(round.a?.[0] || round.a || round.name || round.char || value || '');
 
-    if (isFinalRound) {
+    const target = Number(gg.raceTo || getRaceTo());
+    const hitTarget = newScore >= target;
+    const isOutOfRounds = (idx + 1 >= (gg.rounds || []).length);
+    isGameOver = hitTarget || isOutOfRounds;
+
+    if (isGameOver) {
       gg.revealed = idx + 1;
       gg.status = 'done';
       gg.nextRoundAt = null;
-      const entries = Object.entries(gg.scores);
-      if (entries.length) {
-        const top = Math.max(...entries.map(([, v]) => v));
-        const tops = entries.filter(([, v]) => v === top).map(([u]) => u);
-        gg.winner = tops.length === 1 ? tops[0] : 'tie';
-        gg.finalScores = Object.fromEntries(entries);
-      } else gg.winner = null;
+      if (hitTarget) {
+        gg.winner = uid;
+      } else {
+        const entries = Object.entries(gg.scores);
+        if (entries.length) {
+          const top = Math.max(...entries.map(([, v]) => v));
+          const tops = entries.filter(([, v]) => v === top).map(([u]) => u);
+          gg.winner = tops.length === 1 ? tops[0] : 'tie';
+        } else {
+          gg.winner = null;
+        }
+      }
+      gg.finalScores = Object.fromEntries(Object.entries(gg.scores));
     } else {
       // 3-second cooldown before next round starts
       gg.revealed = idx;
@@ -605,7 +655,7 @@ export const submitGuess = async (mid, value) => {
     return gg;
   });
 
-  if (isFinalRound) {
+  if (isGameOver) {
     void maybeAwardLb(mid);
   } else {
     // Schedule advance after 3.2 seconds

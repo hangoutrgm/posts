@@ -1,7 +1,7 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=23';
+import '../games/index.js?v=24';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {
@@ -15,7 +15,7 @@ if (window.ChatGames) {
 }
 
 // Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
-const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, gameHostLbReward: 0 };
+const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameRaceTo: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, chatGameHostLbReward: 0, gameHostLbReward: 0 };
 let sitePaused = false; // Site Control (/config): when true, only admins can send messages
 onValue(ref(db, 'settings'), (snap) => {
   if (snap.exists()) {
@@ -25,9 +25,11 @@ onValue(ref(db, 'settings'), (snap) => {
     chatSettings.chatVoiceLimit = s.chatVoiceLimit ?? 10;
     chatSettings.chatVideoSizeLimitMB = s.chatVideoSizeLimitMB ?? 20;
     chatSettings.chatCooldownSec = s.chatCooldownSec ?? 60;
-    chatSettings.chatGameRounds = s.chatGameRounds ?? 5;
-        chatSettings.chatGameCooldownSec = s.chatGameCooldownSec ?? 60;
+    chatSettings.chatGameRounds = s.chatGameRaceTo ?? s.chatGameRounds ?? 5;
+    chatSettings.chatGameRaceTo = s.chatGameRaceTo ?? s.chatGameRounds ?? 5;
+    chatSettings.chatGameCooldownSec = s.chatGameCooldownSec ?? 60;
     chatSettings.chatGameLbReward = s.chatGameLbReward ?? 0;
+    chatSettings.chatGameHostLbReward = s.chatGameHostLbReward ?? 0;
     chatSettings.gameHostLbReward = s.gameHostLbReward ?? 0;
     chatSettings.gameLimits = s.gameLimits || {};
     sitePaused = s.pauseChat === true;

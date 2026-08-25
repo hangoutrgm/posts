@@ -142,8 +142,9 @@ const quizBody = (mid, g, uid) => {
   if (!round) return '<p class="cg-note">No rounds available</p>';
   
   if (['done', 'closed'].includes(g.status)) {
+    const sub = g.raceTo ? `Reached ${g.raceTo} pts first!` : 'Won the game!';
     return `<div class="cg-ended-box">
-      ${g.winner ? `<div class="cg-winner-pill"><span class="cg-winner-icon">🏆</span><div class="cg-winner-text"><strong>${esc(nameOf(g.winner))}</strong><span>Won the game!</span></div></div>` : '<div class="cg-note">Game Ended</div>'}
+      ${g.winner ? `<div class="cg-winner-pill"><span class="cg-winner-icon">🏆</span><div class="cg-winner-text"><strong>${esc(nameOf(g.winner))}</strong><span>${sub}</span></div></div>` : '<div class="cg-note">Game Ended</div>'}
     </div>`;
   }
 
@@ -267,9 +268,15 @@ export const renderBody = (msg) => {
   const shell = isEnded ? 'cg-ended' : (SHELL[g.type] || 'cg-indigo');
   const title = isEnded ? `${meta.icon} ${meta.name} Ended` : `${meta.icon} ${meta.name}`;
   
-  // Header round badge for multi-round games
-  const roundsTotal = (g.rounds || []).length;
-  const roundBadge = (!isEnded && roundsTotal > 1) ? `<span class="cg-round-pill">R${(Number(g.revealed || 0) + 1)}/${roundsTotal}</span>` : '';
+  // Header badge for raceTo / multi-round games
+  let roundBadge = '';
+  if (!isEnded) {
+    if (g.raceTo) {
+      roundBadge = `<span class="cg-round-pill">Race to ${g.raceTo}</span>`;
+    } else if ((g.rounds || []).length > 1) {
+      roundBadge = `<span class="cg-round-pill">R${(Number(g.revealed || 0) + 1)}/${g.rounds.length}</span>`;
+    }
+  }
   
   const closeBtn = (uid === g.hostId && !isEnded)
     ? `<button type="button" class="cg-close-link" onclick="window.ChatGames.close('${mid}')">close</button>` : '';

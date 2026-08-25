@@ -67,7 +67,10 @@ window.siteSettings = {
     commentCooldownSec: 60,
     chatCooldownSec: 60,
     chatGameRounds: 5,
+    chatGameRaceTo: 5,
     chatGameCooldownSec: 60,
+    chatGameLbReward: 0,
+    chatGameHostLbReward: 0,
     gameLimits: {}
 };
 
