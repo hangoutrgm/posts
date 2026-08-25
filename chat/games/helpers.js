@@ -63,18 +63,18 @@ export const fetchJson = async (relPath) => {
 
 // ── Game registry metadata (single source for the picker + titles) ──
 export const GAME_META = {
-  tictactoe:    { name: 'Tic-Tac-Toe',        icon: '⭕',  family: 'board',     hint: 'Best of one — 3 in a row wins' },
+  tictactoe:    { name: 'Tic-Tac-Toe',        icon: '⭕',  family: 'board',     hint: 'Classic match — 3 in a row wins' },
   connect4:     { name: 'Connect 4',          icon: '🔴',  family: 'board',     hint: '2–3 players — line up 4 to win' },
   hangman:      { name: 'Hangman',            icon: '🔤',  family: 'hangman',   hint: 'You pick the word — they guess letters' },
   first_to_mine:{ name: 'First to Mine',      icon: '💎',  family: 'mine',      hint: 'One tap — fastest miner wins' },
-  trivia:       { name: 'Trivia',             icon: '🧠',  family: 'quiz',      hint: '5 rounds of general knowledge' },
+  trivia:       { name: 'Trivia',             icon: '🧠',  family: 'quiz',      hint: 'General knowledge questions' },
   flags:        { name: 'Flag Quiz',          icon: '🚩',  family: 'quiz',      hint: 'Name the country from its flag' },
   math:         { name: 'Math Duel',          icon: '➗',  family: 'quiz',      hint: 'Quick-fire arithmetic rounds' },
   jumbled:      { name: 'Jumbled Words',      icon: '🔀',  family: 'quiz',      hint: 'Unscramble the word' },
   gibberish:    { name: 'Gibberish',          icon: '🗣️', family: 'gibberish', hint: 'Say your phrase — they decode it' },
   emojiriddle:  { name: 'Emoji Riddles',      icon: '🧩',  family: 'quiz',      hint: 'Guess from the emojis' },
   countemoji:   { name: 'Count the Emojis',   icon: '🧮',  family: 'quiz',      hint: 'Count fast, count right' },
-  guessemoji:   { name: 'Guess the Emoji',    icon: '❓',  family: 'quiz',      hint: 'See the emoji — race to name it (first to 5)' },
-  bringmeemoji: { name: 'Bring Me the Emoji', icon: '📨',  family: 'quiz',      hint: 'Send the matching emoji — first to 5' },
-  periodic:     { name: 'Periodic Table',     icon: '🧪',  family: 'quiz',      hint: '5 rounds of elements & symbols' },
+  guessemoji:   { name: 'Guess the Emoji',    icon: '❓',  family: 'quiz',      hint: 'See the emoji — race to name it' },
+  bringmeemoji: { name: 'Bring Me the Emoji', icon: '📨',  family: 'quiz',      hint: 'Send the matching emoji first' },
+  periodic:     { name: 'Periodic Table',     icon: '🧪',  family: 'quiz',      hint: 'Elements, names & chemical symbols' },
 };

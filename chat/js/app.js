@@ -1,7 +1,7 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=21';
+import '../games/index.js?v=22';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {
@@ -29,8 +29,10 @@ onValue(ref(db, 'settings'), (snap) => {
         chatSettings.chatGameCooldownSec = s.chatGameCooldownSec ?? 60;
     chatSettings.chatGameLbReward = s.chatGameLbReward ?? 0;
     chatSettings.gameHostLbReward = s.gameHostLbReward ?? 0;
+    chatSettings.gameLimits = s.gameLimits || {};
     sitePaused = s.pauseChat === true;
   } else {
+    chatSettings.gameLimits = {};
     sitePaused = false;
   }
 });

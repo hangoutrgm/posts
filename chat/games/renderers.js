@@ -3,7 +3,7 @@
 // Hangout Posts game-card look (gradient shells, pills, boards).
 // ============================================================
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { esc, GAME_META } from './helpers.js?v=5';
+import { esc, GAME_META } from './helpers.js?v=6';
 
 const me = () => getAuth().currentUser?.uid;
 let _ctx = { getName: (uid) => uid };

@@ -96,7 +96,9 @@ window.gameTypesList = [
     { type: 'trivia', label: 'Random Trivia' },
     { type: 'bingo', label: 'Bingo' },
     { type: 'spin_names', label: 'Spin the Names' },
-    { type: 'ncl', label: 'NCL (No Challenge Needed)' }
+    { type: 'ncl', label: 'NCL (No Challenge Needed)' },
+    { type: 'chat_first_to_mine', label: 'Chat - First to Mine' },
+    { type: 'chat_gibberish', label: 'Chat - Gibberish' }
 ];
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;

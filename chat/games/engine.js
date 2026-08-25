@@ -4,7 +4,7 @@
 import { ref, push, get, set, update, runTransaction, increment } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { db } from '../../js/firebase-config.js';
-import { GAME_META, pick, shuffle } from './helpers.js?v=5';
+import { GAME_META, pick, shuffle } from './helpers.js?v=6';
 import {
   mathRound, countEmojiRound, jumbledRound, triviaRound, ROUNDS_PER_GAME,
 } from './data.js?v=6';
@@ -280,6 +280,11 @@ const buildGame = async (type) => {
       return base;
   }
 };
+const todayStr = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
 // ── Push the game message into the thread ──
 export const createGame = async (type) => {
   const threadId = tid();
@@ -287,6 +292,22 @@ export const createGame = async (type) => {
   if (!threadId || !uid) return;
   const meta = GAME_META[type];
   if (!meta) return;
+
+  // Daily game hosting limit (configured in /config → settings/gameLimits)
+  // Maps first_to_mine -> chat_first_to_mine, gibberish -> chat_gibberish, etc.
+  const limitKey = type === 'first_to_mine' ? 'chat_first_to_mine' : type === 'gibberish' ? 'chat_gibberish' : `chat_${type}`;
+  const limits = _getSettings().gameLimits || {};
+  const typeLimit = Number(limits[limitKey] ?? 0);
+
+  if (typeLimit > 0) {
+    const counterRef = ref(db, `gamePostCounts/${todayStr()}/${uid}/${limitKey}`);
+    const snap = await get(counterRef).catch(() => null);
+    const used = snap?.exists() ? Number(snap.val()) : 0;
+    if (used >= typeLimit) {
+      toast(`Daily limit reached: you've already hosted ${used}/${typeLimit} "${meta.name}" games today. Resets at 12:00 AM.`);
+      return;
+    }
+  }
 
   // Cooldown between starting games (/config → Chat Game Start, seconds; 0 = off)
   const cd = Number(_getSettings().chatGameCooldownSec ?? 0);
@@ -307,6 +328,25 @@ export const createGame = async (type) => {
     console.warn('[ChatGames] build failed:', e);
     return;
   }
+
+  // Atomic limit consumption
+  if (typeLimit > 0) {
+    const counterRef = ref(db, `gamePostCounts/${todayStr()}/${uid}/${limitKey}`);
+    let limitReached = false;
+    try {
+      const txn = await runTransaction(counterRef, (current) => {
+        const count = Number(current || 0);
+        if (count >= typeLimit) return undefined;
+        return count + 1;
+      });
+      limitReached = !txn.committed;
+    } catch (_) {}
+    if (limitReached) {
+      toast(`Daily limit reached: you have reached the limit of ${typeLimit} "${meta.name}" games for today.`);
+      return;
+    }
+  }
+
   const text = `${meta.icon} ${meta.name}`;
 
   // Single-write creation: the full game ships inside the message, so it renders
