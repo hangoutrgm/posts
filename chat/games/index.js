@@ -2,8 +2,8 @@
 // chat/games/index.js — public API + picker wiring
 // Exposes window.ChatGames used by app.js and inline onclicks.
 // ============================================================
-import * as engine from './engine.js?v=17';
-import { renderBody, pickerHtml, setContext } from './renderers.js?v=19';
+import * as engine from './engine.js?v=18';
+import { renderBody, pickerHtml, setContext } from './renderers.js?v=20';
 import { GAME_META } from './helpers.js?v=6';
 
 let _getThreadId = () => null;
@@ -181,6 +181,7 @@ window.ChatGames = {
   },
   guess: (mid, value) => engine.submitGuess(mid, value),
   advanceRound: (mid, expectedIdx) => engine.advanceRound(mid, expectedIdx),
+  skip: (mid) => engine.skipRound(mid),
   close: (mid) => engine.closeGame(mid),
 };
 

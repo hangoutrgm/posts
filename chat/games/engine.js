@@ -568,6 +568,48 @@ export const advanceRound = async (mid, expectedIdx) => {
   });
 };
 
+/** Host skips the current round in a multi-round game */
+export const skipRound = async (mid) => {
+  const uid = me();
+  if (!uid || !mid) return;
+  
+  let isGameOver = false;
+
+  await runTransaction(gRef(mid), (gg) => {
+    if (!gg || gg.status !== 'active' || !Array.isArray(gg.rounds)) return gg;
+    if (gg.hostId !== uid) return gg; // only host can skip
+
+    const curIdx = Number(gg.revealed || 0);
+    const isOutOfRounds = (curIdx + 1 >= (gg.rounds || []).length);
+    isGameOver = isOutOfRounds;
+
+    if (isGameOver) {
+      gg.revealed = curIdx + 1;
+      gg.status = 'done';
+      gg.nextRoundAt = null;
+      const entries = Object.entries(gg.scores || {});
+      if (entries.length) {
+        const top = Math.max(...entries.map(([, v]) => v));
+        const tops = entries.filter(([, v]) => v === top).map(([u]) => u);
+        gg.winner = tops.length === 1 ? tops[0] : 'tie';
+      } else {
+        gg.winner = null;
+      }
+      gg.finalScores = Object.fromEntries(Object.entries(gg.scores || {}));
+    } else {
+      gg.revealed = curIdx + 1;
+      gg.nextRoundAt = null;
+      gg.roundWinner = null;
+      gg.lastAnswer = null;
+    }
+    return gg;
+  });
+
+  if (isGameOver) {
+    void maybeAwardLb(mid);
+  }
+};
+
 /** Quiz-style answer submit. First correct per round scores; auto-advances rounds with 3s cooldown. */
 export const submitGuess = async (mid, value) => {
   const uid = me(); if (!uid || value == null) return;
