@@ -65,6 +65,9 @@ window.siteSettings = {
     chatVideoSizeLimitMB: 20,
     postCooldownSec: 60,
     commentCooldownSec: 60,
+    chatCooldownSec: 60,
+    chatGameRounds: 5,
+    chatGameCooldownSec: 60,
     gameLimits: {}
 };
 

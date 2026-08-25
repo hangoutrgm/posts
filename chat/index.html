@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=2">
+  <link rel="stylesheet" href="css/styles.css?v=13">
   <link rel="manifest" href="../manifest.json">
   <link rel="icon" type="image/x-icon" href="../favicon.ico">
   <link rel="apple-touch-icon" href="../icon-192.png">
@@ -334,6 +334,11 @@
         <span class="conv-action-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
         <span class="conv-action-body"><strong>Copy Invite Link</strong><small>Share so anyone can join this public group.</small></span>
       </button>
+      <!-- Admin-only GC setting: Leaderboard Rewards Toggle -->
+      <button id="toggle-lb-rewards-button" class="conv-action hidden" type="button">
+        <span class="conv-action-icon" id="toggle-lb-rewards-icon" style="color:#f59e0b;"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+        <span class="conv-action-body"><strong id="toggle-lb-rewards-title">LB Rewards: Disabled</strong><small id="toggle-lb-rewards-sub">Admin: Toggle leaderboard points for games in this GC.</small></span>
+      </button>
       <div class="conv-action-divider"></div>
       <button id="pin-conversation-button" class="conv-action" type="button">
         <span class="conv-action-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
@@ -391,6 +396,6 @@
 
   <div id="message-action-menu" class="message-action-menu hidden" role="menu" aria-label="Message actions"></div>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script type="module" src="js/app.js?v=10"></script>
+  <script type="module" src="js/app.js?v=25"></script>
 </body>
 </html>

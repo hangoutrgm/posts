@@ -159,6 +159,8 @@ function initAdminDashboard() {
             document.getElementById('set-postCooldownSec').value = settings.postCooldownSec ?? window.siteSettings.postCooldownSec ?? '';
             document.getElementById('set-commentCooldownSec').value = settings.commentCooldownSec ?? window.siteSettings.commentCooldownSec ?? '';
             document.getElementById('set-chatCooldownSec').value = settings.chatCooldownSec ?? window.siteSettings.chatCooldownSec ?? '';
+            document.getElementById('set-chatGameCooldownSec').value = settings.chatGameCooldownSec ?? window.siteSettings.chatGameCooldownSec ?? '';
+            document.getElementById('set-chatGameRounds').value = settings.chatGameRounds ?? window.siteSettings.chatGameRounds ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
             document.getElementById('set-starsPerLike').value = settings.starsPerLike ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
@@ -167,6 +169,7 @@ function initAdminDashboard() {
             document.getElementById('set-maxStarsPrize').value = settings.maxStarsPrize ?? '';
             document.getElementById('set-maxLbPointsPrize').value = settings.maxLbPointsPrize ?? '';
             document.getElementById('set-gameHostLbReward').value = settings.gameHostLbReward ?? '';
+            document.getElementById('set-chatGameLbReward').value = settings.chatGameLbReward ?? window.siteSettings.chatGameLbReward ?? '';
             document.getElementById('set-imageUploadLimit').value = settings.imageUploadLimit ?? '';
             document.getElementById('set-videoUploadLimit').value = settings.videoUploadLimit ?? '';
             document.getElementById('set-videoSizeLimitMB').value = settings.videoSizeLimitMB ?? '';
@@ -181,6 +184,8 @@ function initAdminDashboard() {
             document.getElementById('set-postCooldownSec').value = '';
             document.getElementById('set-commentCooldownSec').value = '';
             document.getElementById('set-chatCooldownSec').value = '';
+            document.getElementById('set-chatGameCooldownSec').value = '';
+            document.getElementById('set-chatGameRounds').value = '';
             document.getElementById('set-starsPerComment').value = '';
             document.getElementById('set-starsPerLike').value = '';
             document.getElementById('set-starsPerPoked').value = '';
@@ -189,6 +194,7 @@ function initAdminDashboard() {
             document.getElementById('set-maxStarsPrize').value = '';
             document.getElementById('set-maxLbPointsPrize').value = '';
             document.getElementById('set-gameHostLbReward').value = '';
+            document.getElementById('set-chatGameLbReward').value = '';
             document.getElementById('set-imageUploadLimit').value = '';
             document.getElementById('set-videoUploadLimit').value = '';
             document.getElementById('set-videoSizeLimitMB').value = '';
@@ -205,6 +211,8 @@ function initAdminDashboard() {
         document.getElementById('set-postCooldownSec').placeholder = window.siteSettings.postCooldownSec ?? 60;
         document.getElementById('set-commentCooldownSec').placeholder = window.siteSettings.commentCooldownSec ?? 60;
         document.getElementById('set-chatCooldownSec').placeholder = window.siteSettings.chatCooldownSec ?? 60;
+        document.getElementById('set-chatGameCooldownSec').placeholder = window.siteSettings.chatGameCooldownSec ?? 60;
+        document.getElementById('set-chatGameRounds').placeholder = window.siteSettings.chatGameRounds ?? 5;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
         document.getElementById('set-starsPerLike').placeholder = window.siteSettings.starsPerLike ?? 1;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
@@ -229,6 +237,8 @@ function initAdminDashboard() {
             postCooldownSec: parseInt(document.getElementById('set-postCooldownSec').value) || 0,
             commentCooldownSec: parseInt(document.getElementById('set-commentCooldownSec').value) || 0,
             chatCooldownSec: parseInt(document.getElementById('set-chatCooldownSec').value) || 0,
+            chatGameCooldownSec: parseInt(document.getElementById('set-chatGameCooldownSec').value) || 0,
+            chatGameRounds: parseInt(document.getElementById('set-chatGameRounds').value) || 5,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
             starsPerLike: parseInt(document.getElementById('set-starsPerLike').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,
@@ -236,7 +246,10 @@ function initAdminDashboard() {
             starsPerFollow: parseInt(document.getElementById('set-starsPerFollow').value) || 0,
             maxStarsPrize: parseInt(document.getElementById('set-maxStarsPrize').value) || 0,
             maxLbPointsPrize: parseInt(document.getElementById('set-maxLbPointsPrize').value) || 0,
-            gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
+                                    gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
+            chatGameLbReward: parseInt(document.getElementById('set-chatGameLbReward').value) || 0,
+            chatGameCooldownSec: parseInt(document.getElementById('set-chatGameCooldownSec').value) || 0,
+            chatGameRounds: parseInt(document.getElementById('set-chatGameRounds').value) || 5,
             imageUploadLimit: parseInt(document.getElementById('set-imageUploadLimit').value) || 0,
             videoUploadLimit: parseInt(document.getElementById('set-videoUploadLimit').value) || 0,
             videoSizeLimitMB: parseInt(document.getElementById('set-videoSizeLimitMB').value) || 0,

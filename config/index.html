@@ -176,6 +176,10 @@
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Host LB Reward</label>
                                     <input type="number" id="set-gameHostLbReward" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
                                 </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Chat Game LB Reward</label>
+                                    <input type="number" id="set-chatGameLbReward" min="0" placeholder="5" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                </div>
                             </div>
                             <!-- Cooldown -->
                             <div class="grid grid-cols-2 gap-3 pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
@@ -195,6 +199,14 @@
                                 <div>
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Chat Messages (sec)</label>
                                     <input type="number" id="set-chatCooldownSec" min="0" placeholder="60" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Chat Game Start (sec)</label>
+                                    <input type="number" id="set-chatGameCooldownSec" min="0" placeholder="60" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Chat Game Rounds</label>
+                                    <input type="number" id="set-chatGameRounds" min="1" max="20" placeholder="5" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
                                 </div>
                             </div>
                             <!-- Posts Upload Limits -->

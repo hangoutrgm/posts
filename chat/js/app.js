@@ -1,9 +1,21 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import '../games/index.js?v=21';
+
+// Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
+if (window.ChatGames) {
+  window.ChatGames.init({
+    getThreadId: () => state.activeThreadId,
+    getName: (uid) => state.users[uid]?.name || getNickname(uid),
+    toast: showToast,
+    getSettings: () => chatSettings,
+    isLbRewardsEnabled: () => Boolean(state.activeInboxItem?.isGroup && state.activeInboxItem?.lbRewardsEnabled === true),
+  });
+}
 
 // Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
-const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60 };
+const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, gameHostLbReward: 0 };
 let sitePaused = false; // Site Control (/config): when true, only admins can send messages
 onValue(ref(db, 'settings'), (snap) => {
   if (snap.exists()) {
@@ -13,6 +25,10 @@ onValue(ref(db, 'settings'), (snap) => {
     chatSettings.chatVoiceLimit = s.chatVoiceLimit ?? 10;
     chatSettings.chatVideoSizeLimitMB = s.chatVideoSizeLimitMB ?? 20;
     chatSettings.chatCooldownSec = s.chatCooldownSec ?? 60;
+    chatSettings.chatGameRounds = s.chatGameRounds ?? 5;
+        chatSettings.chatGameCooldownSec = s.chatGameCooldownSec ?? 60;
+    chatSettings.chatGameLbReward = s.chatGameLbReward ?? 0;
+    chatSettings.gameHostLbReward = s.gameHostLbReward ?? 0;
     sitePaused = s.pauseChat === true;
   } else {
     sitePaused = false;
@@ -252,7 +268,8 @@ function updateChatHeader() {
     state.typingExpiryTimer = setTimeout(updateChatHeader, 7100);
   } else {
     if (item.isGroup) {
-      $('chat-status').textContent = `${peerIds.length + 1} members`;
+      const lbTag = item.lbRewardsEnabled === true ? ' • 🏆 LB Rewards' : '';
+      $('chat-status').textContent = `${peerIds.length + 1} members${lbTag}`;
     } else {
       const peer = state.users[peerIds[0]] || {};
       $('chat-status').innerHTML = peer.isBanned ? 'Unavailable' : normalStatus(peerIds[0]);
@@ -297,7 +314,11 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       }
     });
   }
-  list.innerHTML = rows.map((message) => {
+  state._rowCache = state._rowCache || {};
+  const rowHtml = [];
+  const rowSig = {};
+  const sigOf = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return 'h' + h; };
+  const htmlArr = rows.map((message) => {
     if (message.isSystem) return `<div id="message-${escapeHtml(message.id)}" class="system-message-row"><span class="system-message-bubble">${escapeHtml(getNickname(message.senderId))} ${escapeHtml(message.text)}</span></div>`;
     const mine = message.senderId === state.user?.uid;
     const reactionSummary = Object.entries(message.reactions || {}).map(([type, people]) => Object.keys(people || {}).length ? `<span class="reaction-chip">${reactions[type] || type || '👍'} ${Object.keys(people).length}</span>` : '').join('');
@@ -328,8 +349,10 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       isVid = message.image.includes('/video/upload/') || message.image.match(/\\.(mp4|webm|mov|ogg)$/i);
       image = isVid ? `<video class="message-image" src="${escapeHtml(message.image)}" style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`;
     }
-    let messageText = linkifyText(message.text || '');
-    if (!messageText && image) {
+    const isGameCard = Boolean(message.isGame && window.ChatGames);
+    if (isGameCard) { quote = ''; image = ''; audioHtml = ''; }
+    let messageText = isGameCard ? window.ChatGames.renderBody(message) : linkifyText(message.text || '');
+    if (!isGameCard && !messageText && image) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
     } else if (!messageText && isVoice) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Voice message</div>`;
@@ -354,8 +377,37 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10.5px; color:var(--ink-muted); margin-bottom:2px; margin-left:6px; font-weight:600;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
-    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}"><div>${senderNameHtml}<div class="message-bubble" data-message="${escapeHtml(message.id)}"><span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>${quote}${messageText}${image}${audioHtml}</div>${reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div></div></div>`;
-  }).join('');
+    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}${isGameCard ? ' is-game-row' : ''}"><div>${senderNameHtml}<div class="message-bubble${isGameCard ? ' is-game-bubble' : ''}" data-message="${escapeHtml(message.id)}">${isGameCard ? '' : '<span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>'}${quote}${messageText}${image}${audioHtml}</div>${!isGameCard && reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div></div></div>`;
+  }).forEach((html, i) => {
+    const key = 'message-' + rows[i].id;
+    rowHtml[key] = html;
+    rowSig[key] = sigOf(html);
+  });
+
+  // ── Aggressive DOM cache: reconcile per-row instead of rebuilding the list.
+  // Unchanged rows are left completely untouched → no flicker, stable scroll,
+  // and live-filled game cards are never wiped by unrelated re-renders.
+  const staleWrap = list.querySelector('.msg-skeleton-list, .list-empty');
+  if (staleWrap) { staleWrap.remove(); state._rowCache = {}; }
+  Object.keys(state._rowCache).forEach((key) => {
+    if (!rowSig[key]) { document.getElementById(key)?.remove(); delete state._rowCache[key]; }
+  });
+  rows.forEach((message, i) => {
+    const key = 'message-' + message.id;
+    const html = rowHtml[key] || '';
+    const el = document.getElementById(key);
+    if (el && state._rowCache[key] === rowSig[key]) return; // cached — skip entirely
+    if (el) { el.outerHTML = html; }                        // changed → swap in place
+    else {                                                  // new → insert at the right spot
+      const t = document.createElement('template');
+      t.innerHTML = html.trim();
+      const node = t.content.firstElementChild;
+      const nxt = rows[i + 1] ? document.getElementById('message-' + rows[i + 1].id) : null;
+      if (nxt && nxt.parentNode === list) list.insertBefore(node, nxt);
+      else list.appendChild(node);
+    }
+    state._rowCache[key] = rowSig[key];
+  });
   // Prepend load-more header
   let header = list.querySelector('.load-more-header');
   if (!header) {
@@ -402,7 +454,7 @@ menuSvg.edit = '<svg viewBox="0 0 24 24"><path d="M4 20h4L20 8a2.1 2.1 0 0 0-4-4
 menuSvg.delete = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
 
 function showMessageMenu(message, x, y, fromLongPress = false) {
-  if (!message) return;
+  if (!message || message.isGame) return; // no react/reply menu on game cards
   const menu = $('message-action-menu');
 
   // Quick-set reaction buttons
@@ -545,7 +597,9 @@ function closeImageViewer() {
 function wireMessageGestures(rows) {
   $('message-list').querySelectorAll('.message-bubble').forEach((bubble) => {
     const message = rows.find((row) => row.id === bubble.dataset.message);
-    if (!message) return;
+    if (!message || message.isGame) return; // game cards have their own buttons
+    if (bubble.dataset.gw === '1') return;  // cached row — gestures already wired
+    bubble.dataset.gw = '1';
     let pressTimer = null;
     let singleTapTimer = null;
     let longPressed = false;
@@ -1559,8 +1613,8 @@ function syncThreadSummaryWatchers() {
     state.stopThreadSummaries[threadId] = onValue(ref(db, `chatThreads/${threadId}`), (snapshot) => {
       const thread = snapshot.val(); const current = state.inbox[threadId];
       if (!thread || !current) return;
-      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '', pic: thread.pic || current.pic || '' };
-      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '')) return;
+      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '', pic: thread.pic || current.pic || '', lbRewardsEnabled: thread.lbRewardsEnabled === true };
+      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '') && next.lbRewardsEnabled === current.lbRewardsEnabled) return;
       state.inbox = { ...state.inbox, [threadId]: next };
       if (state.activeThreadId === threadId) { state.activeInboxItem = next; updateChatHeader(); renderMessages(state.messages); }
       saveInboxCache();
@@ -1852,6 +1906,7 @@ $('conversation-options-button').addEventListener('click', () => {
   const isGroup = state.activeInboxItem?.isGroup;
   const isCreator = isGroup && state.activeInboxItem?.creatorId === state.user?.uid;
   const isModerator = isCreator || (isGroup && !!state.activeInboxItem?.moderators?.[state.user?.uid]);
+  const isAdmin = isSiteAdmin();
   
   $('set-nickname-button').classList.toggle('hidden', !!isGroup);
   $('set-my-nickname-button').classList.toggle('hidden', !isGroup);
@@ -1864,6 +1919,20 @@ $('conversation-options-button').addEventListener('click', () => {
   $('transfer-ownership-button').classList.toggle('hidden', !isCreator);
   $('leave-group-button').classList.toggle('hidden', !isGroup);
   $('copy-invite-link-button').classList.toggle('hidden', !state.activeInboxItem?.isPublic);
+  
+  // Admin-only Leaderboard Rewards Toggle for Group Chats
+  const lbBtn = $('toggle-lb-rewards-button');
+  if (lbBtn) {
+    lbBtn.classList.toggle('hidden', !isGroup || !isAdmin);
+    const lbOn = state.activeInboxItem?.lbRewardsEnabled === true;
+    const titleEl = $('toggle-lb-rewards-title');
+    const subEl = $('toggle-lb-rewards-sub');
+    const iconEl = $('toggle-lb-rewards-icon');
+    if (titleEl) titleEl.textContent = lbOn ? '🏆 LB Rewards: Enabled' : '🎮 LB Rewards: Disabled';
+    if (subEl) subEl.textContent = lbOn ? 'Admin: Click to disable LB points for games in this GC' : 'Admin: Click to enable LB points for games in this GC';
+    if (iconEl) iconEl.style.color = lbOn ? '#10b981' : '#f59e0b';
+  }
+
   $('pin-conversation-text').textContent = state.activeInboxItem?.pinned ? 'Unpin Conversation' : 'Pin Conversation';
   $('conversation-dialog').showModal();
 });
@@ -1890,6 +1959,21 @@ $('copy-invite-link-button')?.addEventListener('click', () => {
   const link = `${window.location.origin}${window.location.pathname}?invite=${state.activeThreadId}`;
   navigator.clipboard.writeText(link).then(() => showToast('Invite link copied to clipboard!')).catch(() => showToast('Failed to copy link.'));
   $('conversation-dialog').close();
+});
+$('toggle-lb-rewards-button')?.addEventListener('click', async () => {
+  if (!isSiteAdmin() || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  const current = state.activeInboxItem?.lbRewardsEnabled === true;
+  const next = !current;
+  try {
+    await update(ref(db, `chatThreads/${state.activeThreadId}`), { lbRewardsEnabled: next });
+    if (state.activeInboxItem) state.activeInboxItem.lbRewardsEnabled = next;
+    if (state.inbox[state.activeThreadId]) state.inbox[state.activeThreadId].lbRewardsEnabled = next;
+    $('conversation-dialog').close();
+    updateChatHeader();
+    showToast(next ? '🏆 LB Rewards ENABLED for this group chat.' : 'LB Rewards DISABLED for this group chat.');
+  } catch (err) {
+    showToast('Failed to update setting: ' + (err.message || 'Unknown error'));
+  }
 });
 $('close-auth-button').addEventListener('click', () => $('auth-dialog').close());
 
@@ -2145,7 +2229,7 @@ $('attach-voice-item')?.addEventListener('click', () => {
 });
 $('attach-game-item')?.addEventListener('click', () => {
   $('attach-menu')?.classList.add('hidden');
-  showToast('🎮 Hangout Mini-Games are coming in the next update!');
+  window.ChatGames?.openPicker();
 });
 
 $('voice-rec-stop')?.addEventListener('click', stopVoiceRecording);
