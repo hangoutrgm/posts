@@ -304,8 +304,9 @@ export const createGame = async (type) => {
     const snap = await get(counterRef).catch(() => null);
     const used = snap?.exists() ? Number(snap.val()) : 0;
     if (used >= typeLimit) {
-      toast(`Daily limit reached: you've already hosted ${used}/${typeLimit} "${meta.name}" games today. Resets at 12:00 AM.`);
-      return;
+      const err = new Error('limit_reached');
+      err.limitMessage = `Daily limit reached — you've already hosted ${used}/${typeLimit} "${meta.name}" games today. Resets at 12:00 AM.`;
+      throw err;
     }
   }
 
@@ -324,9 +325,9 @@ export const createGame = async (type) => {
   let game;
   try { game = await buildGame(type); }
   catch (e) {
-    if (e && e.message === 'cancelled') return; // host closed the setup modal — not an error
+    if (e && e.message === 'cancelled') throw e; // host closed setup modal
     console.warn('[ChatGames] build failed:', e);
-    return;
+    throw e;
   }
 
   // Atomic limit consumption
@@ -342,8 +343,9 @@ export const createGame = async (type) => {
       limitReached = !txn.committed;
     } catch (_) {}
     if (limitReached) {
-      toast(`Daily limit reached: you have reached the limit of ${typeLimit} "${meta.name}" games for today.`);
-      return;
+      const err = new Error('limit_reached');
+      err.limitMessage = `Daily limit reached — you've reached the daily limit of ${typeLimit} "${meta.name}" games for today. Resets at 12:00 AM.`;
+      throw err;
     }
   }
 

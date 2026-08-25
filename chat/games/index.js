@@ -2,7 +2,7 @@
 // chat/games/index.js — public API + picker wiring
 // Exposes window.ChatGames used by app.js and inline onclicks.
 // ============================================================
-import * as engine from './engine.js?v=15';
+import * as engine from './engine.js?v=16';
 import { renderBody, pickerHtml, setContext } from './renderers.js?v=18';
 import { GAME_META } from './helpers.js?v=6';
 
@@ -159,9 +159,13 @@ window.ChatGames = {
       if (err && err.cooldownWait) {
         const s = err.cooldownWait;
         _toast(`⏳ Game cooldown — please wait ${s}${s === 1 ? ' second' : ' seconds'} before posting another game.`);
+      } else if (err && err.limitMessage) {
+        _toast(`🚫 ${err.limitMessage}`);
+      } else if (err && (err.message === 'cancelled' || err === 'cancelled')) {
+        // User closed the setup modal / prompt — silently cancel
       } else {
         console.error(err);
-        _toast('Could not start that game.');
+        _toast(`Could not start game: ${err?.message || 'unknown error'}`);
       }
     }
   },
