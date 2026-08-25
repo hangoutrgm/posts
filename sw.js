@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v69';
+const CACHE_NAME = 'hangout-v70';
 
 // All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
@@ -6,7 +6,7 @@ const PRECACHE_ASSETS = [
   './index.html',
   './chat/index.html',
   './css/styles.css',
-  './chat/css/styles.css?v=13',
+  './chat/css/styles.css?v=14',
   './js/renderers.js?v=29',
   './js/helpers.js?v=36',
   './js/games.js?v=31',

@@ -1323,8 +1323,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .cg-badge { padding: 2px 7px; border-radius: 999px; font-size: 10px; }
 .cg-badge.r { background: #ffe4e6; color: #be123c; }
 .cg-badge.y { background: #fef9c3; color: #a16207; }
+.cg-badge.g { background: #dcfce7; color: #15803d; }
 :root.dark .cg-badge.r { background: rgba(159,18,57,.45); color: #fecdd3; }
 :root.dark .cg-badge.y { background: rgba(161,98,7,.45); color: #fde68a; }
+:root.dark .cg-badge.g { background: rgba(22,101,52,.45); color: #86efac; }
 .cg-vs { color: #9ca3af; font-weight: 900; font-size: 9px; }
 .cg-open-slot { opacity: .6; font-style: italic; }
 
@@ -1415,6 +1417,12 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   background: radial-gradient(circle at 35% 35%, #fde68a, #fbbf24);
   border: 1.5px solid #fef08a;
   box-shadow: 0 2px 6px rgba(245,158,11,.4);
+  animation: cgdrop .2s cubic-bezier(.34,1.4,.64,1);
+}
+.cg-disc.G {
+  background: radial-gradient(circle at 35% 35%, #86efac, #16a34a);
+  border: 1.5px solid #bbf7d0;
+  box-shadow: 0 2px 6px rgba(22,163,74,.4);
   animation: cgdrop .2s cubic-bezier(.34,1.4,.64,1);
 }
 @keyframes cgdrop { from { transform: scale(.4); opacity: .3; } to { transform: scale(1); opacity: 1; } }
