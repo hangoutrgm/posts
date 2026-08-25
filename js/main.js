@@ -880,8 +880,9 @@ document.getElementById('post-image-file').addEventListener('change', function()
         if (fileNameEl) fileNameEl.innerText = '';
     };
     if (!files.length) { clearPreview(); return; }
-    // Collage mode: photos only, max 4. Videos must be posted individually.
-    if (files.some(f => f.type.startsWith('video/'))) {
+    // Collage mode: photos only, max 4. A single video is allowed through (handled by the submit
+    // path below); only reject videos that are combined with other files into a collage.
+    if (files.length > 1 && files.some(f => f.type.startsWith('video/'))) {
         window.showAlert("Videos can't be combined into a collage. Please post the video by itself.");
         this.value = '';
         clearPreview();
