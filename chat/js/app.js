@@ -1,6 +1,6 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import '../games/index.js?v=21';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
@@ -296,7 +296,12 @@ function renderMessages(rawMessages, jumpToLatest = false) {
   const list = $('message-list');
   const wasNearLatest = list ? (list.scrollHeight - list.scrollTop - list.clientHeight < 250) : false;
   const rows = visibleMessages();
-  if (!rows.length) { list.innerHTML = '<p class="list-empty messages-empty">No messages yet. Say hello!</p>'; return; }
+  if (!rows.length) {
+    if (state.messagesLoaded && list) {
+      list.innerHTML = '<p class="list-empty messages-empty">No messages yet. Say hello!</p>';
+    }
+    return;
+  }
   
   const lastMsg = rows[rows.length - 1];
   const isNewArrival = window._lastRenderedMsgId && window._lastRenderedMsgId !== lastMsg.id;
@@ -402,8 +407,15 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       const t = document.createElement('template');
       t.innerHTML = html.trim();
       const node = t.content.firstElementChild;
-      const nxt = rows[i + 1] ? document.getElementById('message-' + rows[i + 1].id) : null;
-      if (nxt && nxt.parentNode === list) list.insertBefore(node, nxt);
+      let nxt = null;
+      for (let j = i + 1; j < rows.length; j++) {
+        const candidate = document.getElementById('message-' + rows[j].id);
+        if (candidate && candidate.parentNode === list) {
+          nxt = candidate;
+          break;
+        }
+      }
+      if (nxt) list.insertBefore(node, nxt);
       else list.appendChild(node);
     }
     state._rowCache[key] = rowSig[key];
@@ -822,10 +834,25 @@ async function loadOlderMessages() {
   }
   state.loadingOldMessages = false;
   const list = $('message-list');
-  const prevHeight = list.scrollHeight;
+  const prevHeight = list ? list.scrollHeight : 0;
   renderMessages(undefined, false);
   // Preserve scroll position after prepend
-  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight - prevHeight + list.scrollTop; });
+  if (list) {
+    requestAnimationFrame(() => { list.scrollTop = list.scrollHeight - prevHeight + list.scrollTop; });
+  }
+}
+
+let _scrollRaf = null;
+function onMessageListScroll() {
+  if (_scrollRaf) return;
+  _scrollRaf = requestAnimationFrame(() => {
+    _scrollRaf = null;
+    const list = $('message-list');
+    if (!list) return;
+    if (list.scrollTop < 100) {
+      loadOlderMessages();
+    }
+  });
 }
 
 function watchPinnedMessage(threadId) {
@@ -1096,8 +1123,13 @@ function openThread(threadId, inboxItem) {
   state.noMoreOldMessages = false;
   state.loadingOldMessages = false;
   $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
-  if (state.stopMessages) state.stopMessages();
-  state.messages = {}; state.messagesLoaded = false;
+  if (state.stopMessages) {
+    try { state.stopMessages(); } catch (_) {}
+    state.stopMessages = null;
+  }
+  state.messages = {};
+  state.messagesLoaded = false;
+  state._rowCache = {};
   $('message-list').innerHTML = `<div class="msg-skeleton-list">
     <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
@@ -1105,19 +1137,62 @@ function openThread(threadId, inboxItem) {
     <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
   </div>`;
-  state.stopMessages = onValue(query(ref(db, `chatMessages/${threadId}`), limitToLast(30)), (snapshot) => {
-    const firstLoad = !state.messagesLoaded;
-    state.messagesLoaded = true;
-    const fresh = snapshot.val() || {};
-    state.messages = { ...state.messages, ...fresh };
-    renderMessages(undefined, firstLoad);
-    markThreadSeen(threadId);
-  });
-  // Scroll-up to load older messages
+
+  const msgQuery = query(ref(db, `chatMessages/${threadId}`), limitToLast(30));
+  let renderScheduled = false;
+  let isInitialBatch = true;
+
+  const scheduleRender = (forceJump = false) => {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    queueMicrotask(() => {
+      renderScheduled = false;
+      const initial = isInitialBatch;
+      isInitialBatch = false;
+      state.messagesLoaded = true;
+      renderMessages(undefined, initial || forceJump);
+      markThreadSeen(threadId);
+    });
+  };
+
+  const unsubAdd = onChildAdded(msgQuery, (snapshot) => {
+    state.messages[snapshot.key] = snapshot.val();
+    const isMine = snapshot.val()?.senderId === state.user?.uid;
+    scheduleRender(isMine);
+  }, (error) => reportRealtimeError('chat messages (added)', error));
+
+  const unsubChange = onChildChanged(msgQuery, (snapshot) => {
+    state.messages[snapshot.key] = snapshot.val();
+    scheduleRender(false);
+  }, (error) => reportRealtimeError('chat messages (changed)', error));
+
+  const unsubRemove = onChildRemoved(msgQuery, (snapshot) => {
+    delete state.messages[snapshot.key];
+    scheduleRender(false);
+  }, (error) => reportRealtimeError('chat messages (removed)', error));
+
+  // Fallback if conversation has 0 messages
+  setTimeout(() => {
+    if (!state.messagesLoaded && state.activeThreadId === threadId) {
+      state.messagesLoaded = true;
+      renderMessages(undefined, true);
+    }
+  }, 400);
+
+  state.stopMessages = () => {
+    try { unsubAdd(); } catch (_) {}
+    try { unsubChange(); } catch (_) {}
+    try { unsubRemove(); } catch (_) {}
+  };
+
+  // Scroll-up to load older messages (RAF-throttled + passive listener)
   const list = $('message-list');
-  list._scrollHandler && list.removeEventListener('scroll', list._scrollHandler);
-  list._scrollHandler = () => { if (list.scrollTop < 80) loadOlderMessages(); };
-  list.addEventListener('scroll', list._scrollHandler);
+  if (list) {
+    list._scrollHandler && list.removeEventListener('scroll', list._scrollHandler);
+    list._scrollHandler = onMessageListScroll;
+    list.addEventListener('scroll', list._scrollHandler, { passive: true });
+  }
+
   watchStreak(threadId);
   watchPinnedMessage(threadId);
   watchTyping(threadId); watchSeen(threadId); syncThreadSummaryWatchers(); 
@@ -2281,7 +2356,59 @@ $('chat-avatar-wrap')?.addEventListener('click', () => {
   const peerIds = getThreadPeers(state.activeInboxItem);
   const peerId = peerIds[0] || (state.activeInboxItem.peerId === state.user?.uid ? state.user?.uid : state.activeInboxItem.peerId);
   if (peerId) openUserProfile(peerId);
+});// ── Auto-refresh when returning from background / unlocking screen ──
+let _lastForegroundTime = Date.now();
+let _resumeRefreshTimeout = null;
+
+function handleForegroundResume() {
+  if (document.hidden) return;
+  const elapsed = Date.now() - _lastForegroundTime;
+  _lastForegroundTime = Date.now();
+
+  // If returning after being in background for more than 4 seconds or disconnected:
+  if (elapsed > 4000 || !state.connected) {
+    try {
+      goOnline(db);
+    } catch (_) {}
+
+    if (state.user) {
+      startOwnPresence();
+
+      // If a chat conversation is currently open, verify & sync latest messages
+      if (state.activeThreadId) {
+        clearTimeout(_resumeRefreshTimeout);
+        _resumeRefreshTimeout = setTimeout(async () => {
+          if (!state.activeThreadId) return;
+          try {
+            const snap = await get(query(ref(db, `chatMessages/${state.activeThreadId}`), limitToLast(30)));
+            if (snap.exists()) {
+              const fresh = snap.val() || {};
+              state.messages = { ...state.messages, ...fresh };
+              renderMessages(undefined, false);
+              markThreadSeen(state.activeThreadId);
+            }
+          } catch (e) {
+            console.warn('Background sync error:', e);
+          }
+        }, 300);
+      }
+
+      // Also refresh inbox state
+      get(ref(db, `chatInboxes/${state.user.uid}`)).then((snap) => {
+        if (snap.exists()) {
+          handleInbox(snap);
+        }
+      }).catch(() => {});
+    }
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    handleForegroundResume();
+  } else {
+    _lastForegroundTime = Date.now();
+  }
 });
-
-
-
+window.addEventListener('focus', handleForegroundResume);
+window.addEventListener('pageshow', handleForegroundResume);
