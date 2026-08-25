@@ -190,15 +190,26 @@ function renderConversations() {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     return (b.lastTimestamp || 0) - (a.lastTimestamp || 0);
   });
+  // Member search: while typing, also surface registered members so a first-time
+  // user can start a brand-new chat straight from the search bar.
+  let memberMatches = [];
+  if (term && state.user) {
+    const shownThreadIds = new Set(items.map((item) => item.id));
+    memberMatches = Object.values(state.users).filter((person) => {
+      if (!person.uid || person.uid === state.user.uid || person.isBanned) return false;
+      if (shownThreadIds.has(threadIdFor(person.uid))) return false; // already listed above
+      return `${person.name || ''}`.toLowerCase().includes(term);
+    }).sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 10);
+  }
   if (!state.user) { list.innerHTML = ''; return; }
-  if (!Object.keys(state.inbox).length && !state.inboxReady) {
+  if (!Object.keys(state.inbox).length && !state.inboxReady && !term) {
     list.innerHTML = `<div class="conv-skeleton-list">${Array.from({length:6}, () =>
       `<div class="conv-skeleton-row"><div class="conv-skeleton-avatar skeleton"></div><div class="conv-skeleton-body"><div class="conv-skeleton-name skeleton"></div><div class="conv-skeleton-preview skeleton"></div></div></div>`
     ).join('')}</div>`;
     return;
   }
-  if (!items.length) { list.innerHTML = '<p class="list-empty">No conversations yet. Tap the compose button to say hello.</p>'; return; }
-  list.innerHTML = items.map((item) => {
+  if (!items.length && !memberMatches.length) { list.innerHTML = `<p class="list-empty">${term ? `No chats or members found for \u201c${escapeHtml(term)}\u201d.` : 'No conversations yet. Tap the compose button to say hello.'}</p>`; return; }
+  let html = items.map((item) => {
     const peerIds = getThreadPeers(item);
     const name = getThreadName(item, peerIds);
     const unread = Number(item.unreadCount || 0);
@@ -208,10 +219,16 @@ function renderConversations() {
     const streakHtml = streak && streak.count >= 1 ? `<span class="conv-streak-badge">🔥${streak.count}</span>` : '';
     return `<button class="conversation${item.id === state.activeThreadId ? ' selected' : ''}${unread ? ' unread' : ''}" data-thread="${escapeHtml(item.id)}"><span class="conversation-avatar">${renderAvatarHtml(peerIds, item)}${presenceHtml}</span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${item.pinned ? '📌 ' : ''}${escapeHtml(name)}</span>${streakHtml}<span class="conversation-time">${formatTime(item.lastTimestamp)}</span></span><span class="conversation-preview"><span>${escapeHtml(preview)}</span>${unread ? `<b class="unread-badge">${unread > 99 ? '99+' : unread}</b>` : ''}</span></span></button>`;
   }).join('');
-  list.querySelectorAll('.conversation').forEach((button) => button.addEventListener('click', () => {
+  if (memberMatches.length) {
+    html += `<div class="member-search-label">Members</div>`;
+    html += memberMatches.map((person) => `<button class="conversation member-result" data-user="${escapeHtml(person.uid)}"><span class="conversation-avatar"><img class="avatar" src="${escapeHtml(avatarUrl(person))}" alt=""></span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(person.name || 'Hangout member')}</span></span><span class="conversation-preview"><span><i class="online-dot${isOnline(person.uid) ? ' online' : ''}"></i> ${isOnline(person.uid) ? 'Online · Tap to message' : 'Tap to message'}</span></span></span></button>`).join('');
+  }
+  list.innerHTML = html;
+  list.querySelectorAll('.conversation:not(.member-result)').forEach((button) => button.addEventListener('click', () => {
     const threadId = button.dataset.thread;
     openThread(threadId, state.inbox[threadId]);
   }));
+  list.querySelectorAll('.member-result').forEach((button) => button.addEventListener('click', () => startConversation(button.dataset.user)));
 }
 
 function renderPeople() {

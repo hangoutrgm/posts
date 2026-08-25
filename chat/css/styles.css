@@ -2001,6 +2001,17 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   font-weight: 500;
 }
 
+/* ── Member results inside the conversation search ── */
+.member-search-label {
+  margin: 14px 12px 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.conversation.member-result .conversation-name { font-weight: 600; }
+
 
 
 

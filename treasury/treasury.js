@@ -1,6 +1,6 @@
 // treasury.js
 import { app, auth, db } from "../js/firebase-config.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, push, update, remove, set, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 const ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
@@ -65,10 +65,70 @@ function toast(msg) {
 }
 
 // ── Auth gate ──
+// Logged-out visitors get an inline sign-in card here instead of being bounced home.
+let gateSignUp = false;
+function showAuthGate() {
+    const gate = $('auth-gate');
+    if (!gate) { window.location.href = '../'; return; }   // markup missing: fall back to old behavior
+    $('loading-screen').classList.add('hidden');
+    gate.classList.remove('hidden');
+}
+function hideAuthGate() { const g = $('auth-gate'); if (g) g.classList.add('hidden'); }
+const setGateError = (msg) => { const el = $('gate-error'); if (!el) return; el.textContent = msg; el.classList.toggle('hidden', !msg); };
+const gateBusy = (busy) => ['gate-google', 'gate-submit'].forEach((id) => { const b = $(id); if (b) b.disabled = busy; });
+
+function initAuthGate() {
+    if (!$('auth-gate')) return;
+    $('gate-google').addEventListener('click', async () => {
+        setGateError('');
+        gateBusy(true);
+        try {
+            await signInWithPopup(auth, new GoogleAuthProvider());   // onAuthStateChanged continues the flow
+        } catch (e) { setGateError(e.message.replace('Firebase: ', '')); gateBusy(false); }
+    });
+    $('gate-toggle').addEventListener('click', () => {
+        gateSignUp = !gateSignUp;
+        $('gate-title').textContent = gateSignUp ? 'Create your Treasury account' : 'Sign in to open your Treasury';
+        $('gate-submit').textContent = gateSignUp ? 'Create Account' : 'Sign In';
+        $('gate-toggle').textContent = gateSignUp ? 'Already have an account? Sign in' : 'Need an account? Create one';
+        $('gate-password').autocomplete = gateSignUp ? 'new-password' : 'current-password';
+        setGateError('');
+    });
+    $('gate-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        setGateError('');
+        const email = $('gate-email').value.trim();
+        const pass = $('gate-password').value;
+        if (!email) return setGateError('Enter your email address.');
+        if (!pass || pass.length < 6) return setGateError('Passwords must be at least 6 characters.');
+        gateBusy(true);
+        $('gate-submit').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        try {
+            if (gateSignUp) {
+                // Same profile seeding as the main site so new accounts appear everywhere.
+                const cred = await createUserWithEmailAndPassword(auth, email, pass);
+                const name = `User_${Math.floor(Math.random() * 999)}`;
+                const pic = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cred.user.uid)}&backgroundColor=transparent`;
+                await updateProfile(cred.user, { displayName: name, photoURL: pic });
+                await update(ref(db, `users/${cred.user.uid}`), { uid: cred.user.uid, name, pic });
+            } else {
+                await signInWithEmailAndPassword(auth, email, pass);
+            }
+            // Success: onAuthStateChanged hides the gate and loads the vault.
+        } catch (e) {
+            setGateError(e.message.replace('Firebase: ', ''));
+            $('gate-submit').textContent = gateSignUp ? 'Create Account' : 'Sign In';
+            gateBusy(false);
+        }
+    });
+}
+initAuthGate();
+
 // Every signed-in user gets their own treasury space (treasury/{uid}/...) with full control.
 // Users appointed as "treasurers" by a sponsor can also open and manage the sponsor's treasury.
 onAuthStateChanged(auth, async (user) => {
-    if (!user) { window.location.href = '../'; return; }
+    if (!user) { showAuthGate(); return; }   // inline sign-in card instead of bouncing visitors home
+    hideAuthGate();
     state.myUid = user.uid;
 
     await migrateLegacyIfNeeded();   // one-time move of the old shared pool under the Super Admin account
