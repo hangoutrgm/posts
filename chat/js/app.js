@@ -464,6 +464,9 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     });
     window._jumpToLatest = false;
   }
+  // Persist the current thread's loaded history (debounced) — keeps the scroll
+  // cache in sync on reloads, new messages, edits and clears.
+  if (state.activeThreadId) saveMessagesCache(state.activeThreadId, state.messages);
 }
 
 // ── Message Action Menu (long-press / right-click) ──
@@ -835,23 +838,31 @@ function watchTyping(threadId) {
 }
 async function loadOlderMessages() {
   if (!state.activeThreadId || state.loadingOldMessages || state.noMoreOldMessages) return;
-  const rows = visibleMessages();
-  if (!rows.length) return;
-  const oldestKey = rows[0].id; // Firebase push keys are time-ordered, no index needed
+  const loadedKeys = Object.keys(state.messages).sort();
+  if (!loadedKeys.length) return;
+  // Cursor = the oldest *loaded* message key (not the first *visible* one). This keeps us
+  // walking backward through the entire thread even after a user cleared their chat, instead
+  // of stalling right at the clear cut-off (which would wrongly say "Beginning of conversation").
+  const oldestKey = loadedKeys[0]; // Firebase push keys are time-ordered, no index needed
   state.loadingOldMessages = true;
   renderMessages(undefined, false);
   try {
     const snap = await get(query(ref(db, `chatMessages/${state.activeThreadId}`), orderByKey(), endBefore(oldestKey), limitToLast(25)));
     if (!snap.exists()) {
-      state.noMoreOldMessages = true;
+      // Only trust "no older messages" if we're genuinely connected. When the query returns
+      // empty during an offline blip (RTDB serving its local cache), older messages may still
+      // exist — so we stay retryable instead of wrongly stamping "Beginning of conversation".
+      if (state.connected) state.noMoreOldMessages = true;
+      else console.warn('loadOlderMessages: empty result while offline — will retry');
     } else {
       const older = snap.val();
       state.messages = { ...older, ...state.messages };
-      if (Object.keys(older).length < 25) state.noMoreOldMessages = true;
+      if (Object.keys(older).length < 25 && state.connected) state.noMoreOldMessages = true;
     }
   } catch (e) {
-    console.error('loadOlderMessages error', e);
-    state.noMoreOldMessages = true; // prevent infinite retry on error
+    // A transient fetch error (brief offline blip, slow cold start, etc.) must NOT be treated
+    // as "we reached the beginning". Just release the loading lock so a later scroll retries.
+    console.error('loadOlderMessages error (will retry on next scroll)', e);
   }
   state.loadingOldMessages = false;
   const list = $('message-list');
@@ -1150,14 +1161,25 @@ function openThread(threadId, inboxItem) {
   }
   state.messages = {};
   state.messagesLoaded = false;
+
+  // Persist the thread we're leaving, then restore this thread's cached history so it
+  // renders instantly (no skeleton flash) and the scroll cursor resumes where we left off.
+  if (state.activeThreadId && state.activeThreadId !== threadId && state.messages) saveMessagesCache(state.activeThreadId, state.messages, 0);
+  const cachedMessages = loadMessagesCache(threadId);
+  state.messages = cachedMessages || {};
+  state.messagesLoaded = Boolean(cachedMessages);
   state._rowCache = {};
-  $('message-list').innerHTML = `<div class="msg-skeleton-list">
+  if (cachedMessages) {
+    renderMessages(undefined, false);
+  } else {
+    $('message-list').innerHTML = `<div class="msg-skeleton-list">
     <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
     <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
   </div>`;
+  }
 
   const msgQuery = query(ref(db, `chatMessages/${threadId}`), limitToLast(30));
   let renderScheduled = false;
@@ -1696,6 +1718,31 @@ function stopThreadSummaryWatchers() {
 }
 function saveInboxCache() {
   if (state.user) localStorage.setItem(`hangout-inbox-${state.user.uid}`, JSON.stringify(state.inbox));
+}
+
+// ── Message history cache (localStorage) ──
+// Persists every thread's loaded messages so they survive a page refresh and the
+// scroll-history never needs to be rebuilt from scratch. Debounced per-thread so
+// rapid message/typing events don't thrash storage.
+const _msgsTimer = {};
+function saveMessagesCache(threadId, messages, delay = 400) {
+  if (!threadId || !state.user) return;
+  clearTimeout(_msgsTimer[threadId]);
+  _msgsTimer[threadId] = setTimeout(() => {
+    try {
+      const payload = { savedAt: Date.now(), uid: state.user.uid, messages: messages || {} };
+      localStorage.setItem(`hangout-chat-msgs-${threadId}`, JSON.stringify(payload));
+    } catch (e) { /* storage quota — skip gracefully */ }
+    delete _msgsTimer[threadId];
+  }, delay);
+}
+function loadMessagesCache(threadId) {
+  if (!threadId || !state.user) return null;
+  try {
+    const p = JSON.parse(localStorage.getItem(`hangout-chat-msgs-${threadId}`) || 'null');
+    if (!p || p.uid !== state.user.uid || !p.messages) return null;
+    return p.messages;
+  } catch (e) { return null; }
 }
 
 function syncThreadSummaryWatchers() {
