@@ -1,6 +1,6 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { endBefore, get, limitToLast, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import '../games/index.js?v=25';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
@@ -848,21 +848,34 @@ async function loadOlderMessages() {
   renderMessages(undefined, false);
   try {
     const snap = await get(query(ref(db, `chatMessages/${state.activeThreadId}`), orderByKey(), endBefore(oldestKey), limitToLast(25)));
-    if (!snap.exists()) {
-      // Only trust "no older messages" if we're genuinely connected. When the query returns
-      // empty during an offline blip (RTDB serving its local cache), older messages may still
-      // exist — so we stay retryable instead of wrongly stamping "Beginning of conversation".
-      if (state.connected) state.noMoreOldMessages = true;
-      else console.warn('loadOlderMessages: empty result while offline — will retry');
-    } else {
-      const older = snap.val();
+    if (snap.exists()) {
+      const older = snap.val() || {};
       state.messages = { ...older, ...state.messages };
-      if (Object.keys(older).length < 25 && state.connected) state.noMoreOldMessages = true;
     }
   } catch (e) {
     // A transient fetch error (brief offline blip, slow cold start, etc.) must NOT be treated
     // as "we reached the beginning". Just release the loading lock so a later scroll retries.
     console.error('loadOlderMessages error (will retry on next scroll)', e);
+  }
+  // ---- Authoritative beginning check ----
+  // The paged fetch above can transiently return empty/short (reconnect cache race), which would
+  // wrongly stamp "Beginning of conversation" while older messages still exist. So we confirm
+  // against the node's TRUE oldest message key (limitToFirst(1)) and only show the end marker
+  // once we actually hold that first key.
+  if (state.activeThreadId && !state.noMoreOldMessages) {
+    try {
+      const firstSnap = await get(query(ref(db, `chatMessages/${state.activeThreadId}`), orderByKey(), limitToFirst(1)));
+      const trueFirstKey = firstSnap.exists() ? Object.keys(firstSnap.val())[0] : null;
+      if (trueFirstKey === null) {
+        // Node has no messages at all — we're at the start.
+        state.noMoreOldMessages = true;
+      } else {
+        const nowOldest = Object.keys(state.messages).sort()[0];
+        if (nowOldest === trueFirstKey) state.noMoreOldMessages = true;
+      }
+    } catch (e) {
+      // If the confirm query fails, stay retryable rather than risk showing a false end.
+    }
   }
   state.loadingOldMessages = false;
   const list = $('message-list');
@@ -1159,12 +1172,15 @@ function openThread(threadId, inboxItem) {
     try { state.stopMessages(); } catch (_) {}
     state.stopMessages = null;
   }
+
+  // Persist the thread we're leaving FIRST (before state.messages is reset) so its
+  // loaded history survives; then restore this thread's cache for an instant render.
+  if (state.activeThreadId && state.activeThreadId !== threadId && Object.keys(state.messages || {}).length) {
+    saveMessagesCache(state.activeThreadId, state.messages, 0);
+  }
   state.messages = {};
   state.messagesLoaded = false;
 
-  // Persist the thread we're leaving, then restore this thread's cached history so it
-  // renders instantly (no skeleton flash) and the scroll cursor resumes where we left off.
-  if (state.activeThreadId && state.activeThreadId !== threadId && state.messages) saveMessagesCache(state.activeThreadId, state.messages, 0);
   const cachedMessages = loadMessagesCache(threadId);
   state.messages = cachedMessages || {};
   state.messagesLoaded = Boolean(cachedMessages);
