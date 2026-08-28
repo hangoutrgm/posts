@@ -369,6 +369,7 @@
                     <option value="tictactoe">Tic Tac Toe</option>
                     <option value="four_in_a_row">4 in a Row (7x7)</option>
                     <option value="drop_four">Connect 4</option>
+                    <option value="connect4_pro_max">Connect 4 Pro Max (4P, 7x9)</option>
                     <option value="hangman">Hangman</option>
                     <option value="gibberish">Gibberish</option>
                     <option value="emoji_riddle">Emoji Riddle (Movie/Song/Idiom)</option>
@@ -651,6 +652,11 @@
                     <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">You will play as <span class="font-bold text-rose-600">🔴 Red</span>. Click a column to drop your piece to the bottom. Connect 4 in a row to win!</p>
                 </div>
 
+                <div id="game-pro-four-container" class="hidden mb-3 border border-blue-300 dark:border-blue-800 rounded-lg p-3 bg-blue-50 dark:bg-blue-950/40">
+                    <p class="text-xs font-bold text-blue-800 dark:text-blue-200 mb-2">🟡🔴 Connect 4 Pro Max (7x9)</p>
+                    <p class="text-xs text-gray-600 dark:text-gray-300 mb-1">4 players — 🔴 Red vs 🟡 Yellow vs 🔵 Blue vs 🟢 Green on a bigger 7×9 board. Drop your piece and connect 4 in a row to win!</p>
+                </div>
+
                 <div id="game-periodic-table-container" class="hidden mb-3 border border-cyan-200 dark:border-cyan-900/50 rounded-lg p-3 bg-cyan-50 dark:bg-cyan-900/20">
                     <div class="flex justify-between items-center mb-2">
                         <p class="text-xs font-bold text-cyan-800 dark:text-cyan-200">🧪 Periodic Table of Elements</p>
@@ -783,9 +789,9 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=30"></script>
-    <script type="module" src="js/helpers.js?v=36"></script>
-    <script type="module" src="js/games.js?v=31"></script>
+    <script type="module" src="js/renderers.js?v=31"></script>
+    <script type="module" src="js/helpers.js?v=37"></script>
+    <script type="module" src="js/games.js?v=32"></script>
     <script type="module" src="js/main.js?v=29"></script>
     <script>
         if ('serviceWorker' in navigator) {

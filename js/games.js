@@ -301,6 +301,7 @@ window.gameTypeLabel = (type) => {
         'tictactoe': 'Tic Tac Toe',
         'four_in_a_row': '4 in a Row (7x7)',
         'drop_four': 'Connect 4',
+        'connect4_pro_max': 'Connect 4 Pro Max (4P 7x9)',
         'hangman': 'Hangman',
         'gibberish': 'Guess the Gibberish',
         'emoji_riddle': 'Emoji Riddle',
@@ -619,6 +620,7 @@ window.toggleGameSettings = () => {
     const tictactoeContainer = document.getElementById('game-tictactoe-container');
     const fourInARowContainer = document.getElementById('game-four-in-a-row-container');
     const dropFourContainer = document.getElementById('game-drop-four-container');
+    const proFourContainer = document.getElementById('game-pro-four-container');
     const hangmanContainer = document.getElementById('game-hangman-container');
     const gibberishContainer = document.getElementById('game-gibberish-container');
     const emojiRiddleContainer = document.getElementById('game-emoji-riddle-container');
@@ -641,7 +643,7 @@ window.toggleGameSettings = () => {
         settingsDiv.classList.add('hidden');
     }
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four') targetUserContainer.classList.remove('hidden');
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four' || type === 'connect4_pro_max') targetUserContainer.classList.remove('hidden');
     else targetUserContainer.classList.add('hidden');
 
     if (type === 'challenge') challengeTargets.classList.remove('hidden');
@@ -696,6 +698,12 @@ window.toggleGameSettings = () => {
         if (dropFourContainer) dropFourContainer.classList.remove('hidden');
     } else {
         if (dropFourContainer) dropFourContainer.classList.add('hidden');
+    }
+
+    if (type === 'connect4_pro_max') {
+        if (proFourContainer) proFourContainer.classList.remove('hidden');
+    } else {
+        if (proFourContainer) proFourContainer.classList.add('hidden');
     }
 
     if (type === 'hangman') hangmanContainer.classList.remove('hidden');
@@ -886,7 +894,7 @@ window.submitGame = async () => {
     let fourPlayerCount = 2;
     let dropFourPlayerCount = 2;
 
-    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || ((type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four') && document.getElementById('game-target-user').value.trim())) {
+    if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || ((type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four' || type === 'connect4_pro_max') && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
         if (targetNameInput) {
             // Resolve name -> UID
@@ -1137,6 +1145,11 @@ window.submitGame = async () => {
             ? `🟡🔴 Connect 4 (7x6 Drop, ${dropFourPlayerCount} Players) match challenge against @${targetUserName}!`
             : `🟡🔴 Open Connect 4 (7x6 Drop, ${dropFourPlayerCount} Players) Challenge! Drop your pieces to connect 4!`;
     }
+    else if (type === 'connect4_pro_max') {
+        text = targetUserName 
+            ? `🟢🔴 Connect 4 Pro Max (4 Players, 7x9 Board) match challenge against @${targetUserName}!`
+            : `🟢🔴 Open Connect 4 Pro Max (4 Players, 7x9 Board) Challenge! Drop your pieces to connect 4 on the big board!`;
+    }
     else if (type === 'periodic_table') {
         text = elementGuessMode === 'name'
             ? `🧪 Periodic Table Challenge! Guess the Element Name for symbol: ${elementSymbol} (Atomic #${elementNumber})! ⚛️`
@@ -1236,6 +1249,19 @@ window.submitGame = async () => {
         postData.dropFourTurn = 'R';
         postData.dropFourStatus = (dropFourPlayerCount === 2 && targetUserUid) ? 'in_progress' : 'waiting';
         postData.dropFourTargetUser = targetUserUid || null;
+    }
+    if (type === 'connect4_pro_max') {
+        postData.proFourCols = 7;
+        postData.proFourRows = 9;
+        postData.proFourBoard = Array(63).fill('');
+        postData.proFourPlayerCount = 4;
+        postData.proFourPlayerR = window.currentUser.uid;
+        postData.proFourPlayerY = null;
+        postData.proFourPlayerB = null;
+        postData.proFourPlayerG = null;
+        postData.proFourTurn = 'R';
+        postData.proFourStatus = 'waiting';
+        postData.proFourTargetUser = targetUserUid || null;
     }
     if (type === 'hangman') {
         postData.hangmanWord = hangmanWord;
@@ -2825,6 +2851,190 @@ window.makeDropFourMove = async (postId, colIndex) => {
         }
     } catch(e) {
         console.error("Drop Four move error:", e);
+        window.showAlert("Error making move: " + e.message);
+    }
+};
+
+// ============================================================
+// CONNECT 4 PRO MAX (7x9 DROP, 4 PLAYERS) GAME HANDLERS
+// ============================================================
+
+window.checkConnect4ProMaxWinner = (board) => {
+    const rows = 9, cols = 7;
+    // Horizontal (r, c) to (r, c+3)
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c <= cols - 4; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + 1] && m === board[idx + 2] && m === board[idx + 3]) {
+                return { won: true, mark: m, line: [idx, idx + 1, idx + 2, idx + 3] };
+            }
+        }
+    }
+    // Vertical (r, c) to (r+3, c)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + cols] && m === board[idx + cols * 2] && m === board[idx + cols * 3]) {
+                return { won: true, mark: m, line: [idx, idx + cols, idx + cols * 2, idx + cols * 3] };
+            }
+        }
+    }
+    // Diagonal down-right (r, c) to (r+3, c+3)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 0; c <= cols - 4; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + (cols + 1)] && m === board[idx + (cols + 1) * 2] && m === board[idx + (cols + 1) * 3]) {
+                return { won: true, mark: m, line: [idx, idx + (cols + 1), idx + (cols + 1) * 2, idx + (cols + 1) * 3] };
+            }
+        }
+    }
+    // Diagonal down-left (r, c) to (r+3, c-3)
+    for (let r = 0; r <= rows - 4; r++) {
+        for (let c = 3; c < cols; c++) {
+            const idx = r * cols + c;
+            const m = board[idx];
+            if (m && m === board[idx + (cols - 1)] && m === board[idx + (cols - 1) * 2] && m === board[idx + (cols - 1) * 3]) {
+                return { won: true, mark: m, line: [idx, idx + (cols - 1), idx + (cols - 1) * 2, idx + (cols - 1) * 3] };
+            }
+        }
+    }
+    return { won: false };
+};
+
+window.acceptConnect4ProMaxChallenge = async (postId) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    const postRef = getPostDocRef(postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.proFourStatus !== 'waiting') {
+            return window.showAlert("This challenge is no longer available.");
+        }
+
+        const myUid = window.currentUser.uid;
+        if (post.proFourPlayerR === myUid || post.proFourPlayerY === myUid || post.proFourPlayerB === myUid || post.proFourPlayerG === myUid) {
+            return window.showAlert("You are already part of this match!");
+        }
+
+        if (post.proFourTargetUser && post.proFourTargetUser !== myUid && !post.proFourPlayerY && !post.proFourPlayerB && !post.proFourPlayerG) {
+            return window.showAlert("This challenge was sent to another player!");
+        }
+
+        const updates = {};
+
+        if (!post.proFourPlayerY) {
+            updates.proFourPlayerY = myUid;
+        } else if (!post.proFourPlayerB) {
+            updates.proFourPlayerB = myUid;
+        } else if (!post.proFourPlayerG) {
+            updates.proFourPlayerG = myUid;
+            updates.proFourStatus = 'in_progress';
+        } else {
+            return window.showAlert("This match is already full!");
+        }
+
+        await updateDoc(postRef, updates);
+        window.showAlert("🟢🔴 Challenge accepted! Waiting for the table to fill...");
+    } catch(e) {
+        console.error("Error accepting Connect 4 Pro Max challenge:", e);
+        window.showAlert("Error: " + e.message);
+    }
+};
+
+window.makeConnect4ProMaxMove = async (postId, colIndex) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const postRef = getPostDocRef(postId);
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active' || post.proFourStatus !== 'in_progress') {
+            return window.showAlert("This game is not active.");
+        }
+
+        const turn = post.proFourTurn || 'R';
+        const expectedUid = turn === 'R' ? post.proFourPlayerR : (turn === 'Y' ? post.proFourPlayerY : (turn === 'B' ? post.proFourPlayerB : post.proFourPlayerG));
+
+        if (window.currentUser.uid !== expectedUid) {
+            return window.showAlert("It is not your turn!");
+        }
+
+        const board = [...(post.proFourBoard || Array(63).fill(''))];
+        const rows = Number(post.proFourRows) || 9;
+        const cols = Number(post.proFourCols) || 7;
+
+        // Find lowest empty slot in column (row rows-1 is bottom)
+        let targetRow = -1;
+        for (let r = rows - 1; r >= 0; r--) {
+            if (board[r * cols + colIndex] === '') {
+                targetRow = r;
+                break;
+            }
+        }
+
+        if (targetRow === -1) {
+            return window.showAlert("That column is full! Please choose another column.");
+        }
+
+        const targetCellIndex = targetRow * cols + colIndex;
+        board[targetCellIndex] = turn;
+
+        const winResult = window.checkConnect4ProMaxWinner(board);
+
+        if (winResult.won) {
+            const winnerUid = window.currentUser.uid;
+            await updateDoc(postRef, {
+                proFourBoard: board,
+                proFourStatus: 'ended',
+                proFourWinningLine: winResult.line || null,
+                gameStatus: 'ended',
+                gameWinner: winnerUid
+            });
+
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
+            if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
+            window.logEarnings(winnerUid, postId, 'Connect 4 Pro Max', prizeLogged, lbPoints);
+            if (post.authorId && post.authorId !== winnerUid) {
+                const winnerName = window.globalUsersCache?.[winnerUid]?.name || 'Someone';
+                window.logHostedGame(post.authorId, postId, 'Connect 4 Pro Max', prizeLogged, winnerUid, winnerName);
+            }
+            const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
+                window.awardHostBonus(post.authorId, hostLbReward);
+            }
+
+            let winMsg = `🎉 Connect 4 Pro Max! You won the match!`;
+            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+            window.showAlert(winMsg);
+        } else if (!board.includes('')) {
+            // Draw
+            await updateDoc(postRef, {
+                proFourBoard: board,
+                proFourStatus: 'ended',
+                gameStatus: 'ended',
+                gameWinner: 'draw'
+            });
+            window.showAlert("It's a Draw! 🤝 Good game!");
+        } else {
+            // Next turn (4-player cycle R → Y → B → G)
+            const nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : (turn === 'B' ? 'G' : 'R'));
+            await updateDoc(postRef, {
+                proFourBoard: board,
+                proFourTurn: nextTurn
+            });
+        }
+    } catch(e) {
+        console.error("Connect 4 Pro Max move error:", e);
         window.showAlert("Error making move: " + e.message);
     }
 };

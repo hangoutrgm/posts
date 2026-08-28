@@ -87,6 +87,7 @@ window.gameTypesList = [
     { type: 'tictactoe', label: 'Tic Tac Toe' },
     { type: 'four_in_a_row', label: '4 in a Row (7x7)' },
     { type: 'drop_four', label: 'Connect 4' },
+    { type: 'connect4_pro_max', label: 'Connect 4 Pro Max (4P 7x9)' },
     { type: 'hangman', label: 'Hangman' },
     { type: 'gibberish', label: 'Gibberish' },
     { type: 'emoji_riddle', label: 'Emoji Riddle (Movie/Song/Idiom)' },
