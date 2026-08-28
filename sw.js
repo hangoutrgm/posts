@@ -7,7 +7,7 @@ const PRECACHE_ASSETS = [
   './chat/index.html',
   './css/styles.css',
   './chat/css/styles.css?v=15',
-  './js/renderers.js?v=29',
+  './js/renderers.js?v=30',
   './js/helpers.js?v=36',
   './js/games.js?v=31',
   './js/main.js?v=28',

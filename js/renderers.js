@@ -593,6 +593,7 @@ window.renderProfileData = (resetLimit = true) => {
     const role = window.getRole(window.activeProfileUid);
     const isOnline = window.onlineUsers[window.activeProfileUid];
     const isBanned = uData.isBanned === true;
+    const isInactive = uData.isInactive === true;
     
     if (resetLimit) window.profileRenderLimit = 15;
 
@@ -657,6 +658,7 @@ window.renderProfileData = (resetLimit = true) => {
             </div>
             
             ${isBanned ? '<span class="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-1">Banned</span>' : ''}
+            ${isInactive ? '<span class="bg-slate-400 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-1"><i class="fa-solid fa-user-slash mr-1"></i>Inactive</span>' : ''}
             <p class="text-sm text-gray-500 mt-1"><span class="text-yellow-500">⭐ ${uData.points || 0}</span> • <span class="text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${uData.lbPoints || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span> Followers</p>
             ${pokeStats}
             
@@ -2802,8 +2804,8 @@ window.renderRankings = async (resetLimit = true) => {
         }
 
     } else {
-        // Leaderboards or Stars
-        let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name);
+        // Leaderboards or Stars (inactive users are hidden from public rankings — their data is kept)
+        let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name && u.isInactive !== true);
         
         if (window.currentRankingFilter === "Leaderboards") {
             const scope = window.lbScope || 'overall';

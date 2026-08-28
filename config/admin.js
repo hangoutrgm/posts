@@ -535,6 +535,7 @@ function renderUsersList() {
         // temporarily put it in globalUsersCache so getRole works if it needs it
         window.globalUsersCache[u.uid] = u;
         const role = window.getRole(u.uid);
+        const isInactive = u.isInactive === true;
 
         const div = document.createElement('div');
         div.className = "flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800 transition-colors group";
@@ -559,8 +560,32 @@ function renderUsersList() {
                 <button onclick="navigator.clipboard.writeText('${u.uid}'); alert('Copied UID: ${u.uid}');" class="ml-1 w-5 h-5 rounded text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 flex items-center justify-center transition opacity-0 group-hover:opacity-100" title="Copy UID">
                     <i class="fa-solid fa-copy text-[10px]"></i>
                 </button>
+                <button onclick="window.toggleInactive('${u.uid}')" class="ml-1 px-2 py-1 rounded text-[9px] font-bold transition ${isInactive ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-amber-500 hover:text-white'}" title="${isInactive ? 'Mark as active (show in leaderboards & stars again)' : 'Mark as inactive (hidden from leaderboards & stars, data kept)'}">
+                    <i class="fa-solid ${isInactive ? 'fa-user-check' : 'fa-user-slash'} mr-1 text-[8px]"></i>${isInactive ? 'Active' : 'Inactive'}
+                </button>
             </div>
         `;
         listEl.appendChild(div);
     });
 }
+
+// Mark a user inactive/active — hidden from leaderboards & stars (their points,
+// leaderboard, and earnings data stays intact on their profile).
+function toggleInactive(uid) {
+    const isInactive = globalUsers[uid]?.isInactive === true;
+    if (!confirm(isInactive
+        ? "Mark this user as Active? They will appear in leaderboards and stars again."
+        : "Mark this user as Inactive? They will be hidden from leaderboards and stars (all their data is kept).")) return;
+    const name = globalUsers[uid]?.name || uid;
+    update(ref(db, `users/${uid}`), { isInactive: !isInactive })
+        .then(() => {
+            push(ref(db, 'activity_log'), {
+                user: 'Admin',
+                userId: ADMIN_UID,
+                action: `marked ${name} as ${isInactive ? 'active' : 'inactive'}`,
+                timestamp: Date.now()
+            });
+        })
+        .catch(err => alert('Error updating status: ' + err.message));
+}
+window.toggleInactive = toggleInactive;
