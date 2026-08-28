@@ -1162,6 +1162,13 @@ async function sendVoiceMessage(audioBlob) {
 
 function openThread(threadId, inboxItem) {
   if (!state.user) return showAuth();
+  const leavingThreadId = state.activeThreadId;
+  // Persist the thread we're leaving — BEFORE overwriting state.activeThreadId —
+  // so its loaded history survives the switch and isn't wiped by cache resets.
+  // (delay 0 = immediate, no debounce, so nothing is lost when we stop its listener.)
+  if (leavingThreadId && leavingThreadId !== threadId && Object.keys(state.messages || {}).length) {
+    try { saveMessagesCache(leavingThreadId, state.messages, 0); } catch (_) {}
+  }
   state.activeThreadId = threadId;
   state.activeInboxItem = inboxItem || state.inbox[threadId] || {};
   state.activePeerId = state.activeInboxItem.isGroup ? null : state.activeInboxItem.peerId;
@@ -1173,18 +1180,18 @@ function openThread(threadId, inboxItem) {
     state.stopMessages = null;
   }
 
-  // Persist the thread we're leaving FIRST (before state.messages is reset) so its
-  // loaded history survives; then restore this thread's cache for an instant render.
-  if (state.activeThreadId && state.activeThreadId !== threadId && Object.keys(state.messages || {}).length) {
-    saveMessagesCache(state.activeThreadId, state.messages, 0);
-  }
+  // Fully clear the shared message DOM + reconciliation cache so the previous
+  // thread's rows can never bleed into the newly opened thread (fixes "header
+  // switched but the old conversation's messages still showing").
+  const __mlist = $('message-list');
+  if (__mlist) __mlist.innerHTML = '';
+  state._rowCache = {};
   state.messages = {};
   state.messagesLoaded = false;
 
   const cachedMessages = loadMessagesCache(threadId);
   state.messages = cachedMessages || {};
   state.messagesLoaded = Boolean(cachedMessages);
-  state._rowCache = {};
   if (cachedMessages) {
     renderMessages(undefined, false);
   } else {
