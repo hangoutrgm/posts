@@ -115,6 +115,13 @@
                     </span>
                     <i id="pause-chat-icon" class="fa-solid fa-circle-notch fa-spin text-slate-400"></i>
                 </button>
+                <button type="button" id="toggle-hide-host-answers" class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:border-indigo-400 transition">
+                    <span class="text-left">
+                        <span class="block text-xs font-bold text-slate-700 dark:text-slate-200">Hide Host Game Answers</span>
+                        <span class="block text-[10px] text-slate-400" id="hide-host-answers-label">Loading…</span>
+                    </span>
+                    <i id="hide-host-answers-icon" class="fa-solid fa-circle-notch fa-spin text-slate-400"></i>
+                </button>
             </div>
             <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
                 <button type="button" id="heal-names-btn" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition">
@@ -353,7 +360,7 @@
                             <h3 class="text-base font-bold text-slate-800 dark:text-white">Game Posting Limits</h3>
                         </div>
                         <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                            Max game posts each user can create per day. <strong>Blank or 0 = unlimited. Resets at 12:00 AM.</strong>
+                            <strong class="text-indigo-500">Posts/Day</strong> = max games each user can create daily (blank/0 = unlimited, resets 12:00 AM) &middot; <strong class="text-amber-500">Max LB</strong> = highest LB points a host can set per game (blank/0 = use global LB max).
                         </span>
                     </div>
                     <form id="game-limits-form">
@@ -370,6 +377,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=13"></script>
+    <script type="module" src="admin.js?v=15"></script>
 </body>
 </html>

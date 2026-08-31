@@ -1310,14 +1310,14 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     // guess_emoji: show the emoji CHAR to all (players guess its NAME)
                     displayContent = `<div class="text-5xl mb-2">${post.gameEmojiChar || '❓'}</div>`;
                     gameTitle = 'What emoji is this? Type the name!';
-                    if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiName}</div>`;
+                    if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiName}</div>`;
                     answerHint = `<p class="text-xs text-gray-400 mt-1">Type the emoji name, e.g. "Red Apple"</p>`;
                 } else {
                     // bring_me_emoji: show the NAME to all (players send the emoji CHAR)
                     // Host can see the answer emoji char
                     displayContent = `<div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2 text-center">${post.gameEmojiName || 'Emoji'}</div>`;
                     gameTitle = 'Find and send this emoji!';
-                    if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiChar || '(no char stored)'}</div>`;
+                    if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameEmojiChar || '(no char stored)'}</div>`;
                     answerHint = `<p class="text-xs text-gray-400 mt-1">Paste or type the emoji character</p>`;
                 }
 
@@ -1361,7 +1361,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     ? `<img src="${flagImgSrc}" class="h-16 rounded shadow mb-2 border border-gray-200 dark:border-slate-600" alt="Flag">`
                     : `<div class="text-4xl mb-2">🏳️</div>`;
                 gameTitle = 'What country does this flag belong to?';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameFlagName}</div>`;
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameFlagName}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the country name, e.g. "France"</p>`;
             } else if (post.gameType === 'periodic_table') {
                 const isNameMode = post.gameElementGuessMode === 'name';
@@ -1384,7 +1384,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     gameTitle = 'Guess the Chemical Symbol!';
                     answerHint = `<p class="text-xs text-gray-400 mt-1">Type the symbol (e.g. "Fe", "Au")</p>`;
                 }
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameElementAnswer} ([#${post.gameElementNumber}] ${post.gameElementSymbol} - ${post.gameElementName})</div>`;
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameElementAnswer} ([#${post.gameElementNumber}] ${post.gameElementSymbol} - ${post.gameElementName})</div>`;
             } else if (post.gameType === 'math') {
                 // Only append "= ?" if the question doesn't already contain it (algebra questions include it)
                 const mathDisplay = post.gameMathQuestion.includes('=') 
@@ -1392,17 +1392,17 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     : `${post.gameMathQuestion} = ?`;
                 displayContent = `<div class="text-3xl font-bold font-mono text-blue-700 dark:text-blue-300 mb-2">${mathDisplay}</div>`;
                 gameTitle = 'Solve the math problem!';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMathAnswer}</div>`;
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMathAnswer}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the number</p>`;
             } else if (post.gameType === 'jumbled_words') {
                 displayContent = `<div class="text-3xl font-bold tracking-widest font-mono text-blue-700 dark:text-blue-300 mb-2 text-center break-words break-all w-full">${post.gameJumbledScrambled}</div>`;
                 gameTitle = 'Unscramble the word!';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameJumbledOriginal}</div>`;
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameJumbledOriginal}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the original word</p>`;
             } else if (post.gameType === 'trivia') {
                 displayContent = `<div class="text-lg font-semibold text-center text-blue-800 dark:text-blue-200 mb-2 max-w-sm">${post.gameTriviaQuestion}</div>`;
                 gameTitle = 'Trivia Time!';
-                if (isHost) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameTriviaAnswer}</div>`;
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameTriviaAnswer}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
             }
 
@@ -1650,7 +1650,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     ? `<div class="text-center font-mono text-xl font-black text-indigo-600 dark:text-indigo-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
                     : '';
                 const isHost = window.currentUser && window.currentUser.uid === post.authorId;
-                const answerBtn = !isHost ? `<button onclick="window.openAnswerModal('${post.id}', 'Count the Dots', 'Enter exact number of dots (●)')" class="mt-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-8 rounded-full shadow-md transition transform hover:scale-105 active:scale-95 text-sm flex items-center gap-1.5"><i class="fa-solid fa-calculator"></i>Guess Dot Count</button>` : `<div class="text-xs text-gray-500 dark:text-gray-400 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full">You are the host (${post.gameDotsCount} dots)</div>`;
+                const answerBtn = !isHost ? `<button onclick="window.openAnswerModal('${post.id}', 'Count the Dots', 'Enter exact number of dots (●)')" class="mt-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-8 rounded-full shadow-md transition transform hover:scale-105 active:scale-95 text-sm flex items-center gap-1.5"><i class="fa-solid fa-calculator"></i>Guess Dot Count</button>` : (window.hostAnswerVisible(post) ? `<div class="text-xs text-gray-500 dark:text-gray-400 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full">You are the host (${post.gameDotsCount} dots)</div>` : `<div class="text-xs text-gray-500 dark:text-gray-400 mt-2 bg-gray-100 dark:bg-slate-700 px-3 py-1 rounded-full">You are the host</div>`);
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-indigo-50/70 dark:bg-slate-800 rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/50 flex flex-col items-center">
@@ -2233,7 +2233,9 @@ window.generatePostHTML = function(post, prefix, filterContext) {
 
                 let playerControls = '';
                 if (isHost) {
-                    playerControls = `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — <span class="font-bold tracking-wider text-rose-600 dark:text-rose-400">${secretWord}</span></div>`;
+                    playerControls = window.hostAnswerVisible(post)
+                        ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — <span class="font-bold tracking-wider text-rose-600 dark:text-rose-400">${secretWord}</span></div>`
+                        : `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — answer hidden while the game is live</div>`;
                 } else if (window.currentUser) {
                     const uid = window.currentUser.uid;
                     const letterFailCount = Number(post.hangmanLetterWrong?.[uid] || 0);
@@ -2295,7 +2297,9 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     : '';
                 const isAuthor = window.currentUser && window.currentUser.uid === post.authorId;
                 const answerBtn = isAuthor
-                    ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — Answer: <span class="font-bold text-amber-600 dark:text-amber-400">${post.gameGibberishAnswer || ''}</span></div>`
+                    ? (window.hostAnswerVisible(post)
+                        ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — Answer: <span class="font-bold text-amber-600 dark:text-amber-400">${post.gameGibberishAnswer || ''}</span></div>`
+                        : `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — answer hidden while the game is live</div>`)
                     : `<button onclick="window.openAnswerModal('${post.id}', 'Guess the Gibberish', 'Enter the real phrase...')" class="mt-3 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-5 rounded-xl shadow transition text-xs flex items-center gap-1.5"><i class="fa-solid fa-microphone-lines mr-1"></i>Guess Phrase</button>`;
 
                 gameHtml = `
@@ -2343,7 +2347,9 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     : '';
                 const isAuthor = window.currentUser && window.currentUser.uid === post.authorId;
                 const answerBtn = isAuthor
-                    ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — Answer: <span class="font-bold ${catInfo.text}">${post.emojiRiddleAnswer || ''}</span></div>`
+                    ? (window.hostAnswerVisible(post)
+                        ? `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — Answer: <span class="font-bold ${catInfo.text}">${post.emojiRiddleAnswer || ''}</span></div>`
+                        : `<div class="mt-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — answer hidden while the game is live</div>`)
                     : `<button onclick="window.openAnswerModal('${post.id}', 'Guess the ${catInfo.name}', 'Enter the ${catInfo.name} title...')" class="mt-3 ${catInfo.btn} text-white font-bold py-2 px-5 rounded-xl shadow transition text-xs flex items-center gap-1.5">${catInfo.icon} Guess ${catInfo.name}</button>`;
 
                 gameHtml = `

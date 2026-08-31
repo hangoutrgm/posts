@@ -178,7 +178,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
             document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
             document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
-            renderGameLimitInputs(settings.gameLimits || {});
+            renderGameLimitInputs(settings.gameLimits || {}, settings.gameLbRewards || {});
             renderSiteControl(settings.pausePosts === true, settings.pauseChat === true);
         } else {
             document.getElementById('set-starsPerPost').value = '';
@@ -204,7 +204,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = '';
             document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
-            renderGameLimitInputs({});
+            renderGameLimitInputs({}, {});
             renderSiteControl(false, false);
         }
 
@@ -260,6 +260,8 @@ function initAdminDashboard() {
             chatVideoLimit: parseInt(document.getElementById('set-chatVideoLimit').value) || 3,
             chatVoiceLimit: parseInt(document.getElementById('set-chatVoiceLimit').value) || 10,
             chatVideoSizeLimitMB: parseInt(document.getElementById('set-chatVideoSizeLimitMB').value) || 20,
+            hideHostGameAnswers: currentHostAnswersState === true,
+            gameLbRewards: collectGameLbRewards(),
             gameLimits: collectGameLimits(),
         };
 
@@ -328,6 +330,51 @@ function initAdminDashboard() {
     onValue(ref(db, 'settings/pausePosts'), (snap) => { currentPauseState.pausePosts = snap.val() === true; });
     onValue(ref(db, 'settings/pauseChat'), (snap) => { currentPauseState.pauseChat = snap.val() === true; });
 
+    // 5d. Site Control — Hide Host Game Answers switch.
+    // When ON, hosts can no longer see the answer while their game is live
+    // (Hangman word, Gibberish / Emoji Riddle / Flags / Jumbled / Periodic answer, Count-the-Dots, etc).
+    let currentHostAnswersState = false;
+    function renderHostAnswersControl() {
+        const btn = document.getElementById('toggle-hide-host-answers');
+        const label = document.getElementById('hide-host-answers-label');
+        const icon = document.getElementById('hide-host-answers-icon');
+        if (!btn || !label || !icon) return;
+        if (currentHostAnswersState) {
+            label.textContent = "ON — hosts can\u2019t see answers while a game is live";
+            label.classList.remove('text-slate-400');
+            label.classList.add('text-amber-500');
+            icon.className = 'fa-solid fa-eye-slash text-amber-500';
+            btn.classList.add('border-amber-400', 'bg-amber-50', 'dark:bg-amber-500/10');
+        } else {
+            label.textContent = "OFF — hosts see answers while a game is live";
+            label.classList.add('text-slate-400');
+            label.classList.remove('text-amber-500');
+            icon.className = 'fa-solid fa-eye text-slate-400';
+            btn.classList.remove('border-amber-400', 'bg-amber-50', 'dark:bg-amber-500/10');
+        }
+    }
+    async function toggleHostAnswersFlag(isCurrentlyHidden) {
+        try {
+            await update(ref(db, 'settings'), { hideHostGameAnswers: !isCurrentlyHidden });
+        } catch (error) {
+            console.error('Error toggling hideHostGameAnswers:', error);
+            alert("Error updating setting: " + error.message);
+        }
+    }
+    const hideHostBtn = document.getElementById('toggle-hide-host-answers');
+    if (hideHostBtn) {
+        hideHostBtn.addEventListener('click', () => {
+            const msg = currentHostAnswersState
+                ? "Allow hosts to see game answers again while a game is live?"
+                : "Hide game answers from HOSTS while a game is live? (Guessing players are never affected — they can't see the answer either way.)";
+            if (confirm(msg)) toggleHostAnswersFlag(currentHostAnswersState);
+        });
+    }
+    onValue(ref(db, 'settings/hideHostGameAnswers'), (snap) => {
+        currentHostAnswersState = snap.val() === true;
+        renderHostAnswersControl();
+    });
+
     // 5b. Maintenance — heal users with missing / "undefined" name or pic.
     // Only fills gaps; never overwrites valid values.
     const healBtn = document.getElementById('heal-names-btn');
@@ -369,21 +416,32 @@ function initAdminDashboard() {
         });
     }
 
-    // 5c. Game Posting Limits — inputs & save
-    function renderGameLimitInputs(values = {}) {
+    // 5c. Game Posting Limits + per-game LB reward caps — inputs & save
+    // Each game gets TWO inputs: "📦 Posts/Day" (daily post limit) and "🏆 Max LB" (max LB reward a
+    // host may set for this game). Blank/0 on Max LB = fall back to the global LB max (settings.maxLbPointsPrize).
+    function renderGameLimitInputs(values = {}, lbRewards = {}) {
         const grid = document.getElementById('game-limits-grid');
         if (!grid) return;
         grid.innerHTML = '';
         (window.gameTypesList || []).forEach(g => {
             const cell = document.createElement('div');
-            cell.className = "flex items-center gap-2 min-w-0";
+            cell.className = "flex flex-col gap-1.5 min-w-0 rounded-lg border border-slate-100 dark:border-slate-700/60 p-2 bg-slate-50/50 dark:bg-slate-900/40";
             const val = values[g.type];
+            const lbVal = lbRewards[g.type];
             cell.innerHTML = `
-                <label for="gl-${g.type}" class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-1 truncate" title="${g.label}">${g.label}</label>
-                <input type="number" id="gl-${g.type}" min="0" step="1" placeholder="∞" class="w-16 shrink-0 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition text-center">
-            `;
-            const input = cell.querySelector('input');
-            input.value = (val !== undefined && val !== null) ? Number(val) : '';
+                <label for="gl-${g.type}" class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate" title="${g.label}">${g.label}</label>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[9px] font-bold text-indigo-500 shrink-0" title="Max game posts per day">📦</span>
+                    <input type="number" id="gl-${g.type}" min="0" step="1" placeholder="∞" class="w-full min-w-0 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition text-center">
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[9px] font-bold text-amber-500 shrink-0" title="Max LB reward a host can set for this game">🏆</span>
+                    <input type="number" id="gllb-${g.type}" min="0" step="1" placeholder="auto" class="w-full min-w-0 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-lg px-2 py-1.5 text-xs outline-none transition text-center">
+                </div>`;
+            const limitInput = cell.querySelector(`#gl-${g.type}`);
+            limitInput.value = (val !== undefined && val !== null) ? Number(val) : '';
+            const lbInput = cell.querySelector(`#gllb-${g.type}`);
+            lbInput.value = (lbVal !== undefined && lbVal !== null && Number(lbVal) > 0) ? Number(lbVal) : '';
             grid.appendChild(cell);
         });
     }
@@ -399,8 +457,19 @@ function initAdminDashboard() {
         return limits;
     }
 
+    function collectGameLbRewards() {
+        const rewards = {};
+        (window.gameTypesList || []).forEach(g => {
+            const input = document.getElementById(`gllb-${g.type}`);
+            if (!input) return;
+            const val = parseInt(input.value, 10);
+            if (!isNaN(val) && val > 0) rewards[g.type] = val;
+        });
+        return rewards;
+    }
+
     // Render the limit grid immediately (settings listener refreshes it)
-    renderGameLimitInputs({});
+    renderGameLimitInputs({}, {});
 
     document.getElementById('game-limits-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -409,8 +478,11 @@ function initAdminDashboard() {
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
         try {
-            await set(ref(db, 'settings/gameLimits'), collectGameLimits());
-            alert("Game posting limits saved successfully!");
+            await Promise.all([
+                set(ref(db, 'settings/gameLimits'), collectGameLimits()),
+                set(ref(db, 'settings/gameLbRewards'), collectGameLbRewards())
+            ]);
+            alert("Game limits saved successfully!");
         } catch (error) {
             console.error(error);
             alert("Error saving game limits: " + error.message);

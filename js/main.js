@@ -346,7 +346,14 @@ onValue(ref(db, '.info/connected'), (snap) => {
 
 onValue(ref(db, 'settings'), (snap) => {
     if (snap.exists()) {
+        const prevHideAnswers = window.siteSettings.hideHostGameAnswers;
         window.siteSettings = { ...window.siteSettings, ...snap.val() };
+        // Site Control → "Hide Host Game Answers" toggled in /config: re-render
+        // immediately so hosts see the change without a refresh.
+        if (window.siteSettings.hideHostGameAnswers !== prevHideAnswers) {
+            if (window.usersReady && window.renderFeed) window.renderFeed(false);
+            if (window.activeProfileUid && window.renderProfileData) window.renderProfileData(false);
+        }
     }
 });
 

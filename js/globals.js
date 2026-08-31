@@ -57,6 +57,8 @@ window.siteSettings = {
     pokeLimit: 3,
     gameHostLbReward: 0,
     maxLbPointsPrize: 100,
+    hideHostGameAnswers: false, // /config → Site Control: when true, hosts cannot see game answers while a game is live
+    gameLbRewards: {},          // per-game max LB reward cap: { gameType: number } (configured in /config)
     imageUploadLimit: 10,
     videoUploadLimit: 3,
     videoSizeLimitMB: 20,

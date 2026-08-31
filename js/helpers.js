@@ -56,6 +56,8 @@ window.siteSettings = {
     pokeLimit: 3,
     gameHostLbReward: 0,
     maxLbPointsPrize: 100,
+    hideHostGameAnswers: false, // /config → Site Control: when true, hosts cannot see game answers while a game is live
+    gameLbRewards: {},          // per-game max LB reward cap: { gameType: number } (configured in /config)
     imageUploadLimit: 10,
     videoUploadLimit: 3,
     videoSizeLimitMB: 20,
@@ -104,6 +106,22 @@ window.gameTypesList = [
     { type: 'chat_first_to_mine', label: 'Chat - First to Mine' },
     { type: 'chat_gibberish', label: 'Chat - Gibberish' }
 ];
+// ==========================================
+// HOST ANSWER VISIBILITY (Site Control)
+// /config → "Hide Host Game Answers" is ON → the host of a LIVE game no longer
+// sees the answer (Hangman word, Gibberish, Emoji Riddle, Flags, Math, Trivia,
+// Jumbled, Periodic, Guess/Bring-the-Emoji, Count-the-Dots).
+// Guessing players are never affected (they can't see answers either way),
+// and ended games always reveal the answer to everyone.
+// ==========================================
+window.hostAnswerVisible = (post) => {
+    if (!post) return true;
+    if (window.siteSettings?.hideHostGameAnswers === true) {
+        return post.gameStatus !== 'active';
+    }
+    return true;
+};
+
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;
     document.getElementById('custom-alert-modal').classList.remove('hidden');

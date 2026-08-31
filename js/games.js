@@ -1,6 +1,6 @@
 import { db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
 import { ref, update, set, push, get, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayUnion, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 // Local "today" date string (YYYY-MM-DD) — used for the daily game-post limits (resets at 12:00 AM local time)
 const todayStr = () => {
@@ -13,6 +13,65 @@ const todayStr = () => {
 const isGameAdmin = () => {
     const uid = window.currentUser?.uid;
     return uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2' || (uid && window.getRole ? window.getRole(uid).level === 3 : false);
+};
+
+// ============================================================
+// PER-GAME MAX LB REWARD CAP
+// Admins configure a max LB value for EVERY game type in /config
+// (stored in settings/gameLbRewards). When set, it overrides the
+// global maxLbPointsPrize for that specific game type.
+// ============================================================
+window.getGameMaxLb = (type) => {
+    if (isGameAdmin()) return 999;
+    const perGame = Number(window.siteSettings?.gameLbRewards?.[type]);
+    if (perGame > 0) return perGame;
+    return window.siteSettings?.maxLbPointsPrize ?? 5;
+};
+
+// ============================================================
+// ATOMIC GAME WINNER CLAIM
+// Declares a single winner with a Firestore transaction so that
+// concurrent players ("first to mine/answer/won") can NEVER produce
+// two different winners, flip-flopping names, or double LB credit.
+// ONLY the one client whose transaction actually commits here
+// returns true — that client is the ONLY one allowed to award
+// prizes / LB points / host bonuses.
+//
+// IMPORTANT: we return the committed status FROM the transaction
+// callback (not via a closure variable). If Firestore retries a
+// conflict, the callback runs again with fresh data and simply
+// returns false once a winner already exists.
+// ============================================================
+window.claimGame = async (postRef, winnerUid, extraUpdates = {}) => {
+    try {
+        const claimed = await fsRunTransaction(getFirestoreForPost(postRef.id), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return false;
+            const p = tSnap.data();
+            // Only a LIVE game with no winner yet can be claimed.
+            if (p.gameStatus !== 'active') return false;
+            const existingWinner = p.gameWinner && p.gameWinner !== 'none';
+            if (existingWinner) return false;
+            // Don't allow claiming after the timer expired (timer cleanup may not have run yet).
+            if (p.gameEndTime && Date.now() >= p.gameEndTime) return false;
+            // extraUpdates may be an object OR a (freshPost) => updates function —
+            // the function form lets callers merge FRESH in-transaction state
+            // (e.g. Hangman letters another player revealed a moment ago) into
+            // the same atomic winning write, so nothing is lost.
+            const extra = typeof extraUpdates === 'function' ? (extraUpdates(p) || {}) : extraUpdates;
+            transaction.update(postRef, {
+                gameStatus: 'ended',
+                gameWinner: winnerUid || window.currentUser.uid,
+                locked: true,
+                ...extra
+            });
+            return true;
+        });
+        return claimed === true;
+    } catch (e) {
+        console.error('claimGame error:', e);
+        return false;
+    }
 };
 
 // ============================================================
@@ -519,15 +578,17 @@ window.openPostGameModal = () => {
 
     document.getElementById('game-type').value = 'first_to_mine';
     
-    const maxLb = isGameAdmin() ? 999 : (window.siteSettings.maxLbPointsPrize ?? 5);
+    const maxLb = window.getGameMaxLb('first_to_mine');
     document.getElementById('game-lb-points').max = maxLb;
     document.getElementById('game-lb-points-label').innerText = `🏆 LB Points (Max ${maxLb})`;
 
+    // Spin the Names prizes use the spin_names LB cap (it may differ from other games)
+    const spinMaxLb = window.getGameMaxLb('spin_names');
     for (let i = 1; i <= 3; i++) {
         const lbInp = document.getElementById(`spin-lb-${i}`);
-        if (lbInp) lbInp.max = maxLb;
+        if (lbInp) lbInp.max = spinMaxLb;
         const lbLbl = document.getElementById(`spin-lb-label-${i}`);
-        if (lbLbl) lbLbl.innerText = `🏆 LB (Max ${maxLb})`;
+        if (lbLbl) lbLbl.innerText = `🏆 LB (Max ${spinMaxLb})`;
     }
 
     const prizeLabel = document.getElementById('game-prize-label');
@@ -734,6 +795,18 @@ window.toggleGameSettings = () => {
         if (lbPointsLabel) lbPointsLabel.closest('div').classList.remove('hidden');
     }
 
+    // Refresh the LB max label for the newly selected game type (per-game cap from /config)
+    const maxLb = window.getGameMaxLb(type);
+    if (lbPointsInput) lbPointsInput.max = maxLb;
+    if (lbPointsLabel) lbPointsLabel.innerText = `🏆 LB Points (Max ${maxLb})`;
+    const spinMaxLb = window.getGameMaxLb('spin_names');
+    for (let i = 1; i <= 3; i++) {
+        const spinInp = document.getElementById(`spin-lb-${i}`);
+        if (spinInp) spinInp.max = spinMaxLb;
+        const spinLbl = document.getElementById(`spin-lb-label-${i}`);
+        if (spinLbl) spinLbl.innerText = `🏆 LB (Max ${spinMaxLb})`;
+    }
+
     // Refresh the daily limit indicator for the newly selected game type
     if (typeof window.updateGameLimitIndicator === 'function') window.updateGameLimitIndicator();
 };
@@ -840,7 +913,7 @@ window.submitGame = async () => {
         prize = num;
     }
 
-    const maxLbAllowed = isGameAdmin() ? 999 : (window.siteSettings.maxLbPointsPrize ?? 5);
+    const maxLbAllowed = window.getGameMaxLb(type);
     const lbPointsReward = parseInt(document.getElementById('game-lb-points').value) || 0;
     if (lbPointsReward < 0 || lbPointsReward > maxLbAllowed) {
         return window.showAlert(`LB Points reward must be between 0 and ${maxLbAllowed}.`);
@@ -1401,10 +1474,13 @@ window.mineGame = async (postId) => {
             return window.showAlert("This Quick Challenge is not for you!");
         }
 
-        await updateDoc(postRef, {
-            gameStatus: 'ended',
-            gameWinner: window.currentUser.uid
-        });
+        // Atomically claim the win — ONLY the client whose transaction commits
+        // may award the prize / LB points (fixes the "winner shown ≠ LB earned"
+        // race when many people mine/click at the same time).
+        const claimed = await window.claimGame(postRef, window.currentUser.uid);
+        if (!claimed) {
+            return window.showAlert("Too late! Someone else already claimed this game.");
+        }
 
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
@@ -1430,22 +1506,29 @@ window.mineGame = async (postId) => {
 
 window.endLastCommentGame = async (postId) => {
     if (!window.currentUser) return;
+    const postRef = getPostDocRef(postId);
     
     try {
         const localPost = (window.allPosts || []).find(p => p.id === postId);
         if (localPost && localPost.gameStatus !== 'active') return;
         
-        // Update gameStatus to evaluating to lock out further entries
-        await updateDoc(getPostDocRef(postId), {
-            gameStatus: 'evaluating',
-            locked: true
+        // Phase 1 — ATOMIC lock: only ONE caller may move active → evaluating.
+        // If the timer and the host's "End Game" button race, the loser just exits.
+        const lockClaimed = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return false;
+            const p = tSnap.data();
+            if (p.gameStatus !== 'active') return false;
+            transaction.update(postRef, { gameStatus: 'evaluating', locked: true });
+            return true;
         });
+        if (!lockClaimed) return; // Already being evaluated / already ended by someone else
 
         // Wait 1.5 seconds for any last-millisecond comments to settle
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         // Single read to evaluate the final winner
-        const snap = await getDoc(getPostDocRef(postId));
+        const snap = await getDoc(postRef);
         const post = snap.data();
         if (!post) return;
 
@@ -1464,10 +1547,21 @@ window.endLastCommentGame = async (postId) => {
             }
         }
 
-        await updateDoc(getPostDocRef(postId), {
-            gameStatus: 'ended',
-            gameWinner: lastCommenterId || "none"
+        // Phase 2 — ATOMIC winner declaration: only write the winner if we're still
+        // the single evaluator (status is still 'evaluating'). This guarantees the
+        // LB/host rewards below are credited exactly ONCE.
+        const finalClaimed = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return false;
+            const p = tSnap.data();
+            if (p.gameStatus !== 'evaluating') return false;
+            transaction.update(postRef, {
+                gameStatus: 'ended',
+                gameWinner: lastCommenterId || "none"
+            });
+            return true;
         });
+        if (!finalClaimed) return;
 
         if (lastCommenterId) {
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
@@ -1500,10 +1594,20 @@ window.checkGameTimers = (postsData) => {
             } else {
                 // For quick_challenge, challenge, guess_emoji, bring_me_emoji
                 if (p.gameEndTime && p.gameStatus === 'active' && Date.now() > p.gameEndTime) {
-                    updateDoc(getPostDocRef(key), {
-                        gameStatus: 'ended',
-                        gameWinner: "none",
-                        locked: true
+                    // ATOMIC timeout — only ends the game if it is STILL active.
+                    // This can never clobber a winner that claimGame just wrote
+                    // (fixes "I earned the LB reward but the board shows no winner").
+                    const timeoutRef = getPostDocRef(key);
+                    fsRunTransaction(getFirestoreForPost(key), async (transaction) => {
+                        const tSnap = await transaction.get(timeoutRef);
+                        if (!tSnap.exists()) return false;
+                        if (tSnap.data().gameStatus !== 'active') return false;
+                        transaction.update(timeoutRef, {
+                            gameStatus: 'ended',
+                            gameWinner: "none",
+                            locked: true
+                        });
+                        return true;
                     }).catch(e => console.error("Error failing game on timeout:", e));
                 }
             }
@@ -1543,21 +1647,11 @@ window.checkChallenge = async (postId) => {
     const currentComments = Object.keys(post.comments || {}).length;
 
     if (currentReacts >= post.gameTargetReacts && currentComments >= post.gameTargetComments) {
-        let isWinner = false;
         try {
-            await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
-                const tSnap = await transaction.get(postRef);
-                if (!tSnap.exists()) return;
-                const p = tSnap.data();
-                if (p.gameStatus === 'active') {
-                    transaction.update(postRef, {
-                        gameStatus: 'ended',
-                        gameWinner: p.gameTargetUser
-                    });
-                    isWinner = true;
-                }
-            });
-            if (isWinner) {
+            // Atomically end the challenge for the target user. Only the one client
+            // whose transaction commits gets the true return — prizes/LB credit once.
+            const claimed = await window.claimGame(postRef, post.gameTargetUser);
+            if (claimed) {
                 const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${post.gameTargetUser}/lbPoints`), increment(lbPoints));
@@ -1661,11 +1755,13 @@ window.answerGame = async (postId, answer) => {
             return window.showAlert("Incorrect! Try again.");
         }
 
-        // Write winner
-        await updateDoc(postRef, {
-            gameStatus: 'ended',
-            gameWinner: window.currentUser.uid
-        });
+        // Atomically claim the win — ONLY the first correct player whose
+        // transaction commits is declared the winner and gets the rewards.
+        const claimed = await window.claimGame(postRef, window.currentUser.uid);
+        if (!claimed) {
+            document.getElementById('game-answer-modal').classList.add('hidden');
+            return window.showAlert("Too late! Someone else already got it right.");
+        }
 
         const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
@@ -1913,56 +2009,72 @@ window.getBingoPool = (post) => {
 
 window.spinBingoWheel = async (postId) => {
     const postRef = getPostDocRef(postId);
-    const snap = await getDoc(postRef);
-    if (!snap.exists()) return;
-    const post = snap.data();
-
-    const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
-    const allItems = window.getBingoPool(post);
-    const pool = allItems.filter(i => !calledItems.includes(i));
-    if (!pool.length) return;
 
     // Set disabled immediately so host can't double click
     const btn = document.getElementById(`bingo-spin-btn-${postId}`);
     if (btn) btn.disabled = true;
 
-    // Pick a random winner index
-    const winnerIndex = Math.floor(Math.random() * pool.length);
-    const winner = pool[winnerIndex];
-    
-    // We update everything immediately!
-    const newCalledItems = [...calledItems, winner];
-    const updates = { 
-        bingoCalledItems: newCalledItems,
-        bingoLastSpin: {
-            item: winner,
-            startTime: Date.now()
-        }
-    };
+    try {
+        // One atomic transaction: read the LATEST state, pick the item, and write the
+        // spin + winner together. Rapid double-clicks can never double-pick an item
+        // or double-credit LB (the retried transaction re-reads the fresh pool).
+        const result = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return { status: 'noop' };
+            const p = tSnap.data();
+            if (p.gameStatus !== 'active') return { status: 'noop' };
 
-    // Check for winner
-    const winnerId = window.checkBingoWinner(post.bingoEntries || {}, newCalledItems);
-    if (winnerId) {
-        updates.gameStatus = 'ended';
-        updates.gameWinner = winnerId;
-        updates.bingoPhase = 'ended';
-        updates.locked = true;
-        
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
-        const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
-        if (lbPoints > 0) set(ref(db, `users/${winnerId}/lbPoints`), increment(lbPoints));
-        window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
-        if (post.authorId) {
-            const bingoWinnerName = window.globalUsersCache?.[winnerId]?.name || 'Someone';
-            window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, winnerId, bingoWinnerName);
+            const calledItems = Array.isArray(p.bingoCalledItems) ? p.bingoCalledItems : [];
+            const allItems = window.getBingoPool(p);
+            const pool = allItems.filter(i => !calledItems.includes(i));
+            if (!pool.length) return { status: 'noop' };
+
+            // Pick a random item from the fresh pool
+            const winner = pool[Math.floor(Math.random() * pool.length)];
+            const newCalledItems = [...calledItems, winner];
+            const updates = {
+                bingoCalledItems: newCalledItems,
+                bingoLastSpin: {
+                    item: winner,
+                    startTime: Date.now()
+                }
+            };
+
+            // Check for winner based on the fresh entry set
+            const winnerId = window.checkBingoWinner(p.bingoEntries || {}, newCalledItems);
+            let status = 'spun';
+            if (winnerId) {
+                updates.gameStatus = 'ended';
+                updates.gameWinner = winnerId;
+                updates.bingoPhase = 'ended';
+                updates.locked = true;
+                status = 'won';
+            }
+            transaction.update(postRef, updates);
+            return { status, winnerId };
+        });
+
+        if (result.status === 'won' && result.winnerId) {
+            const snap = await getDoc(postRef);
+            const post = snap.data();
+            if (!post) return;
+            const winnerId = result.winnerId;
+            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
+            if (lbPoints > 0) set(ref(db, `users/${winnerId}/lbPoints`), increment(lbPoints));
+            window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
+            if (post.authorId) {
+                const bingoWinnerName = window.globalUsersCache?.[winnerId]?.name || 'Someone';
+                window.logHostedGame(post.authorId, postId, window.gameTypeLabel(post.gameType), prizeLogged, winnerId, bingoWinnerName);
+            }
+            const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+            if (hostLbReward > 0 && post.authorId) {
+                window.awardHostBonus(post.authorId, hostLbReward);
+            }
         }
-        const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
-        if (hostLbReward > 0 && post.authorId) {
-            window.awardHostBonus(post.authorId, hostLbReward);
-        }
+    } catch(e) {
+        console.error("Bingo spin error:", e);
     }
-
-    await updateDoc(postRef, updates);
     window.processBingoAnimations();
 };
 
@@ -2158,126 +2270,157 @@ window.startSpinNamesWheel = async (postId) => {
 
 window.drawSpinNamesItem = async (postId) => {
     if (!window.currentUser) return;
-    const snap = await getDoc(getPostDocRef(postId));
-    if (!snap.exists()) return;
-    const post = snap.data();
-    if (post.authorId !== window.currentUser.uid) return;
-    if (post.spinNamesPhase !== 'drawing') return;
+    const postRef = getPostDocRef(postId);
 
     const btn = document.getElementById(`spin-names-btn-${postId}`);
     if (btn) btn.disabled = true;
 
-    const joined = post.spinNamesJoined 
-        ? Object.entries(post.spinNamesJoined).map(([uid, data]) => ({ ...data, uid: data.uid || uid }))
-        : [];
-    const existingWinners = Array.isArray(post.spinNamesWinners) ? post.spinNamesWinners : [];
-    const spinHistory = Array.isArray(post.spinNamesSpinHistory) ? post.spinNamesSpinHistory : [];
-    
-    // ALL previously picked UIDs — prize winners + non-prize picks (both are eliminated from pool)
-    const allPickedUids = Array.isArray(post.spinNamesAllPicked) ? post.spinNamesAllPicked
-        : existingWinners.map(w => w.uid); // fallback for old games
+    try {
+        // Atomic spin — recompute EVERYTHING inside one transaction from the latest doc.
+        // Rapid double-clicks can no longer pick the same player twice or credit LB for a
+        // spin that was already superseded.
+        const result = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return { status: 'noop' };
+            const p = tSnap.data();
+            if (p.authorId !== window.currentUser.uid) return { status: 'noop' };
+            if (p.spinNamesPhase !== 'drawing') return { status: 'noop' };
 
-    const remaining = joined.filter(u => !allPickedUids.includes(u.uid));
-    if (!remaining.length) return window.showAlert('No remaining players.');
+            const joined = p.spinNamesJoined
+                ? Object.entries(p.spinNamesJoined).map(([uid, data]) => ({ ...data, uid: data.uid || uid }))
+                : [];
+            const existingWinners = Array.isArray(p.spinNamesWinners) ? p.spinNamesWinners : [];
+            const spinHistory = Array.isArray(p.spinNamesSpinHistory) ? p.spinNamesSpinHistory : [];
 
-    const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
-    const currentSpinNumber = (post.spinNamesSpinCount || 0) + 1;
-    const matchingPrize = prizes.find(p => p.target === currentSpinNumber);
+            // ALL previously picked UIDs — prize winners + non-prize picks (both are eliminated from pool)
+            const allPickedUids = Array.isArray(p.spinNamesAllPicked) ? p.spinNamesAllPicked
+                : existingWinners.map(w => w.uid); // fallback for old games
 
-    // --- Auto-declare: if only 1 player left and this spin has a prize, skip the spin animation ---
-    if (remaining.length === 1 && matchingPrize) {
-        const autoWinner = remaining[0];
-        const matchingLb = (matchingPrize.lbPoints !== undefined && matchingPrize.lbPoints !== null)
-            ? Number(matchingPrize.lbPoints)
-            : (post.gameLbPoints !== undefined ? Number(post.gameLbPoints) : 0);
+            const remaining = joined.filter(u => !allPickedUids.includes(u.uid));
+            if (!remaining.length) return { status: 'noop' };
 
-        const newWinners = [...existingWinners, {
-            uid: autoWinner.uid,
-            name: autoWinner.name,
-            prize: matchingPrize.prize,
-            lbPoints: matchingLb,
-            target: currentSpinNumber
-        }];
-        const newHistory = [...spinHistory, { 
-            spinNumber: currentSpinNumber, 
-            name: autoWinner.name, 
-            uid: autoWinner.uid, 
-            prize: matchingPrize.prize,
-            lbPoints: matchingLb
-        }];
-        const autoUpdates = {
-            spinNamesSpinCount: currentSpinNumber,
-            spinNamesWinners: newWinners,
-            spinNamesAllPicked: [...allPickedUids, autoWinner.uid],
-            spinNamesSpinHistory: newHistory,
-            spinNamesLastSpin: { item: autoWinner.name, startTime: Date.now() }
-        };
-        if (matchingLb > 0) set(ref(db, `users/${autoWinner.uid}/lbPoints`), increment(matchingLb));
-        window.logEarnings(autoWinner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, matchingLb);
-        if (post.authorId) window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, autoWinner.uid, autoWinner.name);
-        if (newWinners.length >= prizes.length) {
-            autoUpdates.spinNamesPhase = 'ended';
-            autoUpdates.gameStatus = 'ended';
-            autoUpdates.gameWinner = autoWinner.uid;
-            autoUpdates.locked = true;
-            const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
-            if (hostLbReward > 0 && post.authorId) window.awardHostBonus(post.authorId, hostLbReward);
+            const prizes = Array.isArray(p.spinNamesPrizes) ? p.spinNamesPrizes : [];
+            const currentSpinNumber = (p.spinNamesSpinCount || 0) + 1;
+            const matchingPrize = prizes.find(prz => prz.target === currentSpinNumber);
+
+            const matchingLb = matchingPrize && (matchingPrize.lbPoints !== undefined && matchingPrize.lbPoints !== null)
+                ? Number(matchingPrize.lbPoints)
+                : (p.gameLbPoints !== undefined ? Number(p.gameLbPoints) : 0);
+
+            const buildWinnerRecord = (winner, prize, lb) => ({
+                uid: winner.uid,
+                name: winner.name,
+                prize: prize ? prize.prize : null,
+                lbPoints: lb,
+                target: currentSpinNumber
+            });
+
+            // --- Auto-declare: if only 1 player left and this spin has a prize, skip the spin animation ---
+            if (remaining.length === 1 && matchingPrize) {
+                const autoWinner = remaining[0];
+                const newWinners = [...existingWinners, buildWinnerRecord(autoWinner, matchingPrize, matchingLb)];
+                const newHistory = [...spinHistory, {
+                    spinNumber: currentSpinNumber,
+                    name: autoWinner.name,
+                    uid: autoWinner.uid,
+                    prize: matchingPrize.prize,
+                    lbPoints: matchingLb
+                }];
+                const autoUpdates = {
+                    spinNamesSpinCount: currentSpinNumber,
+                    spinNamesWinners: newWinners,
+                    spinNamesAllPicked: [...allPickedUids, autoWinner.uid],
+                    spinNamesSpinHistory: newHistory,
+                    spinNamesLastSpin: { item: autoWinner.name, startTime: Date.now() }
+                };
+                let endsGame = false;
+                if (newWinners.length >= prizes.length) {
+                    autoUpdates.spinNamesPhase = 'ended';
+                    autoUpdates.gameStatus = 'ended';
+                    autoUpdates.gameWinner = autoWinner.uid;
+                    autoUpdates.locked = true;
+                    endsGame = true;
+                }
+                transaction.update(postRef, autoUpdates);
+                return {
+                    status: 'won',
+                    winnerUid: autoWinner.uid,
+                    winnerName: autoWinner.name,
+                    matchingLb,
+                    matchingPrize: matchingPrize.prize,
+                    spinNumber: currentSpinNumber,
+                    endsGame
+                };
+            }
+
+    // Normal spin — pick randomly from remaining pool (fresh state from the transaction)
+            const winner = remaining[Math.floor(Math.random() * remaining.length)];
+            const newAllPicked = [...allPickedUids, winner.uid];
+
+            const newHistory = [...spinHistory, {
+                spinNumber: currentSpinNumber,
+                name: winner.name,
+                uid: winner.uid,
+                prize: matchingPrize ? matchingPrize.prize : null,
+                lbPoints: matchingLb
+            }];
+
+            const updates = {
+                spinNamesLastSpin: { item: winner.name, startTime: Date.now() },
+                spinNamesSpinCount: currentSpinNumber,
+                spinNamesAllPicked: newAllPicked,
+                spinNamesSpinHistory: newHistory
+            };
+
+            let endsGame = false;
+            if (matchingPrize) {
+                const newWinners = [...existingWinners, buildWinnerRecord(winner, matchingPrize, matchingLb)];
+                updates.spinNamesWinners = newWinners;
+
+                if (newWinners.length >= prizes.length) {
+                    updates.spinNamesPhase = 'ended';
+                    updates.gameStatus = 'ended';
+                    updates.gameWinner = winner.uid;
+                    updates.locked = true;
+                    endsGame = true;
+                }
+            } else {
+                // Non-prize spin: ignore here — the auto-declare path above handles the
+                // last-prize-winner case on the NEXT spin call.
+            }
+
+            transaction.update(postRef, updates);
+            return {
+                status: matchingPrize ? 'won' : 'spun',
+                winnerUid: winner.uid,
+                winnerName: winner.name,
+                matchingLb,
+                matchingPrize: matchingPrize ? matchingPrize.prize : null,
+                spinNumber: currentSpinNumber,
+                endsGame
+            };
+        });
+
+        if (result.status === 'won' || result.status === 'spun') {
+            const snap = await getDoc(postRef);
+            const post = snap.data();
+            if (!post) return;
+
+            if (result.matchingLb > 0) set(ref(db, `users/${result.winnerUid}/lbPoints`), increment(result.matchingLb));
+            if (result.matchingPrize) {
+                window.logEarnings(result.winnerUid, postId, `Spin the Names (#${result.spinNumber})`, result.matchingPrize, result.matchingLb);
+                if (post.authorId) {
+                    window.logHostedGame(post.authorId, postId, `Spin the Names (#${result.spinNumber})`, result.matchingPrize, result.winnerUid, result.winnerName);
+                }
+            }
+            if (result.endsGame && post.authorId) {
+                const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
+                if (hostLbReward > 0) window.awardHostBonus(post.authorId, hostLbReward);
+            }
         }
-        await updateDoc(getPostDocRef(postId), autoUpdates);
-        return;
+    } catch(e) {
+        console.error("Spin Names draw error:", e);
     }
-
-    // Normal spin — pick randomly from remaining pool
-    const winner = remaining[Math.floor(Math.random() * remaining.length)];
-    const newAllPicked = [...allPickedUids, winner.uid];
-    const matchingLb = matchingPrize ? ((matchingPrize.lbPoints !== undefined && matchingPrize.lbPoints !== null)
-        ? Number(matchingPrize.lbPoints)
-        : (post.gameLbPoints !== undefined ? Number(post.gameLbPoints) : 0)) : 0;
-
-    const newHistory = [...spinHistory, { 
-        spinNumber: currentSpinNumber, 
-        name: winner.name, 
-        uid: winner.uid, 
-        prize: matchingPrize ? matchingPrize.prize : null,
-        lbPoints: matchingLb
-    }];
-
-    const updates = {
-        spinNamesLastSpin: { item: winner.name, startTime: Date.now() },
-        spinNamesSpinCount: currentSpinNumber,
-        spinNamesAllPicked: newAllPicked,
-        spinNamesSpinHistory: newHistory
-    };
-
-    if (matchingPrize) {
-        const newWinners = [...existingWinners, {
-            uid: winner.uid,
-            name: winner.name,
-            prize: matchingPrize.prize,
-            lbPoints: matchingLb,
-            target: currentSpinNumber
-        }];
-        updates.spinNamesWinners = newWinners;
-
-        if (matchingLb > 0) set(ref(db, `users/${winner.uid}/lbPoints`), increment(matchingLb));
-        window.logEarnings(winner.uid, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, matchingLb);
-        if (post.authorId) window.logHostedGame(post.authorId, postId, `Spin the Names (#${currentSpinNumber})`, matchingPrize.prize, winner.uid, winner.name);
-
-        if (newWinners.length >= prizes.length) {
-            updates.spinNamesPhase = 'ended';
-            updates.gameStatus = 'ended';
-            updates.gameWinner = winner.uid;
-            updates.locked = true;
-            const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
-            if (hostLbReward > 0 && post.authorId) window.awardHostBonus(post.authorId, hostLbReward);
-        }
-    } else {
-        // Non-prize spin: check if the only remaining player (after this pick) is the next prize winner
-        // If so, auto-award them on the next spin immediately after this animation
-        // (The auto-declare logic above handles this on the next drawSpinNamesItem call)
-    }
-
-    await updateDoc(getPostDocRef(postId), updates);
 };
 
 // ===================== SPIN NAMES CANVAS DRAWING =====================
@@ -2383,73 +2526,98 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
     const postRef = getPostDocRef(postId);
 
     try {
-        const snap = await getDoc(postRef);
-        if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.data();
+        // One atomic transaction applies the move AND declares the winner — the turn + cell
+        // checks run against the LATEST board, so two players can't both make a winning move
+        // or both be shown as the winner.
+        const result = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return { outcome: 'noop' };
+            const p = tSnap.data();
 
-        if (post.gameStatus !== 'active' || post.tictactoeStatus !== 'in_progress') {
-            return window.showAlert("This game is not active.");
-        }
+            if (p.gameStatus !== 'active' || p.tictactoeStatus !== 'in_progress') return { outcome: 'noop' };
 
-        const turn = post.tictactoeTurn || 'X';
-        const isXTurn = turn === 'X';
-        const expectedUid = isXTurn ? post.tictactoePlayerX : post.tictactoePlayerO;
+            const turn = p.tictactoeTurn || 'X';
+            const isXTurn = turn === 'X';
+            const expectedUid = isXTurn ? p.tictactoePlayerX : p.tictactoePlayerO;
+            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
 
-        if (window.currentUser.uid !== expectedUid) {
-            return window.showAlert("It is not your turn!");
-        }
+            const board = [...(p.tictactoeBoard || Array(9).fill(''))];
+            if (board[cellIndex]) return { outcome: 'noop' };
 
-        const board = [...(post.tictactoeBoard || Array(9).fill(''))];
-        if (board[cellIndex]) {
-            return window.showAlert("That space is already taken!");
-        }
+            board[cellIndex] = turn;
 
-        board[cellIndex] = turn;
+            const gridSize = Number(p.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
 
-        const gridSize = Number(post.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
-
-        // Generate winning lines dynamically for 3x3 (3-in-a-row) or 4x4 (4-in-a-row)
-        const winningLines = [];
-        // Rows
-        for (let r = 0; r < gridSize; r++) {
-            const row = [];
-            for (let c = 0; c < gridSize; c++) row.push(r * gridSize + c);
-            winningLines.push(row);
-        }
-        // Columns
-        for (let c = 0; c < gridSize; c++) {
-            const col = [];
-            for (let r = 0; r < gridSize; r++) col.push(r * gridSize + c);
-            winningLines.push(col);
-        }
-        // Diagonals
-        const diag1 = [];
-        const diag2 = [];
-        for (let i = 0; i < gridSize; i++) {
-            diag1.push(i * gridSize + i);
-            diag2.push(i * gridSize + (gridSize - 1 - i));
-        }
-        winningLines.push(diag1);
-        winningLines.push(diag2);
-
-        let hasWon = false;
-        for (const line of winningLines) {
-            const firstMark = board[line[0]];
-            if (firstMark && line.every(idx => board[idx] === firstMark)) {
-                hasWon = true;
-                break;
+            // Generate winning lines dynamically for 3x3 (3-in-a-row) or 4x4 (4-in-a-row)
+            const winningLines = [];
+            // Rows
+            for (let r = 0; r < gridSize; r++) {
+                const row = [];
+                for (let c = 0; c < gridSize; c++) row.push(r * gridSize + c);
+                winningLines.push(row);
             }
+            // Columns
+            for (let c = 0; c < gridSize; c++) {
+                const col = [];
+                for (let r = 0; r < gridSize; r++) col.push(r * gridSize + c);
+                winningLines.push(col);
+            }
+            // Diagonals
+            const diag1 = [];
+            const diag2 = [];
+            for (let i = 0; i < gridSize; i++) {
+                diag1.push(i * gridSize + i);
+                diag2.push(i * gridSize + (gridSize - 1 - i));
+            }
+            winningLines.push(diag1);
+            winningLines.push(diag2);
+
+            let hasWon = false;
+            for (const line of winningLines) {
+                const firstMark = board[line[0]];
+                if (firstMark && line.every(idx => board[idx] === firstMark)) {
+                    hasWon = true;
+                    break;
+                }
+            }
+
+            if (hasWon) {
+                transaction.update(postRef, {
+                    tictactoeBoard: board,
+                    tictactoeStatus: 'ended',
+                    gameStatus: 'ended',
+                    gameWinner: window.currentUser.uid,
+                    locked: true
+                });
+                return { outcome: 'win', board };
+            } else if (!board.includes('')) {
+                // Draw
+                transaction.update(postRef, {
+                    tictactoeBoard: board,
+                    tictactoeStatus: 'ended',
+                    gameStatus: 'ended',
+                    gameWinner: 'draw'
+                });
+                return { outcome: 'draw', board };
+            } else {
+                // Next turn
+                const nextTurn = isXTurn ? 'O' : 'X';
+                transaction.update(postRef, {
+                    tictactoeBoard: board,
+                    tictactoeTurn: nextTurn
+                });
+                return { outcome: 'move', board };
+            }
+        });
+
+        if (result.outcome === 'noop') {
+            return window.showAlert("That move is no longer valid — it may not be your turn or that space is taken.");
         }
-
-        if (hasWon) {
+        if (result.outcome === 'win') {
             const winnerUid = window.currentUser.uid;
-            await updateDoc(postRef, {
-                tictactoeBoard: board,
-                tictactoeStatus: 'ended',
-                gameStatus: 'ended',
-                gameWinner: winnerUid
-            });
-
+            const snap = await getDoc(postRef);
+            const post = snap.data();
+            if (!post) return;
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
@@ -2467,22 +2635,8 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
             if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
             if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
             window.showAlert(winMsg);
-        } else if (!board.includes('')) {
-            // Draw
-            await updateDoc(postRef, {
-                tictactoeBoard: board,
-                tictactoeStatus: 'ended',
-                gameStatus: 'ended',
-                gameWinner: 'draw'
-            });
+        } else if (result.outcome === 'draw') {
             window.showAlert("It's a Draw! 🤝 Good game!");
-        } else {
-            // Next turn
-            const nextTurn = isXTurn ? 'O' : 'X';
-            await updateDoc(postRef, {
-                tictactoeBoard: board,
-                tictactoeTurn: nextTurn
-            });
         }
     } catch(e) {
         console.error("Tic Tac Toe move error:", e);
@@ -2587,40 +2741,70 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
     const postRef = getPostDocRef(postId);
 
     try {
-        const snap = await getDoc(postRef);
-        if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.data();
+        // One atomic transaction — the turn + cell checks run against the LATEST board,
+        // so concurrent moves can never double-declare a winner.
+        const result = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return { outcome: 'noop' };
+            const p = tSnap.data();
 
-        if (post.gameStatus !== 'active' || post.fourStatus !== 'in_progress') {
-            return window.showAlert("This game is not active.");
+            if (p.gameStatus !== 'active' || p.fourStatus !== 'in_progress') return { outcome: 'noop' };
+
+            const turn = p.fourTurn || 'R';
+            const expectedUid = turn === 'R' ? p.fourPlayerR : (turn === 'B' ? p.fourPlayerB : p.fourPlayerY);
+            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
+
+            const board = [...(p.fourBoard || Array(49).fill(''))];
+            if (board[cellIndex]) return { outcome: 'noop' };
+
+            board[cellIndex] = turn;
+
+            const winResult = window.checkFourInARowWinner(board);
+
+            if (winResult.won) {
+                transaction.update(postRef, {
+                    fourBoard: board,
+                    fourStatus: 'ended',
+                    fourWinningLine: winResult.line || null,
+                    gameStatus: 'ended',
+                    gameWinner: window.currentUser.uid,
+                    locked: true
+                });
+                return { outcome: 'win', board };
+            } else if (!board.includes('')) {
+                // Draw
+                transaction.update(postRef, {
+                    fourBoard: board,
+                    fourStatus: 'ended',
+                    gameStatus: 'ended',
+                    gameWinner: 'draw'
+                });
+                return { outcome: 'draw', board };
+            } else {
+                // Next turn
+                const count = Number(p.fourPlayerCount) || 2;
+                let nextTurn = 'R';
+                if (count === 2) {
+                    nextTurn = turn === 'R' ? 'B' : 'R';
+                } else {
+                    nextTurn = turn === 'R' ? 'B' : (turn === 'B' ? 'Y' : 'R');
+                }
+                transaction.update(postRef, {
+                    fourBoard: board,
+                    fourTurn: nextTurn
+                });
+                return { outcome: 'move', board };
+            }
+        });
+
+        if (result.outcome === 'noop') {
+            return window.showAlert("That move is no longer valid — it may not be your turn or that space is taken.");
         }
-
-        const turn = post.fourTurn || 'R';
-        const expectedUid = turn === 'R' ? post.fourPlayerR : (turn === 'B' ? post.fourPlayerB : post.fourPlayerY);
-
-        if (window.currentUser.uid !== expectedUid) {
-            return window.showAlert("It is not your turn!");
-        }
-
-        const board = [...(post.fourBoard || Array(49).fill(''))];
-        if (board[cellIndex]) {
-            return window.showAlert("That space is already taken!");
-        }
-
-        board[cellIndex] = turn;
-
-        const winResult = window.checkFourInARowWinner(board);
-
-        if (winResult.won) {
+        if (result.outcome === 'win') {
             const winnerUid = window.currentUser.uid;
-            await updateDoc(postRef, {
-                fourBoard: board,
-                fourStatus: 'ended',
-                fourWinningLine: winResult.line || null,
-                gameStatus: 'ended',
-                gameWinner: winnerUid
-            });
-
+            const snap = await getDoc(postRef);
+            const post = snap.data();
+            if (!post) return;
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
@@ -2638,28 +2822,8 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
             if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
             if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
             window.showAlert(winMsg);
-        } else if (!board.includes('')) {
-            // Draw
-            await updateDoc(postRef, {
-                fourBoard: board,
-                fourStatus: 'ended',
-                gameStatus: 'ended',
-                gameWinner: 'draw'
-            });
+        } else if (result.outcome === 'draw') {
             window.showAlert("It's a Draw! 🤝 Good game!");
-        } else {
-            // Next turn
-            const count = Number(post.fourPlayerCount) || 2;
-            let nextTurn = 'R';
-            if (count === 2) {
-                nextTurn = turn === 'R' ? 'B' : 'R';
-            } else {
-                nextTurn = turn === 'R' ? 'B' : (turn === 'B' ? 'Y' : 'R');
-            }
-            await updateDoc(postRef, {
-                fourBoard: board,
-                fourTurn: nextTurn
-            });
         }
     } catch(e) {
         console.error("4 in a Row move error:", e);
@@ -2764,51 +2928,83 @@ window.makeDropFourMove = async (postId, colIndex) => {
     const postRef = getPostDocRef(postId);
 
     try {
-        const snap = await getDoc(postRef);
-        if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.data();
+        // One atomic transaction — the turn + column checks run against the LATEST board.
+        const result = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return { outcome: 'noop' };
+            const p = tSnap.data();
 
-        if (post.gameStatus !== 'active' || post.dropFourStatus !== 'in_progress') {
-            return window.showAlert("This game is not active.");
-        }
+            if (p.gameStatus !== 'active' || p.dropFourStatus !== 'in_progress') return { outcome: 'noop' };
 
-        const turn = post.dropFourTurn || 'R';
-        const expectedUid = turn === 'R' ? post.dropFourPlayerR : (turn === 'Y' ? post.dropFourPlayerY : post.dropFourPlayerB);
+            const turn = p.dropFourTurn || 'R';
+            const expectedUid = turn === 'R' ? p.dropFourPlayerR : (turn === 'Y' ? p.dropFourPlayerY : p.dropFourPlayerB);
+            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
 
-        if (window.currentUser.uid !== expectedUid) {
-            return window.showAlert("It is not your turn!");
-        }
+            const board = [...(p.dropFourBoard || Array(42).fill(''))];
 
-        const board = [...(post.dropFourBoard || Array(42).fill(''))];
-        
-        // Find lowest empty slot in column (rows 0 to 5, row 5 is bottom)
-        let targetRow = -1;
-        for (let r = 5; r >= 0; r--) {
-            if (board[r * 7 + colIndex] === '') {
-                targetRow = r;
-                break;
+            // Find lowest empty slot in column (rows 0 to 5, row 5 is bottom)
+            let targetRow = -1;
+            for (let r = 5; r >= 0; r--) {
+                if (board[r * 7 + colIndex] === '') {
+                    targetRow = r;
+                    break;
+                }
             }
-        }
 
-        if (targetRow === -1) {
+            if (targetRow === -1) return { outcome: 'full' };
+
+            const targetCellIndex = targetRow * 7 + colIndex;
+            board[targetCellIndex] = turn;
+
+            const winResult = window.checkDropFourWinner(board);
+
+            if (winResult.won) {
+                transaction.update(postRef, {
+                    dropFourBoard: board,
+                    dropFourStatus: 'ended',
+                    dropFourWinningLine: winResult.line || null,
+                    gameStatus: 'ended',
+                    gameWinner: window.currentUser.uid,
+                    locked: true
+                });
+                return { outcome: 'win', board };
+            } else if (!board.includes('')) {
+                // Draw
+                transaction.update(postRef, {
+                    dropFourBoard: board,
+                    dropFourStatus: 'ended',
+                    gameStatus: 'ended',
+                    gameWinner: 'draw'
+                });
+                return { outcome: 'draw', board };
+            } else {
+                // Next turn
+                const count = Number(p.dropFourPlayerCount) || 2;
+                let nextTurn = 'R';
+                if (count === 2) {
+                    nextTurn = turn === 'R' ? 'Y' : 'R';
+                } else {
+                    nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : 'R');
+                }
+                transaction.update(postRef, {
+                    dropFourBoard: board,
+                    dropFourTurn: nextTurn
+                });
+                return { outcome: 'move', board };
+            }
+        });
+
+        if (result.outcome === 'noop') {
+            return window.showAlert("That move is no longer valid — it may not be your turn or the game ended.");
+        }
+        if (result.outcome === 'full') {
             return window.showAlert("That column is full! Please choose another column.");
         }
-
-        const targetCellIndex = targetRow * 7 + colIndex;
-        board[targetCellIndex] = turn;
-
-        const winResult = window.checkDropFourWinner(board);
-
-        if (winResult.won) {
+        if (result.outcome === 'win') {
             const winnerUid = window.currentUser.uid;
-            await updateDoc(postRef, {
-                dropFourBoard: board,
-                dropFourStatus: 'ended',
-                dropFourWinningLine: winResult.line || null,
-                gameStatus: 'ended',
-                gameWinner: winnerUid
-            });
-
+            const snap = await getDoc(postRef);
+            const post = snap.data();
+            if (!post) return;
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
@@ -2826,28 +3022,8 @@ window.makeDropFourMove = async (postId, colIndex) => {
             if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
             if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
             window.showAlert(winMsg);
-        } else if (!board.includes('')) {
-            // Draw
-            await updateDoc(postRef, {
-                dropFourBoard: board,
-                dropFourStatus: 'ended',
-                gameStatus: 'ended',
-                gameWinner: 'draw'
-            });
+        } else if (result.outcome === 'draw') {
             window.showAlert("It's a Draw! 🤝 Good game!");
-        } else {
-            // Next turn
-            const count = Number(post.dropFourPlayerCount) || 2;
-            let nextTurn = 'R';
-            if (count === 2) {
-                nextTurn = turn === 'R' ? 'Y' : 'R';
-            } else {
-                nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : 'R');
-            }
-            await updateDoc(postRef, {
-                dropFourBoard: board,
-                dropFourTurn: nextTurn
-            });
         }
     } catch(e) {
         console.error("Drop Four move error:", e);
@@ -2952,53 +3128,79 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
     const postRef = getPostDocRef(postId);
 
     try {
-        const snap = await getDoc(postRef);
-        if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.data();
+        // One atomic transaction — the turn + column checks run against the LATEST board.
+        const result = await fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+            const tSnap = await transaction.get(postRef);
+            if (!tSnap.exists()) return { outcome: 'noop' };
+            const p = tSnap.data();
 
-        if (post.gameStatus !== 'active' || post.proFourStatus !== 'in_progress') {
-            return window.showAlert("This game is not active.");
-        }
+            if (p.gameStatus !== 'active' || p.proFourStatus !== 'in_progress') return { outcome: 'noop' };
 
-        const turn = post.proFourTurn || 'R';
-        const expectedUid = turn === 'R' ? post.proFourPlayerR : (turn === 'Y' ? post.proFourPlayerY : (turn === 'B' ? post.proFourPlayerB : post.proFourPlayerG));
+            const turn = p.proFourTurn || 'R';
+            const expectedUid = turn === 'R' ? p.proFourPlayerR : (turn === 'Y' ? p.proFourPlayerY : (turn === 'B' ? p.proFourPlayerB : p.proFourPlayerG));
+            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
 
-        if (window.currentUser.uid !== expectedUid) {
-            return window.showAlert("It is not your turn!");
-        }
+            const board = [...(p.proFourBoard || Array(63).fill(''))];
+            const rows = Number(p.proFourRows) || 9;
+            const cols = Number(p.proFourCols) || 7;
 
-        const board = [...(post.proFourBoard || Array(63).fill(''))];
-        const rows = Number(post.proFourRows) || 9;
-        const cols = Number(post.proFourCols) || 7;
-
-        // Find lowest empty slot in column (row rows-1 is bottom)
-        let targetRow = -1;
-        for (let r = rows - 1; r >= 0; r--) {
-            if (board[r * cols + colIndex] === '') {
-                targetRow = r;
-                break;
+            // Find lowest empty slot in column (row rows-1 is bottom)
+            let targetRow = -1;
+            for (let r = rows - 1; r >= 0; r--) {
+                if (board[r * cols + colIndex] === '') {
+                    targetRow = r;
+                    break;
+                }
             }
-        }
 
-        if (targetRow === -1) {
+            if (targetRow === -1) return { outcome: 'full' };
+
+            const targetCellIndex = targetRow * cols + colIndex;
+            board[targetCellIndex] = turn;
+
+            const winResult = window.checkConnect4ProMaxWinner(board);
+
+            if (winResult.won) {
+                transaction.update(postRef, {
+                    proFourBoard: board,
+                    proFourStatus: 'ended',
+                    proFourWinningLine: winResult.line || null,
+                    gameStatus: 'ended',
+                    gameWinner: window.currentUser.uid,
+                    locked: true
+                });
+                return { outcome: 'win', board };
+            } else if (!board.includes('')) {
+                // Draw
+                transaction.update(postRef, {
+                    proFourBoard: board,
+                    proFourStatus: 'ended',
+                    gameStatus: 'ended',
+                    gameWinner: 'draw'
+                });
+                return { outcome: 'draw', board };
+            } else {
+                // Next turn (4-player cycle R → Y → B → G)
+                const nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : (turn === 'B' ? 'G' : 'R'));
+                transaction.update(postRef, {
+                    proFourBoard: board,
+                    proFourTurn: nextTurn
+                });
+                return { outcome: 'move', board };
+            }
+        });
+
+        if (result.outcome === 'noop') {
+            return window.showAlert("That move is no longer valid — it may not be your turn or the game ended.");
+        }
+        if (result.outcome === 'full') {
             return window.showAlert("That column is full! Please choose another column.");
         }
-
-        const targetCellIndex = targetRow * cols + colIndex;
-        board[targetCellIndex] = turn;
-
-        const winResult = window.checkConnect4ProMaxWinner(board);
-
-        if (winResult.won) {
+        if (result.outcome === 'win') {
             const winnerUid = window.currentUser.uid;
-            await updateDoc(postRef, {
-                proFourBoard: board,
-                proFourStatus: 'ended',
-                proFourWinningLine: winResult.line || null,
-                gameStatus: 'ended',
-                gameWinner: winnerUid
-            });
-
+            const snap = await getDoc(postRef);
+            const post = snap.data();
+            if (!post) return;
             const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
@@ -3016,22 +3218,8 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
             if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
             if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
             window.showAlert(winMsg);
-        } else if (!board.includes('')) {
-            // Draw
-            await updateDoc(postRef, {
-                proFourBoard: board,
-                proFourStatus: 'ended',
-                gameStatus: 'ended',
-                gameWinner: 'draw'
-            });
+        } else if (result.outcome === 'draw') {
             window.showAlert("It's a Draw! 🤝 Good game!");
-        } else {
-            // Next turn (4-player cycle R → Y → B → G)
-            const nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : (turn === 'B' ? 'G' : 'R'));
-            await updateDoc(postRef, {
-                proFourBoard: board,
-                proFourTurn: nextTurn
-            });
         }
     } catch(e) {
         console.error("Connect 4 Pro Max move error:", e);
@@ -3134,11 +3322,15 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                 const allRevealed = distinctSecretLetters.every(ch => newGuessed.includes(ch));
 
                 if (allRevealed) {
-                    await updateDoc(postRef, {
-                        hangmanGuessedLetters: newGuessed,
-                        gameStatus: 'ended',
-                        gameWinner: uid
-                    });
+                    // Atomically claim the win and record the revealed letters in the same write.
+                    // Function form merges letters revealed concurrently by other players.
+                    const claimed = await window.claimGame(postRef, uid, (fresh) => ({
+                        hangmanGuessedLetters: [...new Set([...(fresh.hangmanGuessedLetters || []), guess])]
+                    }));
+                    if (!claimed) {
+                        document.getElementById('hangman-guess-modal').classList.add('hidden');
+                        return window.showAlert("Too late! Someone else already won this Hangman game.");
+                    }
 
                     const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
                     const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
@@ -3160,17 +3352,18 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     window.showAlert(winMsg);
                 } else {
                     await updateDoc(postRef, {
-                        hangmanGuessedLetters: newGuessed
+                        // arrayUnion merges atomically — a letter another player reveals
+                        // concurrently can never be lost by this write.
+                        hangmanGuessedLetters: arrayUnion(guess)
                     });
                     document.getElementById('hangman-guess-modal').classList.add('hidden');
                     window.showAlert(`Correct! '${guess}' is in the secret word! 👍`);
                 }
             } else {
                 // Wrong letter
-                const newWrong = [...wrongLetters, guess];
                 const newLetterCount = letterFailCount + 1;
                 const updatePayload = {
-                    hangmanWrongLetters: newWrong,
+                    hangmanWrongLetters: arrayUnion(guess),
                     [`hangmanLetterWrong.${uid}`]: newLetterCount
                 };
                 await updateDoc(postRef, updatePayload);
@@ -3189,13 +3382,15 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
             }
 
             if (guess === secretWord) {
-                // Win!
+                // Win! Atomically claim the win and reveal the whole word in the same write.
                 const allWordLetters = [...new Set(secretWord.replace(/\s+/g, '').split(''))];
-                await updateDoc(postRef, {
-                    hangmanGuessedLetters: allWordLetters,
-                    gameStatus: 'ended',
-                    gameWinner: uid
-                });
+                const claimed = await window.claimGame(postRef, uid, (fresh) => ({
+                    hangmanGuessedLetters: [...new Set([...(fresh.hangmanGuessedLetters || []), ...allWordLetters])]
+                }));
+                if (!claimed) {
+                    document.getElementById('hangman-guess-modal').classList.add('hidden');
+                    return window.showAlert("Too late! Someone else already won this Hangman game.");
+                }
 
                 const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
