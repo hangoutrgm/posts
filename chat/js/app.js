@@ -2342,7 +2342,10 @@ $('message-input')?.addEventListener('blur', () => setTimeout(hideMentionSuggest
 // Mobile keyboard auto-scroll fix
 const resizeObserver = new ResizeObserver(() => {
   const list = $('message-list');
-  if (list && list.lastElementChild && !$('chat-view').classList.contains('hidden')) {
+  // #active-chat is the conversation pane; also null-guard so an unexpected
+  // DOM state can never throw inside the observer (was: non-existent #chat-view).
+  const chatPane = $('active-chat');
+  if (list && list.lastElementChild && chatPane && !chatPane.classList.contains('hidden')) {
     // If we are near the bottom, stay at the bottom when keyboard opens
     if (list.scrollHeight - list.scrollTop - list.clientHeight < 150) {
       list.scrollTop = list.scrollHeight;
