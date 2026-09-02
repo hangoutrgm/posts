@@ -2015,3 +2015,21 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 
 
 
+/* ── Chat mention highlight (@name / @everyone / @mods) ──
+   Note: href/attr values are NOT escaped here, but the text is inserted by
+   highlightMentions() which only wraps already-escapHtml()'d content. */
+.chat-mention {
+  color: var(--accent);
+  background: var(--accent-glow);
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* On outgoing bubbles (dark→accent background) use a translucent white chip so
+   the highlight stays readable on both light and dark themes. */
+.message-row.me .chat-mention {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+}

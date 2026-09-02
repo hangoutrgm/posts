@@ -43,6 +43,12 @@ window.updateNotifBadge = () => {
     }
 };
 
+// Navigate to a chat thread from a chat_mention notification
+window.openChatThread = (threadId) => {
+    if (!threadId) return;
+    window.location.href = 'chat/?thread=' + encodeURIComponent(threadId);
+};
+
 window.renderNotifications = () => {
     if (window.requestNotificationPermission) window.requestNotificationPermission();
     
@@ -68,6 +74,11 @@ window.renderNotifications = () => {
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
+            else if(n.type === 'chat_mention') {
+                text = n.chatName ? `mentioned you in ${n.chatName}.` : 'mentioned you in a chat.';
+                icon = '💬';
+                linkAction = `onclick="window.openChatThread('${n.threadId}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+            }
             else if(n.type === 'game_challenge') { text = 'challenged you to a game! 🎮'; icon = '🎮'; }
             else if(n.type === 'follow') { 
                 text = 'started following you.'; icon = '👥'; 

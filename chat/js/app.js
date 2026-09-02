@@ -71,6 +71,34 @@ function linkifyText(value = '') {
     return `<a class="message-link" href="${href}" target="_blank" rel="noopener noreferrer">${href}</a>${trailing}`;
   });
 }
+// Highlight @mentions inside a message bubble (@name / @everyone / @mods).
+// Runs on the already-escaped + linkified html, so names are escaped identically
+// to escapeHtml() and regex-special characters are escaped before matching.
+// Matches thread members by their site name and/or per-thread nickname.
+function highlightMentions(html = '') {
+  if (!html) return html;
+  const mentionNames = new Set(['everyone', 'mods']);
+  const tid = state.activeThreadId;
+  const inboxItem = state.inbox?.[tid] || {};
+  const active = state.activeInboxItem || {};
+  // Union members from the live inbox summary and the open-thread item (both carry
+  // chatThreads-derived `members` for groups), and from each of their nicknames.
+  const members = new Set([
+    ...(inboxItem.members ? Object.keys(inboxItem.members) : []),
+    ...(active.members ? Object.keys(active.members) : [])
+  ]);
+  members.forEach(uid => {
+    if (state.users?.[uid]?.name) mentionNames.add(String(state.users[uid].name));
+    if (inboxItem.nicknames?.[uid]) mentionNames.add(String(inboxItem.nicknames[uid]));
+    if (active.nicknames?.[uid]) mentionNames.add(String(active.nicknames[uid]));
+  });
+  const sorted = [...mentionNames].filter(n => n && n.trim()).sort((a, b) => b.length - a.length);
+  if (!sorted.length) return html;
+  const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = sorted.map(n => reEsc(escapeHtml(n))).join('|');
+  const re = new RegExp(`(^|[^\\w@])@(${pattern})(?![A-Za-z0-9_])`, 'gi');
+  return html.replace(re, (m, pre, name) => `${pre}<span class="chat-mention">@${name}</span>`);
+}
 function avatarUrl(user = {}) { const url = String(user.pic || user.photoURL || ''); return /^(https?:|data:image\/)/i.test(url) ? url : fallbackAvatar(user.uid || user.name || 'hangout'); }
 function formatTime(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
 function showToast(message) { const toast = $('toast'); toast.textContent = message; toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 3500); }
@@ -377,7 +405,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     const isGameCard = Boolean(message.isGame && window.ChatGames);
     if (isGameCard) { quote = ''; image = ''; audioHtml = ''; }
-    let messageText = isGameCard ? window.ChatGames.renderBody(message) : linkifyText(message.text || '');
+    let messageText = isGameCard ? window.ChatGames.renderBody(message) : highlightMentions(linkifyText(message.text || ''));
     if (!isGameCard && !messageText && image) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
     } else if (!messageText && isVoice) {
@@ -1597,7 +1625,9 @@ async function sendMessage(event) {
     if (image) payload.image = image;
     if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image), image: state.replyTo.image || null };
     window._jumpToLatest = true;
-    await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+    const msgRef = await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+    // Fire-and-forget mention notifications (@name / @everyone / @mods)
+    if (text) notifyChatMentions(text, msgRef.key).catch(() => {});
     resetComposer();
     updateStreak(state.activeThreadId);
     try { await updateConversationSummaries(text || (file?.type.startsWith('video/') ? '🎥 Video' : '📷 Photo'), timestamp); } catch (error) { console.error('Message was sent, but its inbox summary failed:', error); }
@@ -1607,6 +1637,117 @@ async function sendMessage(event) {
     else showToast(`Could not send: ${error.message.replace('Firebase: ', '')}`);
   }
   button.disabled = false;
+}
+
+// ==========================================
+// CHAT MENTION NOTIFICATIONS (@name / @everyone / @mods)
+// When a chat message contains a mention, targets get a Hangout Posts
+// notification (notifications/{uid}). Clicking it reopens this chat via
+// chat/?thread=<id> — see openThreadFromParam below.
+// ==========================================
+async function notifyChatMentions(text, messageId) {
+  if (!state.user || !state.activeThreadId || !text) return;
+  const threadId = state.activeThreadId;
+  const senderUid = state.user.uid;
+  const textLower = text.toLowerCase();
+
+  // Fresh thread data (members + moderators + nicknames)
+  let members = null, moderators = [], chatName = '', threadNicknames = {};
+  try {
+    const tSnap = await get(ref(db, `chatThreads/${threadId}`));
+    if (tSnap.exists()) {
+      const t = tSnap.val();
+      members = t.members ? Object.keys(t.members) : null;
+      moderators = t.moderators ? Object.keys(t.moderators) : [];
+      chatName = t.name || '';
+      threadNicknames = t.nicknames || {};
+    }
+  } catch (e) {}
+  if (!members || !members.length) return;
+
+  const targets = new Set();
+
+  // @everyone → every group member except the sender
+  if (textLower.includes('@everyone')) {
+    members.forEach(uid => { if (uid !== senderUid) targets.add(uid); });
+  }
+
+  // @mods → the group's moderators (chatThreads/{tid}/moderators) except the sender
+  if (textLower.includes('@mods')) {
+    moderators.forEach(uid => { if (uid !== senderUid) targets.add(uid); });
+  }
+
+  // Individual @name → match the member's site name and/or per-thread nickname
+  members.forEach(uid => {
+    if (uid === senderUid || targets.has(uid)) return;
+    const names = [];
+    if (state.users[uid]?.name) names.push(String(state.users[uid].name).toLowerCase());
+    if (threadNicknames[uid]) names.push(String(threadNicknames[uid]).toLowerCase());
+    if (state.inbox[threadId]?.nicknames?.[uid]) names.push(String(state.inbox[threadId].nicknames[uid]).toLowerCase());
+    if (names.some(nm => nm && textLower.includes('@' + nm))) targets.add(uid);
+  });
+
+  if (!targets.size) return;
+
+  const base = { type: 'chat_mention', sourceUid: senderUid, threadId, messageId: messageId || null, timestamp: Date.now(), read: false };
+  if (chatName) base.chatName = chatName;
+  targets.forEach(uid => {
+    push(ref(db, `notifications/${uid}`), base).catch(() => {});
+  });
+  showToast(`Mentioned ${targets.size} member${targets.size > 1 ? 's' : ''}.`);
+}
+
+// Deep-link helpers for the chat/?thread=<id> notification flow
+function waitForInbox(timeout = 6000) {
+  return new Promise((resolve) => {
+    if (state.inboxReady) return resolve(true);
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (state.inboxReady) { clearInterval(timer); resolve(true); }
+      else if (Date.now() - started > timeout) { clearInterval(timer); resolve(false); }
+    }, 200);
+  });
+}
+async function openThreadFromParam(threadId) {
+  if (!state.user || !threadId) return;
+  const me = state.user.uid;
+  await waitForInbox();
+  // Already in the inbox → open it directly
+  if (state.inbox[threadId]) return openThread(threadId, state.inbox[threadId]);
+  try {
+    const tSnap = await get(ref(db, `chatThreads/${threadId}`));
+    const thread = tSnap.val();
+    if (!thread) return showToast('Conversation not found.');
+    const isMember = thread.members && thread.members[me];
+    if (isMember) {
+      // Member but not in inbox yet (e.g. inbox sync lag) — create the entry and open
+      const sum = {
+        isGroup: thread.isGroup,
+        members: thread.members || {},
+        peerId: thread.isGroup ? undefined : (Object.keys(thread.members || {}).find(id => id !== me)),
+        lastMessage: thread.lastMessage || 'Conversation',
+        lastTimestamp: thread.lastTimestamp || Date.now(),
+        lastSenderId: thread.lastSenderId || me,
+        unreadCount: 0,
+        creatorId: thread.creatorId,
+        name: thread.name
+      };
+      await set(ref(db, `chatInboxes/${me}/${threadId}`), sum);
+      return openThread(threadId, sum);
+    }
+    if (thread.isGroup && thread.isPublic) {
+      // Public group → join like an invite link
+      await set(ref(db, `chatThreads/${threadId}/members/${me}`), true);
+      const summary = { isGroup: true, isPublic: true, members: { ...thread.members, [me]: true }, lastMessage: thread.lastMessage || 'Joined via link', lastTimestamp: thread.lastTimestamp || Date.now(), lastSenderId: thread.lastSenderId || me, unreadCount: 0, creatorId: thread.creatorId, name: thread.name || '' };
+      await set(ref(db, `chatInboxes/${me}/${threadId}`), summary);
+      await push(ref(db, `chatMessages/${threadId}`), { senderId: me, text: 'joined from a mention notification.', timestamp: Date.now(), isSystem: true });
+      return openThread(threadId, summary);
+    }
+    showToast('You are not part of that conversation.');
+  } catch (e) {
+    console.warn('Thread deep-link failed:', e);
+    showToast('Could not open that conversation.');
+  }
 }
 
 async function toggleReaction(messageId, reaction) {
@@ -1918,6 +2059,7 @@ onValue(ref(db, 'presence'), (snapshot) => { state.online = snapshot.val() || {}
 onValue(ref(db, '.info/connected'), (snapshot) => { state.connected = snapshot.val() === true; if (state.connected) startOwnPresence(); });
 let checkedInvite = false;
 let checkedDmParam = false;
+let checkedThreadParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
   state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
@@ -1997,6 +2139,20 @@ onAuthStateChanged(auth, async (user) => {
         } catch (e) { console.warn('DM deep-link failed:', e); showToast('Could not open that conversation.'); }
       } else {
         checkedDmParam = true;
+      }
+    }
+
+    // Deep link from a chat mention notification (Hangout Posts app): chat/?thread=<threadId>
+    if (!checkedThreadParam) {
+      const threadParam = new URLSearchParams(window.location.search).get('thread');
+      if (threadParam) {
+        checkedThreadParam = true;
+        window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+        // Brief pause so the inbox listener attaches first; openThreadFromParam also
+        // waits for inboxReady before deciding what to do.
+        setTimeout(() => openThreadFromParam(threadParam), 400);
+      } else {
+        checkedThreadParam = true;
       }
     }
   } else closeActiveChat();

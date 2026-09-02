@@ -508,6 +508,7 @@ window._startNotifListener = (uid) => {
                                 n.type === 'react_post' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your post!` :
                                 n.type === 'react_comment' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your comment!` :
                                 n.type === 'react_reply' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your reply!` :
+                                n.type === 'chat_mention' ? `${sourceUser?.name || 'Someone'} mentioned you in a chat!` :
                                 `You have a new notification`;
                     const iconUrl = sourceUser?.pic || './icon-192.png';
                     if (navigator.serviceWorker) {
