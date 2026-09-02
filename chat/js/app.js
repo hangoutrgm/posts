@@ -1,7 +1,7 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=25';
+import '../games/index.js?v=27';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {
@@ -11,6 +11,8 @@ if (window.ChatGames) {
     toast: showToast,
     getSettings: () => chatSettings,
     isLbRewardsEnabled: () => Boolean(state.activeInboxItem?.isGroup && state.activeInboxItem?.lbRewardsEnabled === true),
+    // Game posts count as messages: bump thread summary + unread badges for all members.
+    notifySummary: (preview, ts) => updateConversationSummaries(preview, ts),
   });
 }
 
@@ -948,17 +950,34 @@ function watchSeen(threadId) {
     else if (Array.isArray(state.stopSeen)) state.stopSeen.forEach(fn => fn());
   }
   state.stopSeen = null; state.peerSeenAt = 0; state.groupSeenAt = {};
+  // Seed from the local cache so "Seen" indicators render correctly on the FIRST
+  // pass — no pop-in cascade while each member's receipt listener connects.
+  seedSeenFromCache(threadId);
+  // Debounced render: each member's receipt arrives in its own listener; without
+  // this, opening a group animates the seen avatars one-by-one down the screen.
+  let seenRenderQueued = false;
+  const scheduleSeenRender = () => {
+    if (seenRenderQueued) return;
+    seenRenderQueued = true;
+    setTimeout(() => {
+      seenRenderQueued = false;
+      if (state.activeThreadId) renderMessages(undefined, false);
+    }, 150);
+  };
+  const persistSeen = () => saveSeenCache(threadId,
+    state.activeInboxItem?.isGroup ? { group: { ...state.groupSeenAt } } : { peer: state.peerSeenAt });
   if (state.activeInboxItem?.isGroup) {
     const peerIds = getThreadPeers(state.activeInboxItem);
-    state.stopSeen = peerIds.map(uid => 
+    state.stopSeen = peerIds.map(uid =>
       onValue(ref(db, `chatReads/${uid}/${threadId}`), (snapshot) => {
         state.groupSeenAt[uid] = Number(snapshot.val() || 0);
-        renderMessages(undefined, false);
+        scheduleSeenRender();
+        persistSeen();
       }, (error) => reportRealtimeError('seen receipts', error))
     );
     return;
   }
-  state.stopSeen = onValue(ref(db, `chatReads/${state.activePeerId}/${threadId}`), (snapshot) => { state.peerSeenAt = Number(snapshot.val() || 0); renderMessages(undefined, false); }, (error) => reportRealtimeError('seen receipts', error));
+  state.stopSeen = onValue(ref(db, `chatReads/${state.activePeerId}/${threadId}`), (snapshot) => { state.peerSeenAt = Number(snapshot.val() || 0); scheduleSeenRender(); persistSeen(); }, (error) => reportRealtimeError('seen receipts', error));
 }
 
 function watchTyping(threadId) {
@@ -2035,6 +2054,36 @@ function loadMessagesCache(threadId) {
     if (!p || p.uid !== state.user.uid || !p.messages) return null;
     return p.messages;
   } catch (e) { return null; }
+}
+
+// ── Seen-receipt cache (localStorage) ──
+// Persists the last known "Seen" timestamps per thread so a freshly opened thread
+// renders its seen indicators instantly from cache, instead of showing them
+// pop in one-by-one as each member's realtime receipt listener connects.
+const _seenSaveTimer = {};
+function saveSeenCache(threadId, data, delay = 400) {
+  if (!threadId || !state.user) return;
+  clearTimeout(_seenSaveTimer[threadId]);
+  _seenSaveTimer[threadId] = setTimeout(() => {
+    try {
+      localStorage.setItem(`hangout-chat-seen-${threadId}`, JSON.stringify({ savedAt: Date.now(), uid: state.user.uid, data: data || {} }));
+    } catch (e) { /* storage quota — skip gracefully */ }
+    delete _seenSaveTimer[threadId];
+  }, delay);
+}
+function loadSeenCache(threadId) {
+  if (!threadId || !state.user) return null;
+  try {
+    const p = JSON.parse(localStorage.getItem(`hangout-chat-seen-${threadId}`) || 'null');
+    if (!p || p.uid !== state.user.uid) return null;
+    return p.data || null;
+  } catch (e) { return null; }
+}
+function seedSeenFromCache(threadId) {
+  const data = loadSeenCache(threadId);
+  if (!data) return;
+  if (data.group && typeof data.group === 'object') state.groupSeenAt = { ...data.group };
+  else if (data.peer !== undefined) state.peerSeenAt = Number(data.peer || 0);
 }
 
 function syncThreadSummaryWatchers() {

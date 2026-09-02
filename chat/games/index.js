@@ -2,7 +2,7 @@
 // chat/games/index.js — public API + picker wiring
 // Exposes window.ChatGames used by app.js and inline onclicks.
 // ============================================================
-import * as engine from './engine.js?v=18';
+import * as engine from './engine.js?v=19';
 import { renderBody, pickerHtml, setContext } from './renderers.js?v=20';
 import { GAME_META } from './helpers.js?v=6';
 
@@ -143,12 +143,13 @@ engine.setHostInputs({
 
 window.ChatGames = {
   /** Called once by chat app.js to provide context hooks. */
-  init: ({ getThreadId, getName, toast, getSettings, isLbRewardsEnabled }) => {
+  init: ({ getThreadId, getName, toast, getSettings, isLbRewardsEnabled, notifySummary }) => {
     if (typeof getThreadId === 'function') { _getThreadId = getThreadId; engine.setThreadGetter(getThreadId); }
     setContext({ getName });
     if (typeof toast === 'function') { _toast = toast; engine.setToast(toast); }
     if (typeof getSettings === 'function') engine.setSettingsGetter(getSettings);
     if (typeof isLbRewardsEnabled === 'function') engine.setLbRewardsChecker(isLbRewardsEnabled);
+    if (typeof notifySummary === 'function') engine.setSummaryNotifier(notifySummary);
   },
   openPicker,
   renderBody,

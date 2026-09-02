@@ -11,6 +11,11 @@ import {
 
 let _getThreadId = () => null;
 export const setThreadGetter = (fn) => { _getThreadId = fn; };
+// Inbox-summary notifier (wired by index.js ← app.js) — makes a posted game act
+// exactly like a regular message: bumps the thread's lastMessage/unreadCount in
+// every member's inbox so the conversation shows as "new message".
+let _notifySummary = null;
+export const setSummaryNotifier = (fn) => { if (typeof fn === 'function') _notifySummary = fn; };
 // Host-input providers (wired by index.js — e.g. the Hangman setup modal)
 let _hostInputs = {};
 export const setHostInputs = (h) => { _hostInputs = { ..._hostInputs, ...h }; };
@@ -398,6 +403,9 @@ export const createGame = async (type) => {
     isGame: true,
     game,
   });
+  // Game post = a new message for everyone: refresh thread summary + unread
+  // badges in each member's inbox (same path a normal text message uses).
+  try { if (_notifySummary) await _notifySummary(text, Date.now()); } catch (_) {}
   update(ref(db, 'users/' + uid), { lastChatGameAt: Date.now() });
 };
 
