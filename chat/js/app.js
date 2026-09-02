@@ -52,7 +52,8 @@ const state = {
   replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
   groupMode: false, groupSelection: [],
   noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null,
-  streaks: {}, stopStreak: null, pinnedMessage: null, stopPinnedMessage: null, stopPresenceWatch: null, presenceWatchUid: null, mediaRecorder: null, audioChunks: [], recTimerInterval: null, recSeconds: 0
+  streaks: {}, stopStreak: null, pinnedMessage: null, stopPinnedMessage: null, stopPresenceWatch: null, presenceWatchUid: null, mediaRecorder: null, audioChunks: [], recTimerInterval: null, recSeconds: 0,
+  mentionMatch: null, mentionActive: -1, mentionItems: []
 };
 // Restore users cache immediately so DM names are available before RTDB responds
 try { const cu = localStorage.getItem('hangout-users'); if (cu) state.users = JSON.parse(cu); } catch (e) {}
@@ -98,6 +99,106 @@ function highlightMentions(html = '') {
   const pattern = sorted.map(n => reEsc(escapeHtml(n))).join('|');
   const re = new RegExp(`(^|[^\\w@])@(${pattern})(?![A-Za-z0-9_])`, 'gi');
   return html.replace(re, (m, pre, name) => `${pre}<span class="chat-mention">@${name}</span>`);
+}
+// ==========================================
+// CHAT @MENTION AUTO-SUGGESTION POPUP
+// Typing "@" in the composer opens a dropdown of the CURRENT GROUP's members
+// (never all users). Moderators/creator/admins also get @everyone & @mods
+// suggestions. Click or Arrow+Enter/Tab inserts "@Name " at the cursor.
+// ==========================================
+function canMentionAllInThread() {
+  if (!state.user) return false;
+  if (isSiteAdmin()) return true;
+  const item = state.activeInboxItem || state.inbox?.[state.activeThreadId] || {};
+  if (!item.isGroup) return false;
+  const me = state.user.uid;
+  return item.creatorId === me || !!item.moderators?.[me];
+}
+function getThreadMemberCandidates(query) {
+  const tid = state.activeThreadId;
+  const inboxItem = state.inbox?.[tid] || {};
+  const active = state.activeInboxItem || {};
+  const memberIds = new Set([
+    ...(inboxItem.members ? Object.keys(inboxItem.members) : []),
+    ...(active.members ? Object.keys(active.members) : [])
+  ]);
+  const me = state.user?.uid;
+  const q = (query || '').toLowerCase();
+  const list = [];
+  memberIds.forEach(uid => {
+    if (uid === me) return;
+    const u = state.users?.[uid] || {};
+    const siteName = u.name || getNickname(uid) || 'Member';
+    const nick = inboxItem.nicknames?.[uid] || active.nicknames?.[uid];
+    if (q && !siteName.toLowerCase().includes(q) && !(nick && nick.toLowerCase().includes(q))) return;
+    list.push({ kind: 'user', uid, name: siteName, nick, pic: u.pic || avatarUrl(u) });
+  });
+  list.sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name));
+  // @everyone / @mods — only for moderators, creator or site admins
+  if (canMentionAllInThread()) {
+    if ('everyone'.includes(q)) list.unshift({ kind: 'everyone', name: 'everyone', sub: 'All group members' });
+    if ('mods'.includes(q)) list.unshift({ kind: 'mods', name: 'mods', sub: 'Group moderators' });
+  }
+  return list.slice(0, 8);
+}
+function updateMentionSuggestions() {
+  const input = $('message-input');
+  if (!input || !state.user || !state.activeThreadId) return hideMentionSuggestions();
+  const text = input.value;
+  const cursor = input.selectionStart ?? text.length;
+  const before = text.slice(0, cursor);
+  const match = before.match(/(^|\s)@([^\s@]*)$/);
+  if (!match) return hideMentionSuggestions();
+  state.mentionMatch = { start: match.index + match[1].length, end: cursor };
+  const items = getThreadMemberCandidates(match[2]);
+  state.mentionItems = items;
+  state.mentionActive = Math.min(Math.max(state.mentionActive, 0), items.length - 1);
+  const box = $('mention-suggestions');
+  if (!box) return;
+  if (!items.length) {
+    box.classList.add('hidden');
+    return;
+  }
+  box.innerHTML = items.map((it, i) => {
+    const display = it.nick || it.name;
+    const avatar = it.kind === 'user'
+      ? `<img class="mention-suggestion-avatar" src="${escapeHtml(it.pic)}" alt="">`
+      : `<span class="mention-suggestion-special" style="background:${it.kind === 'everyone' ? '#ef4444' : '#22c55e'}">${it.kind === 'everyone' ? '📣' : '🛡️'}</span>`;
+    const sub = it.sub || (it.nick ? it.name : '');
+    return `<button type="button" class="mention-suggestion-item${i === state.mentionActive ? ' active' : ''}" data-index="${i}" role="option">
+      ${avatar}
+      <span class="min-w-0 flex-1">
+        <span class="mention-suggestion-name block truncate"><span class="at">@</span>${escapeHtml(display)}</span>
+        ${sub ? `<span class="mention-suggestion-sub block truncate">${escapeHtml(sub)}</span>` : ''}
+      </span>
+    </button>`;
+  }).join('');
+  box.classList.remove('hidden');
+}
+function hideMentionSuggestions() {
+  state.mentionMatch = null;
+  state.mentionActive = -1;
+  state.mentionItems = [];
+  const box = $('mention-suggestions');
+  if (box) box.classList.add('hidden');
+}
+function insertMentionFromSuggestion() {
+  const input = $('message-input');
+  const m = state.mentionMatch;
+  if (!input || !m) return hideMentionSuggestions();
+  const it = state.mentionItems[state.mentionActive];
+  if (!it) return hideMentionSuggestions();
+  const insertName = it.kind === 'user' ? (it.name || it.nick || 'Member') : it.name;
+  const before = input.value.slice(0, m.start);
+  const after = input.value.slice(m.end);
+  const inserted = '@' + insertName + ' ';
+  input.value = before + inserted + after;
+  const pos = (before + inserted).length;
+  input.setSelectionRange(pos, pos);
+  input.style.height = '1px';
+  input.style.height = `${Math.min(input.scrollHeight, 130)}px`;
+  hideMentionSuggestions();
+  input.focus();
 }
 function avatarUrl(user = {}) { const url = String(user.pic || user.photoURL || ''); return /^(https?:|data:image\/)/i.test(url) ? url : fallbackAvatar(user.uid || user.name || 'hangout'); }
 function formatTime(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
@@ -2176,7 +2277,18 @@ $('message-input').addEventListener('input', (event) => {
 
   if (wasNearLatest) list.scrollTop = list.scrollHeight;
   if (event.target.value.trim()) noteTyping(); else setTyping(false); 
+  updateMentionSuggestions();
 });
+
+// Mention suggestion popup interactions
+$('mention-suggestions')?.addEventListener('mousedown', (e) => {
+  const btn = e.target.closest('[data-index]');
+  if (!btn) return;
+  e.preventDefault(); // keep focus in the textarea
+  state.mentionActive = Number(btn.dataset.index);
+  insertMentionFromSuggestion();
+});
+$('message-input')?.addEventListener('blur', () => setTimeout(hideMentionSuggestions, 150));
 
 // Mobile keyboard auto-scroll fix
 const resizeObserver = new ResizeObserver(() => {
@@ -2189,10 +2301,21 @@ const resizeObserver = new ResizeObserver(() => {
   }
 });
 if ($('message-list')) resizeObserver.observe($('message-list'));
-$('message-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { 
-  if (window.innerWidth < 768 || matchMedia('(pointer: coarse)').matches) return;
-  event.preventDefault(); $('message-form').requestSubmit(); 
-} });
+$('message-input').addEventListener('keydown', (event) => {
+  const box = $('mention-suggestions');
+  const isOpen = box && !box.classList.contains('hidden');
+  if (isOpen) {
+    const items = state.mentionItems || [];
+    if (event.key === 'ArrowDown') { event.preventDefault(); state.mentionActive = (state.mentionActive + 1) % items.length; updateMentionSuggestions(); return; }
+    if (event.key === 'ArrowUp') { event.preventDefault(); state.mentionActive = (state.mentionActive - 1 + items.length) % items.length; updateMentionSuggestions(); return; }
+    if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); insertMentionFromSuggestion(); return; }
+    if (event.key === 'Escape') { event.preventDefault(); hideMentionSuggestions(); return; }
+  }
+  if (event.key === 'Enter' && !event.shiftKey) {
+    if (window.innerWidth < 768 || matchMedia('(pointer: coarse)').matches) return;
+    event.preventDefault(); $('message-form').requestSubmit();
+  }
+});
 $('send-button').addEventListener('mousedown', e => e.preventDefault());
 $('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
 $('image-input').addEventListener('change', (event) => { 
