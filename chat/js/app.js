@@ -52,7 +52,7 @@ const state = {
   replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
   groupMode: false, groupSelection: [],
   noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null,
-  streaks: {}, stopStreak: null, pinnedMessage: null, stopPinnedMessage: null, mediaRecorder: null, audioChunks: [], recTimerInterval: null, recSeconds: 0
+  streaks: {}, stopStreak: null, pinnedMessage: null, stopPinnedMessage: null, stopPresenceWatch: null, presenceWatchUid: null, mediaRecorder: null, audioChunks: [], recTimerInterval: null, recSeconds: 0
 };
 // Restore users cache immediately so DM names are available before RTDB responds
 try { const cu = localStorage.getItem('hangout-users'); if (cu) state.users = JSON.parse(cu); } catch (e) {}
@@ -1727,10 +1727,37 @@ function startOwnPresence() {
   const ownPresence = ref(db, `presence/${state.user.uid}/${presenceSessionId}`);
   onDisconnect(ownPresence).remove().catch(() => {});
   set(ownPresence, true).catch(() => {});
+  ensurePresenceWatch();
+}
+// Self-heal watcher (mirrors the feed): the 1-minute sweeper deletes all /presence
+// entries; if this user is truly online and the tab is visible, re-add our chat
+// session instantly so we don't drop off the online list.
+function ensurePresenceWatch() {
+  if (!state.user) return;
+  if (state.presenceWatchUid === state.user.uid && state.stopPresenceWatch) return;
+  if (state.stopPresenceWatch) state.stopPresenceWatch();
+  const uid = state.user.uid;
+  state.presenceWatchUid = uid;
+  state.stopPresenceWatch = onValue(ref(db, `presence/${uid}`), (snap) => {
+    const val = snap.val();
+    const hasAny = val && typeof val === 'object' && Object.keys(val).length > 0;
+    if (!hasAny && !document.hidden && state.connected && state.user && state.user.uid === uid) {
+      const ownPresence = ref(db, `presence/${state.user.uid}/${presenceSessionId}`);
+      set(ownPresence, true).catch(() => {});
+    }
+  });
 }
 function stopOwnPresence(user = state.user) {
+  if (state.stopPresenceWatch) { state.stopPresenceWatch(); state.stopPresenceWatch = null; state.presenceWatchUid = null; }
   if (user) remove(ref(db, `presence/${user.uid}/${presenceSessionId}`)).catch(() => {});
 }
+// 1-minute presence sweeper (same as the Hangout Posts feed): delete all /presence
+// entries so stale sessions can never keep an offline user shown as online.
+setInterval(() => {
+  if (document.visibilityState === 'visible' && state.user) {
+    remove(ref(db, 'presence')).catch(() => {});
+  }
+}, 60000);
 function reportRealtimeError(scope, error) {
   console.error(`Realtime ${scope} listener failed:`, error);
   showToast('Live updates disconnected. Refresh the page and check your connection.');

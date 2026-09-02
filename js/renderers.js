@@ -62,9 +62,9 @@ window.renderNotifications = () => {
             
             let linkAction = n.postId ? `onclick="window.goToPost('${n.postId}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"` : '';
             
-            if(n.type === 'react_post') { text = 'reacted to your post.'; icon = '❤️'; }
-            else if(n.type === 'react_comment') { text = 'reacted to your comment.'; icon = '❤️'; }
-            else if(n.type === 'react_reply') { text = 'reacted to your reply.'; icon = '❤️'; }
+            if(n.type === 'react_post') { text = 'reacted to your post.'; icon = window.REACT_EMOJI?.[n.reactType] || '❤️'; }
+            else if(n.type === 'react_comment') { text = 'reacted to your comment.'; icon = window.REACT_EMOJI?.[n.reactType] || '❤️'; }
+            else if(n.type === 'react_reply') { text = 'reacted to your reply.'; icon = window.REACT_EMOJI?.[n.reactType] || '❤️'; }
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }

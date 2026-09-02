@@ -36,12 +36,39 @@ function startOwnPresence(user = auth.currentUser) {
             await set(sessionRef, serverTimestamp());
         } catch(e) {}
     }, 60000);
+
+    ensurePresenceWatch(user);
+}
+
+// Self-heal watcher: the 1-minute presence sweeper (below) deletes ALL presence
+// entries so a stale session (e.g. a tab whose WebSocket stayed alive after the
+// user walked away) can't keep that user shown as online. If THIS user is truly
+// online and the tab is visible, we re-add our own session instantly so we never
+// flicker off the members list.
+function ensurePresenceWatch(user = auth.currentUser) {
+    if (!user) return;
+    if (window._presenceWatchUid === user.uid && window._presenceWatchUnsub) return;
+    if (window._presenceWatchUnsub) window._presenceWatchUnsub();
+    const uid = user.uid;
+    window._presenceWatchUid = uid;
+    window._presenceWatchUnsub = onValue(ref(db, `presence/${uid}`), (snap) => {
+        const val = snap.val();
+        const hasAny = val && typeof val === 'object' && Object.keys(val).length > 0;
+        if (!hasAny && !document.hidden && auth.currentUser && auth.currentUser.uid === uid) {
+            startOwnPresence(auth.currentUser);
+        }
+    });
 }
 
 function stopOwnPresence(user = auth.currentUser) {
     if (presenceInterval) {
         clearInterval(presenceInterval);
         presenceInterval = null;
+    }
+    if (window._presenceWatchUnsub) {
+        window._presenceWatchUnsub();
+        window._presenceWatchUnsub = null;
+        window._presenceWatchUid = null;
     }
     if (user) {
         const sessionRef = presenceSessionRef(user.uid);
@@ -50,6 +77,18 @@ function stopOwnPresence(user = auth.currentUser) {
     }
     return Promise.resolve();
 }
+
+// ==========================================
+// PRESENCE SWEEPER — every 1 minute
+// Deletes every UID under /presence. Genuinely online & visible clients re-add
+// their session immediately via ensurePresenceWatch; stale/offline sessions stay
+// gone. Permanently fixes "shows online even when the user is offline".
+// ==========================================
+setInterval(() => {
+    if (document.visibilityState === 'visible' && auth.currentUser) {
+        remove(ref(db, 'presence')).catch(() => {});
+    }
+}, 60000);
 
 // ==========================================
 // SEARCH & FILTERS
@@ -463,8 +502,12 @@ window._startNotifListener = (uid) => {
             if (!n.read && n.timestamp > (window.lastNotifTime || Date.now())) {
                 if ("Notification" in window && Notification.permission === "granted") {
                     const sourceUser = window.globalUsersCache[n.sourceUid];
+                    const rxEmoji = window.REACT_EMOJI?.[n.reactType] || '❤️';
                     const msg = n.type === 'mention' ? `${sourceUser?.name || 'Someone'} mentioned you!` :
                                 n.type === 'comment' ? `${sourceUser?.name || 'Someone'} commented on your post!` :
+                                n.type === 'react_post' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your post!` :
+                                n.type === 'react_comment' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your comment!` :
+                                n.type === 'react_reply' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your reply!` :
                                 `You have a new notification`;
                     const iconUrl = sourceUser?.pic || './icon-192.png';
                     if (navigator.serviceWorker) {
@@ -1170,7 +1213,7 @@ window.react = (postId, postAuthorId, type) => {
             update(ref(db, `users/${postAuthorId}`), { points: increment(likePoints) });
         }
             push(ref(db, `notifications/${postAuthorId}`), { 
-                type: 'react_post', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
+                type: 'react_post', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
         }
         const postAuthorName = window.globalUsersCache?.[postAuthorId]?.name || postAuthorId;
@@ -1212,7 +1255,7 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${commentAuthorId}`), { points: increment(likePoints) });
             push(ref(db, `notifications/${commentAuthorId}`), { 
-                type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
+                type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
         }
         const commentAuthorName = window.globalUsersCache?.[commentAuthorId]?.name || commentAuthorId;
@@ -1255,7 +1298,7 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${replyAuthorId}`), { points: increment(likePoints) });
             push(ref(db, `notifications/${replyAuthorId}`), { 
-                type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
+                type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
         }
     }

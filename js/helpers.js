@@ -122,6 +122,10 @@ window.hostAnswerVisible = (post) => {
     return true;
 };
 
+// Reaction type → emoji (used in reaction notifications). Keys match the feed's
+// reaction buttons: like / heart / haha / wow / sad / angry.
+window.REACT_EMOJI = { like: '👍', heart: '❤️', haha: '😂', wow: '😮', sad: '😢', angry: '😡' };
+
 window.showAlert = (msg) => {
     document.getElementById('custom-alert-msg').innerText = msg;
     document.getElementById('custom-alert-modal').classList.remove('hidden');
