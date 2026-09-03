@@ -1,7 +1,7 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=28';
+import '../games/index.js?v=29';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {
@@ -516,16 +516,34 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       image = isVid ? `<video class="message-image" src="${escapeHtml(message.image)}" style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`;
     }
     const isGameCard = Boolean(message.isGame && window.ChatGames);
-    if (isGameCard) { quote = ''; image = ''; audioHtml = ''; }
-    let messageText = isGameCard ? window.ChatGames.renderBody(message) : highlightMentions(linkifyText(message.text || ''));
-    if (!isGameCard && !messageText && image) {
+    const isGameBump = Boolean(message.isGameBump && message.gameBump);
+    if (isGameCard || isGameBump) { quote = ''; image = ''; audioHtml = ''; }
+
+    let bumpTag = '';
+    if (message.isBumped && message.bumpedFrom && !message.isDeleted) {
+      const origSender = getNickname(message.bumpedFrom.senderId) || message.bumpedFrom.senderName || 'someone';
+      bumpTag = `<div class="bump-tag"><span class="bump-tag-icon"><svg viewBox="0 0 24 24" width="11" height="11"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="bump-tag-text">Bumped <strong>@${escapeHtml(origSender)}</strong>'s message</span></div>`;
+    }
+
+    let messageText = '';
+    if (isGameCard) {
+      messageText = window.ChatGames.renderBody(message);
+    } else if (isGameBump) {
+      const gb = message.gameBump;
+      messageText = `<div class="game-bump-wrap" onclick="event.stopPropagation(); window.scrollToGameMessage('${escapeHtml(gb.gameId)}')" title="Tap to go to game"><div class="game-bump-who">Bumped a game</div><div class="game-bump-preview"><span class="game-bump-emoji">${escapeHtml(gb.gameIcon || '🎮')}</span><div class="game-bump-text"><strong class="game-bump-name">${escapeHtml(gb.gameName || 'Game')}</strong><span class="game-bump-sep">·</span><span class="game-bump-stat">${escapeHtml(gb.statusText || 'In progress')}</span></div><svg class="game-bump-arrow" viewBox="0 0 24 24" width="14" height="14"><polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>`;
+    } else {
+      messageText = highlightMentions(linkifyText(message.text || ''));
+    }
+
+    if (!isGameCard && !isGameBump && !messageText && image) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
-    } else if (!messageText && isVoice) {
+    } else if (!isGameCard && !isGameBump && !messageText && isVoice) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Voice message</div>`;
     }
     
     if (message.isDeleted) {
       quote = '';
+      bumpTag = '';
       image = '';
       audioHtml = '';
       messageText = '<span style="font-style:italic; opacity:0.6;">🚫 Message deleted</span>';
@@ -543,7 +561,9 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10.5px; color:var(--ink-muted); margin-bottom:2px; margin-left:6px; font-weight:600;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
-    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}${isGameCard ? ' is-game-row' : ''}"><div>${senderNameHtml}<div class="message-bubble${isGameCard ? ' is-game-bubble' : ''}" data-message="${escapeHtml(message.id)}">${isGameCard ? '' : '<span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>'}${quote}${messageText}${image}${audioHtml}</div>${!isGameCard && reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div></div></div>`;
+    const noSwipeHint = isGameCard || isGameBump;
+    const metaHtml = isGameCard ? '' : `<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>`;
+    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}${isGameCard ? ' is-game-row' : ''}"><div>${senderNameHtml}<div class="message-bubble${isGameCard ? ' is-game-bubble' : ''}" data-message="${escapeHtml(message.id)}">${noSwipeHint ? '' : '<span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>'}${quote}${bumpTag}${messageText}${image}${audioHtml}</div>${!isGameCard && !isGameBump && reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}${metaHtml}</div></div>`;
   }).forEach((html, i) => {
     const key = 'message-' + rows[i].id;
     rowHtml[key] = html;
@@ -629,6 +649,7 @@ function closeMessageMenu() {
 // Small inline SVG icon set that follows the currentColor theme
 const menuSvg = {};
 menuSvg.reply = '<svg viewBox="0 0 24 24"><path d="M9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>';
+menuSvg.bump = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 menuSvg.profile = '<svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
 menuSvg.pin = '<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.76V6a3 3 0 0 0-6 0v4.76a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24V17z"/><line x1="9" y1="2" x2="15" y2="2"/></svg>';
 menuSvg.unpin = '<svg viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="9" y1="2" x2="15" y2="2"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.76V6"/><path d="M9 10.76a2 2 0 0 1-1.11-1.79L6.11 8.08A2 2 0 0 0 5 6.29V6"/></svg>';
@@ -637,7 +658,7 @@ menuSvg.edit = '<svg viewBox="0 0 24 24"><path d="M4 20h4L20 8a2.1 2.1 0 0 0-4-4
 menuSvg.delete = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
 
 function showMessageMenu(message, x, y, fromLongPress = false) {
-  if (!message || message.isGame) return; // no react/reply menu on game cards
+  if (!message || message.isGame || message.isGameBump) return; // no react/reply menu on game cards or game bumps
   const menu = $('message-action-menu');
 
   // Quick-set reaction buttons
@@ -655,6 +676,7 @@ function showMessageMenu(message, x, y, fromLongPress = false) {
 
   const profileBtn = icon(menuSvg.profile, 'profile', `View ${escapeHtml(senderName)}'s profile`);
   const replyBtn = icon(menuSvg.reply, 'reply', 'Reply');
+  const bumpBtn = !message.isDeleted ? icon(menuSvg.bump, 'bump', 'Bump message') : '';
   const pinBtn = canPin && !message.isDeleted ? icon(isPinned ? menuSvg.unpin : menuSvg.pin, isPinned ? 'unpin' : 'pin', isPinned ? 'Unpin' : 'Pin') : '';
   const copyBtn = icon(menuSvg.copy, 'copy', 'Copy text');
   const ownerBtns = isMine
@@ -667,7 +689,7 @@ function showMessageMenu(message, x, y, fromLongPress = false) {
         `<button class="reaction-option" type="button" data-menu-action="react" data-reaction="${e}" aria-label="React ${e}">${e}</button>`).join('')}</div>`
     : '';
 
-  menu.innerHTML = `<div class="menu-actions-row">${quickButtons}${moreBtn}</div><div class="menu-separator menu-sep-full"></div><div class="menu-actions-row">${profileBtn}${replyBtn}${pinBtn}${copyBtn}${ownerBtns}</div>${pickerHtml}`;
+  menu.innerHTML = `<div class="menu-actions-row">${quickButtons}${moreBtn}</div><div class="menu-separator menu-sep-full"></div><div class="menu-actions-row">${profileBtn}${replyBtn}${bumpBtn}${pinBtn}${copyBtn}${ownerBtns}</div>${pickerHtml}`;
 
   menu.classList.remove('hidden');
   const menuW = menu.offsetWidth;
@@ -696,6 +718,7 @@ function showMessageMenu(message, x, y, fromLongPress = false) {
     if (action === 'more') { menuMoreOpen = !menuMoreOpen; return showMessageMenu(message, x, y, fromLongPress); }
     if (action === 'profile') { closeMessageMenu(); return openUserProfile(message.senderId); }
     if (action === 'reply') { closeMessageMenu(); return setReply(message); }
+    if (action === 'bump') { closeMessageMenu(); return await bumpRegularMessage(message); }
     if (action === 'pin') { closeMessageMenu(); return await pinMessage(message); }
     if (action === 'unpin') { closeMessageMenu(); return await unpinMessage(); }
     if (action === 'edit') { closeMessageMenu(); return await editMessage(message); }
@@ -809,7 +832,7 @@ function wireMessageGestures(rows) {
     };
 
     bubble.addEventListener('pointerdown', (event) => {
-      if (event.target.closest('.message-link') || event.target.classList.contains('message-image') || event.target.tagName === 'AUDIO') return;
+      if (event.target.closest('.message-link, .game-bump-wrap, .reply-quote, .chat-game-card') || event.target.classList.contains('message-image') || event.target.tagName === 'AUDIO') return;
       isPointerDown = true;
       startX = event.clientX;
       startY = event.clientY;
@@ -888,6 +911,8 @@ function wireMessageGestures(rows) {
         longPressed = false;
         return;
       }
+
+      if (event.target.closest('.message-link, .game-bump-wrap, .reply-quote, .chat-game-card')) return;
 
       // Check distance moved (must be a clean tap)
       const dist = Math.hypot(event.clientX - startX, event.clientY - startY);
@@ -1157,6 +1182,133 @@ async function unpinMessage() {
     showToast(`Could not unpin message: ${err.message}`);
   }
 }
+
+async function bumpRegularMessage(message) {
+  if (!state.user || !state.activeThreadId || message.isDeleted) return;
+  if (!(await checkChatCooldown())) return;
+
+  const timestamp = Date.now();
+  const originalSenderName = getNickname(message.senderId);
+  const payload = {
+    senderId: state.user.uid,
+    timestamp,
+    text: message.text || '',
+    isBumped: true,
+    bumpedFrom: {
+      senderId: message.senderId,
+      senderName: originalSenderName,
+      messageId: message.id
+    }
+  };
+  if (message.image) payload.image = message.image;
+  if (message.audio) payload.audio = message.audio;
+
+  window._jumpToLatest = true;
+  await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+  updateStreak(state.activeThreadId);
+  try {
+    await updateConversationSummaries(message.text || 'Bumped a message', timestamp);
+  } catch (e) {
+    console.error('Failed to update inbox summary after bump:', e);
+  }
+  showToast('Message bumped!');
+}
+
+window.bumpGameMessage = async function(mid) {
+  if (!state.user || !state.activeThreadId || !mid) return;
+  if (window._lastGameBump && Date.now() - window._lastGameBump < 4000) {
+    showToast('Please wait a moment before bumping again.');
+    return;
+  }
+
+  let gameMsg = state.messages[mid];
+  if (!gameMsg || !gameMsg.game) {
+    gameMsg = await ensureChatMessageLoaded(mid);
+  }
+
+  if (!gameMsg || !gameMsg.game) {
+    showToast('Game not found.');
+    return;
+  }
+
+  const game = gameMsg.game;
+  if (game.status === 'done' || game.status === 'closed') {
+    showToast('This game has already ended.');
+    return;
+  }
+
+  window._lastGameBump = Date.now();
+
+  const meta = window.ChatGames?.getMeta?.(game.type) || { name: 'Game', icon: '🎮' };
+  let statusText = 'In progress';
+  if (game.type === 'connect4' || game.type === 'tictactoe') {
+    const seated = Object.keys(game.players || {}).length;
+    if (game.status === 'waiting') {
+      statusText = `Waiting for challenger (${seated}/${game.type === 'connect4' ? 3 : 2})`;
+    } else if (game.turn) {
+      statusText = `@${getNickname(game.turn)}'s turn`;
+    }
+  } else if (game.type === 'first_to_mine') {
+    statusText = '💎 First to tap wins!';
+  } else if (game.type === 'hangman') {
+    const wrongs = game.wrongLetters?.length || 0;
+    statusText = `${wrongs} wrong guess${wrongs === 1 ? '' : 'es'} so far`;
+  } else if (game.raceTo) {
+    const entries = Object.entries(game.scores || {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length > 0) {
+      statusText = `Race to ${game.raceTo} · Leader: @${getNickname(entries[0][0])} (${entries[0][1]} pts)`;
+    } else {
+      statusText = `Race to ${game.raceTo} · No scores yet`;
+    }
+  } else if (Array.isArray(game.rounds) && game.rounds.length > 1) {
+    statusText = `Round ${(Number(game.revealed || 0) + 1)}/${game.rounds.length}`;
+  }
+
+  const timestamp = Date.now();
+  const payload = {
+    senderId: state.user.uid,
+    timestamp,
+    isGameBump: true,
+    gameBump: {
+      gameId: mid,
+      gameType: game.type,
+      gameName: meta.name || 'Game',
+      gameIcon: meta.icon || '🎮',
+      hostId: game.hostId || gameMsg.senderId,
+      statusText,
+    },
+    text: `🎮 Bumped ${meta.name || 'game'}`
+  };
+
+  window._jumpToLatest = true;
+  await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+  try {
+    await updateConversationSummaries(`🎮 Bumped: ${meta.name || 'Game'}`, timestamp);
+  } catch (_) {}
+  showToast('Game bumped to bottom!');
+};
+
+window.scrollToGameMessage = async function(mid) {
+  if (!mid) return;
+  let targetEl = $(`message-${mid}`);
+  if (!targetEl) {
+    await ensureChatMessageLoaded(mid);
+    targetEl = $(`message-${mid}`);
+  }
+  if (targetEl) {
+    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const card = targetEl.querySelector('.chat-game-card') || targetEl.querySelector('.message-bubble');
+    if (card) {
+      card.animate([
+        { transform: 'scale(1)', boxShadow: '0 0 0 4px var(--accent)' },
+        { transform: 'scale(1.03)', boxShadow: '0 0 20px rgba(99,102,241,0.6)' },
+        { transform: 'scale(1)', boxShadow: 'var(--shadow-sm)' }
+      ], { duration: 1400 });
+    }
+  } else {
+    showToast('Scroll up to load older messages to view this game.');
+  }
+};
 
 function resetVoiceRecorderUi() {
   if (state.recTimerInterval) {

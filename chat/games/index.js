@@ -3,7 +3,7 @@
 // Exposes window.ChatGames used by app.js and inline onclicks.
 // ============================================================
 import * as engine from './engine.js?v=20';
-import { renderBody, pickerHtml, setContext } from './renderers.js?v=20';
+import { renderBody, pickerHtml, setContext } from './renderers.js?v=21';
 import { GAME_META } from './helpers.js?v=6';
 
 let _getThreadId = () => null;
@@ -185,6 +185,10 @@ window.ChatGames = {
   advanceRound: (mid, expectedIdx) => engine.advanceRound(mid, expectedIdx),
   skip: (mid) => engine.skipRound(mid),
   close: (mid) => engine.closeGame(mid),
+  getMeta: (type) => GAME_META[type] || { name: 'Game', icon: '🎮' },
+  bump: (mid) => {
+    if (typeof window.bumpGameMessage === 'function') window.bumpGameMessage(mid);
+  },
 };
 
 // Active round cooldown live ticker (updates 3 -> 2 -> 1 without server re-render)

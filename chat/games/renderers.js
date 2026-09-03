@@ -282,6 +282,9 @@ export const renderBody = (msg) => {
   const skipBtn = (uid === g.hostId && !isEnded && isMultiRound)
     ? `<button type="button" class="cg-skip-link" onclick="window.ChatGames.skip('${mid}')" title="Skip this question">⏭️ skip</button>` : '';
 
+  const bumpBtn = !isEnded
+    ? `<button type="button" class="cg-bump-link" onclick="window.ChatGames.bump('${mid}')" title="Bump game to bottom of chat">⬆️ bump</button>` : '';
+
   const closeBtn = (uid === g.hostId && !isEnded)
     ? `<button type="button" class="cg-close-link" onclick="window.ChatGames.close('${mid}')">close</button>` : '';
 
@@ -292,6 +295,7 @@ export const renderBody = (msg) => {
         <div class="cg-header-right">
           ${roundBadge}
           ${skipBtn}
+          ${bumpBtn}
           ${closeBtn}
         </div>
       </div>
