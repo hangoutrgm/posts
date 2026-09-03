@@ -16,6 +16,13 @@ export const setThreadGetter = (fn) => { _getThreadId = fn; };
 // every member's inbox so the conversation shows as "new message".
 let _notifySummary = null;
 export const setSummaryNotifier = (fn) => { if (typeof fn === 'function') _notifySummary = fn; };
+// Targeted message fetch (wired by index.js ← app.js): game actions write nested
+// state inside a chat message that may lie OUTSIDE the 30-message live query window.
+// RTDB won't deliver a child_changed echo for it, so after a successful action we
+// fetch just that single message so the card re-renders live.
+let _ensureMessage = () => null;
+export const setEnsureMessage = (fn) => { if (typeof fn === 'function') _ensureMessage = fn; };
+const refreshMessage = async (mid) => { try { await _ensureMessage(mid); } catch (_) {} };
 // Host-input providers (wired by index.js — e.g. the Hangman setup modal)
 let _hostInputs = {};
 export const setHostInputs = (h) => { _hostInputs = { ..._hostInputs, ...h }; };
@@ -448,6 +455,7 @@ export const joinGame = async (mid) => {
     if (Object.keys(g.players).length >= need) { g.status = 'active'; g.turn = g.hostId; }
     return g;
   });
+  await refreshMessage(mid);
 };
 
 /** Connect-4: host may start early once 2 of the 3 seats are filled. */
@@ -460,6 +468,7 @@ export const startNow = async (mid) => {
     g.turn = g.hostId;
     return g;
   });
+  await refreshMessage(mid);
 };
 
 /** Tic-Tac-Toe cell click / Connect-4 column click. */
@@ -494,6 +503,7 @@ export const playMove = async (mid, idx) => {
     return g;
   });
   void maybeAwardLb(mid);
+  await refreshMessage(mid);
 };
 
 /** Hangman letter guess — cloned from Hangout Posts rules:
@@ -525,6 +535,7 @@ export const guessLetter = async (mid, rawLetter) => {
     return g;
   });
   void maybeAwardLb(mid);
+  await refreshMessage(mid);
 };
 
 /** Hangman whole-word guess — wrong guesses cost one of the player's 2 word tries. */
@@ -541,6 +552,7 @@ export const guessWord = async (mid, value) => {
     return g;
   });
   void maybeAwardLb(mid);
+  await refreshMessage(mid);
 };
 
 /** First to Mine — one atomic tap, first player wins. Host tapping gets 'host' back. */
@@ -556,6 +568,7 @@ export const mineNow = async (mid) => {
     return g;
   });
   void maybeAwardLb(mid);
+  await refreshMessage(mid);
   return result;
 };
 
@@ -574,6 +587,7 @@ export const advanceRound = async (mid, expectedIdx) => {
     }
     return gg;
   });
+  await refreshMessage(mid);
 };
 
 /** Host skips the current round in a multi-round game */
@@ -616,6 +630,7 @@ export const skipRound = async (mid) => {
   if (isGameOver) {
     void maybeAwardLb(mid);
   }
+  await refreshMessage(mid);
 };
 
 /** Quiz-style answer submit. First correct per round scores; auto-advances rounds with 3s cooldown. */
@@ -713,10 +728,11 @@ export const submitGuess = async (mid, value) => {
       advanceRound(mid, idx);
     }, 3200);
   }
+  await refreshMessage(mid);
 };
 
 /** Host abort/close. */
 export const closeGame = async (mid) => {
-  if (me()) await update(gRef(mid), { status: 'closed' });
+  if (me()) { await update(gRef(mid), { status: 'closed' }); await refreshMessage(mid); }
 };
 

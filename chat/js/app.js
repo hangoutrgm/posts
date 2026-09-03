@@ -1,7 +1,7 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=27';
+import '../games/index.js?v=28';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {
@@ -13,6 +13,9 @@ if (window.ChatGames) {
     isLbRewardsEnabled: () => Boolean(state.activeInboxItem?.isGroup && state.activeInboxItem?.lbRewardsEnabled === true),
     // Game posts count as messages: bump thread summary + unread badges for all members.
     notifySummary: (preview, ts) => updateConversationSummaries(preview, ts),
+    // Targeted fetch (see engine.js): after a game action, refresh JUST that message so
+    // the card updates live even when it's outside the 30-message live window.
+    ensureMessage: (mid) => ensureChatMessageLoaded(mid),
   });
 }
 
@@ -440,7 +443,10 @@ function replyPreview(replyTo = {}) {
 }
 function visibleMessages(rawMessages = state.messages) {
   const clearTime = Number(state.clears[state.activeThreadId] || 0);
-  return Object.entries(rawMessages || {}).map(([id, message]) => ({ id, ...message })).filter((message) => Number(message.timestamp || 0) > clearTime).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  const rows = Object.entries(rawMessages || {}).map(([id, message]) => ({ id, ...message })).filter((message) => Number(message.timestamp || 0) > clearTime);
+  // Order by Firebase push key — server-assigned and strictly chronological, so
+  // a device with a wrong clock can't inject its messages in the wrong position.
+  return rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 function renderMessages(rawMessages, jumpToLatest = false) {
@@ -456,6 +462,9 @@ function renderMessages(rawMessages, jumpToLatest = false) {
   }
   
   const lastMsg = rows[rows.length - 1];
+  // "New arrival" = the NEWEST message's id changed vs the last render. In-place
+  // updates (a game card mid-game, seen receipts, edits) keep the same id — those
+  // must never yank anyone to the bottom, even people reading near the bottom.
   const isNewArrival = window._lastRenderedMsgId && window._lastRenderedMsgId !== lastMsg.id;
   window._lastRenderedMsgId = lastMsg.id;
   
@@ -588,7 +597,14 @@ function renderMessages(rawMessages, jumpToLatest = false) {
   }
 
   wireMessageGestures(rows);
-  if (jumpToLatest || wasNearLatest || window._jumpToLatest || isNewArrival) {
+  // Original behavior restored, gated only by the bug-1 fix: auto-scroll when a
+  // genuinely NEW message arrived AND the reader is already near the bottom, or
+  // when the user opened/jumped the thread. Your OWN sends always scroll via the
+  // composer's _jumpToLatest + the listener's forceJump for your own message.
+  // In-place updates — game-card moves/answers, seen receipts, edits — never change
+  // the newest message id, so isNewArrival stays false and nobody (host included)
+  // is dragged to the bottom while others play.
+  if (jumpToLatest || window._jumpToLatest || (wasNearLatest && isNewArrival)) {
     requestAnimationFrame(() => { 
       list.scrollTop = list.scrollHeight; 
       setTimeout(() => list.scrollTop = list.scrollHeight, 100);
@@ -1381,7 +1397,10 @@ function openThread(threadId, inboxItem) {
   }, (error) => reportRealtimeError('chat messages (changed)', error));
 
   const unsubRemove = onChildRemoved(msgQuery, (snapshot) => {
-    delete state.messages[snapshot.key];
+    // A message leaves a limitToLast(30) window when NEWER ones arrive — it still
+    // exists server-side and in our loaded history, so keep it in state instead of
+    // deleting it (that was punching holes in the conversation). Real deletions
+    // arrive via update({ isDeleted: true }) → onChildChanged, not as a removal.
     scheduleRender(false);
   }, (error) => reportRealtimeError('chat messages (removed)', error));
 
@@ -1870,8 +1889,27 @@ async function openThreadFromParam(threadId) {
   }
 }
 
+async function ensureChatMessageLoaded(mid) {
+  if (!state.user || !state.activeThreadId || !mid) return null;
+  try {
+    // Targeted, single-message read: the chat listens with limitToLast(30), so RTDB
+    // only delivers child_changed echoes for messages INSIDE that window. Reacting to
+    // / playing a game on an OLDER message writes fine, but the echo never arrives —
+    // so the UI can't update. Fetching just this one message (tiny) lets us reflect it.
+    const snap = await get(ref(db, `chatMessages/${state.activeThreadId}/${mid}`));
+    if (snap.exists()) {
+      state.messages[mid] = snap.val();
+      if (state.activeThreadId) renderMessages(undefined, false);
+      return snap.val();
+    }
+  } catch (e) { console.warn('Targeted message fetch failed:', e); }
+  return null;
+}
 async function toggleReaction(messageId, reaction) {
   if (!state.user || !state.activeThreadId) return;
+  // If this message isn't in our loaded set yet (older than the live window), fetch
+  // just it first so we know the current reactions before toggling.
+  if (!state.messages[messageId]) await ensureChatMessageLoaded(messageId);
   const currentReactions = state.messages[messageId]?.reactions || {};
   const current = Boolean(currentReactions[reaction]?.[state.user.uid]);
   
@@ -1894,6 +1932,9 @@ async function toggleReaction(messageId, reaction) {
 
   try { 
     await update(ref(db, `chatMessages/${state.activeThreadId}/${messageId}/reactions`), updates); 
+    // Targeted re-fetch so the reaction renders locally even when the message is
+    // outside the 30-message live window (whose child_changed echo isn't delivered).
+    await ensureChatMessageLoaded(messageId);
   } catch (error) { 
     showToast(`Could not react: ${error.message.replace('Firebase: ', '')}`); 
   }
@@ -2042,7 +2083,7 @@ function saveMessagesCache(threadId, messages, delay = 400) {
   _msgsTimer[threadId] = setTimeout(() => {
     try {
       const payload = { savedAt: Date.now(), uid: state.user.uid, messages: messages || {} };
-      localStorage.setItem(`hangout-chat-msgs-${threadId}`, JSON.stringify(payload));
+      localStorage.setItem(`hangout-chat-msgs3-${threadId}`, JSON.stringify(payload));
     } catch (e) { /* storage quota — skip gracefully */ }
     delete _msgsTimer[threadId];
   }, delay);
@@ -2050,7 +2091,7 @@ function saveMessagesCache(threadId, messages, delay = 400) {
 function loadMessagesCache(threadId) {
   if (!threadId || !state.user) return null;
   try {
-    const p = JSON.parse(localStorage.getItem(`hangout-chat-msgs-${threadId}`) || 'null');
+    const p = JSON.parse(localStorage.getItem(`hangout-chat-msgs3-${threadId}`) || 'null');
     if (!p || p.uid !== state.user.uid || !p.messages) return null;
     return p.messages;
   } catch (e) { return null; }
