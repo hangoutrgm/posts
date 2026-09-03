@@ -440,16 +440,7 @@ function replyPreview(replyTo = {}) {
 }
 function visibleMessages(rawMessages = state.messages) {
   const clearTime = Number(state.clears[state.activeThreadId] || 0);
-  const rows = Object.entries(rawMessages || {}).map(([id, message]) => ({ id, ...message })).filter((message) => Number(message.timestamp || 0) > clearTime);
-  // Order by Firebase push key — server-assigned and strictly chronological.
-  // Sorting by the client-written `timestamp` lets devices with clock skew
-  // inject their messages into the wrong position (old chats appearing after
-  // new ones). Push keys are always 20-char, lexicographically time-ordered.
-  const isPushKey = (k) => typeof k === 'string' && k.startsWith('-') && k.length >= 15;
-  return rows.sort((a, b) => {
-    if (isPushKey(a.id) && isPushKey(b.id)) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    return (a.timestamp || 0) - (b.timestamp || 0);
-  });
+  return Object.entries(rawMessages || {}).map(([id, message]) => ({ id, ...message })).filter((message) => Number(message.timestamp || 0) > clearTime).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 }
 
 function renderMessages(rawMessages, jumpToLatest = false) {
@@ -597,22 +588,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
   }
 
   wireMessageGestures(rows);
-  // ── Consistency guard: the reconcile loop above swaps/inserts rows in place but
-  // never moves existing nodes, so an out-of-order arrival (delayed delivery /
-  // clock skew) can leave the DOM in the wrong sequence with rows visually
-  // "missing" between two others. If the DOM drifts from rows, rebuild once —
-  // a cheap id-sequence check that only fires when something is actually wrong.
-  const domIds = [...list.children].filter(n => n.id && n.id.startsWith('message-')).map(n => n.id);
-  const expectedIds = rows.map(m => 'message-' + m.id);
-  const drifted = domIds.length !== expectedIds.length || domIds.some((id, i) => id !== expectedIds[i]);
-  if (drifted) {
-    const html = expectedIds.map(id => rowHtml[id]).join('');
-    if (html) list.innerHTML = html;
-  }
-  if (jumpToLatest || wasNearLatest || window._jumpToLatest || (lastMsg && lastMsg.senderId === state.user?.uid)) {
-    // Auto-scroll ONLY when: opening the thread, already at the bottom, an
-    // explicit jump was requested, or the newest message is the user's OWN —
-    // incoming messages no longer yank a backreading user to the bottom.
+  if (jumpToLatest || wasNearLatest || window._jumpToLatest || isNewArrival) {
     requestAnimationFrame(() => { 
       list.scrollTop = list.scrollHeight; 
       setTimeout(() => list.scrollTop = list.scrollHeight, 100);
@@ -1363,7 +1339,6 @@ function openThread(threadId, inboxItem) {
 
   const cachedMessages = loadMessagesCache(threadId);
   state.messages = cachedMessages || {};
-  state._cacheSeed = cachedMessages || null;
   state.messagesLoaded = Boolean(cachedMessages);
   if (cachedMessages) {
     renderMessages(undefined, false);
@@ -1380,15 +1355,6 @@ function openThread(threadId, inboxItem) {
   const msgQuery = query(ref(db, `chatMessages/${threadId}`), limitToLast(30));
   let renderScheduled = false;
   let isInitialBatch = true;
-  // Authoritative live window — the server's last-30 is the source of truth.
-  // The localStorage cache may be STALE/PARTIAL (saved from an older session),
-  // which created "holes": messages missing between the cached tail and the
-  // live window, and cached phantoms (since deleted server-side) appearing
-  // after newer messages. Push keys are server-ordered, so any cached key
-  // >= the oldest live key that is NOT in the live window is stale → pruned
-  // before every render.
-  const liveKeys = new Set();
-  let oldestLiveKey = null;
 
   const scheduleRender = (forceJump = false) => {
     if (renderScheduled) return;
@@ -1397,32 +1363,6 @@ function openThread(threadId, inboxItem) {
       renderScheduled = false;
       const initial = isInitialBatch;
       isInitialBatch = false;
-      if (oldestLiveKey) {
-        // ── Stale-cache reconciliation against the authoritative live window ──
-        // 1) No-overlap → DISJOINT cache: the seeded cache's newest message is still
-        //    older than the live window's oldest (e.g. saved before other members kept
-        //    chatting, then the thread wasn't re-visited until now). Merging it renders
-        //    OLD chats then NEWER chats with the middle messages MISSING. Drop the cache
-        //    entirely and delete the stored copy so future loads stay clean. (This was
-        //    the persistent bug — hard-refreshes never clear localStorage, so a disjoint
-        //    cache survived every reload.)
-        const seed = state._cacheSeed;
-        if (seed) {
-          const seedKeys = Object.keys(seed);
-          let maxSeedKey = null;
-          for (const k of seedKeys) if (maxSeedKey === null || k > maxSeedKey) maxSeedKey = k;
-          if (maxSeedKey !== null && maxSeedKey < oldestLiveKey) {
-            seedKeys.forEach((k) => delete state.messages[k]);
-            state._cacheSeed = null;
-            try { localStorage.removeItem(`hangout-chat-msgs2-${threadId}`); } catch (_) {}
-          }
-        }
-        // 2) Overlap phantom-prune: cached keys inside the live range that are NOT in
-        //    the live snapshot are stale (deleted server-side) → prune them.
-        Object.keys(state.messages).forEach((k) => {
-          if (!liveKeys.has(k) && k >= oldestLiveKey) delete state.messages[k];
-        });
-      }
       state.messagesLoaded = true;
       renderMessages(undefined, initial || forceJump);
       markThreadSeen(threadId);
@@ -1431,8 +1371,6 @@ function openThread(threadId, inboxItem) {
 
   const unsubAdd = onChildAdded(msgQuery, (snapshot) => {
     state.messages[snapshot.key] = snapshot.val();
-    liveKeys.add(snapshot.key);
-    if (!oldestLiveKey || snapshot.key < oldestLiveKey) oldestLiveKey = snapshot.key;
     const isMine = snapshot.val()?.senderId === state.user?.uid;
     scheduleRender(isMine);
   }, (error) => reportRealtimeError('chat messages (added)', error));
@@ -1443,16 +1381,7 @@ function openThread(threadId, inboxItem) {
   }, (error) => reportRealtimeError('chat messages (changed)', error));
 
   const unsubRemove = onChildRemoved(msgQuery, (snapshot) => {
-    liveKeys.delete(snapshot.key);
-    if (oldestLiveKey === snapshot.key) {
-      // Recompute the window's oldest remaining live key
-      oldestLiveKey = null;
-      [...liveKeys].sort().forEach((k) => { if (oldestLiveKey === null || k < oldestLiveKey) oldestLiveKey = k; });
-    }
-    // KEEP the message in state: onChildRemoved on a limitToLast(30) window fires when a
-    // message FALLS OUT of the last-30 because newer messages arrived — it still exists
-    // server-side, so deleting it here punched holes in the loaded history. Genuine
-    // deletions go through update({ isDeleted: true }) → onChildChanged, not remove.
+    delete state.messages[snapshot.key];
     scheduleRender(false);
   }, (error) => reportRealtimeError('chat messages (removed)', error));
 
@@ -2034,7 +1963,7 @@ function closeActiveChat() {
   // Remove scroll listener
   const list = $('message-list');
   if (list._scrollHandler) { list.removeEventListener('scroll', list._scrollHandler); list._scrollHandler = null; }
-  state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.activeInboxItem = null; state.messages = {}; state._cacheSeed = null; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; state.groupSeenAt = {}; state.streakData = null; state.noMoreOldMessages = false; state.loadingOldMessages = false; clearReply(); closeMessageMenu();
+  state.stopSeen = null; state.activeThreadId = null; state.activePeerId = null; state.activeInboxItem = null; state.messages = {}; state.messagesLoaded = false; state.typing = {}; state.peerSeenAt = 0; state.groupSeenAt = {}; state.streakData = null; state.noMoreOldMessages = false; state.loadingOldMessages = false; clearReply(); closeMessageMenu();
   const badge = $('streak-badge'); if (badge) badge.classList.add('hidden');
   const restoreBtn = $('streak-restore-btn'); if (restoreBtn) restoreBtn.classList.add('hidden');
   syncThreadSummaryWatchers();
@@ -2113,7 +2042,7 @@ function saveMessagesCache(threadId, messages, delay = 400) {
   _msgsTimer[threadId] = setTimeout(() => {
     try {
       const payload = { savedAt: Date.now(), uid: state.user.uid, messages: messages || {} };
-      localStorage.setItem(`hangout-chat-msgs2-${threadId}`, JSON.stringify(payload));
+      localStorage.setItem(`hangout-chat-msgs-${threadId}`, JSON.stringify(payload));
     } catch (e) { /* storage quota — skip gracefully */ }
     delete _msgsTimer[threadId];
   }, delay);
@@ -2121,7 +2050,7 @@ function saveMessagesCache(threadId, messages, delay = 400) {
 function loadMessagesCache(threadId) {
   if (!threadId || !state.user) return null;
   try {
-    const p = JSON.parse(localStorage.getItem(`hangout-chat-msgs2-${threadId}`) || 'null');
+    const p = JSON.parse(localStorage.getItem(`hangout-chat-msgs-${threadId}`) || 'null');
     if (!p || p.uid !== state.user.uid || !p.messages) return null;
     return p.messages;
   } catch (e) { return null; }
