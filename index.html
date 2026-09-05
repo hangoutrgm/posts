@@ -380,6 +380,7 @@
                     <option value="math">Math</option>
                     <option value="jumbled_words">Jumbled Words</option>
                     <option value="trivia">Random Trivia</option>
+                    <option value="mythology">Mythology</option>
                     <option value="bingo">Bingo</option>
                     <option value="spin_names">Spin the Names</option>
                     <option value="ncl">ncl</option>
@@ -521,6 +522,16 @@
                     <textarea id="game-trivia-question" placeholder="e.g. What is the capital of France?" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 resize-none h-16"></textarea>
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Trivia Answer</label>
                     <input type="text" id="game-trivia-answer" placeholder="e.g. Paris" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                </div>
+
+                <div id="game-mythology-container" class="hidden mb-3 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-bold text-gray-700 dark:text-gray-300">Mythology Question</label>
+                        <button type="button" onclick="window.rollMythologyQuestion()" class="text-[10px] font-bold bg-amber-500 hover:bg-amber-400 text-white px-2.5 py-1 rounded-full shadow-sm transition">🎲 Random</button>
+                    </div>
+                    <textarea id="game-mythology-question" placeholder="e.g. Who is the king of the Greek gods?" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 resize-none h-16"></textarea>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Correct Answer <span class="text-[10px] text-gray-400 font-normal">(separate alternate answers with commas)</span></label>
+                    <input type="text" id="game-mythology-answers" placeholder="e.g. Zeus" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                 </div>
 
                 <div id="game-challenge-targets" class="hidden mb-3 grid grid-cols-2 gap-2">
@@ -791,9 +802,9 @@
 
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
-    <script type="module" src="js/renderers.js?v=35"></script>
-    <script type="module" src="js/helpers.js?v=40"></script>
-    <script type="module" src="js/games.js?v=34"></script>
+    <script type="module" src="js/renderers.js?v=38"></script>
+    <script type="module" src="js/helpers.js?v=41"></script>
+    <script type="module" src="js/games.js?v=38"></script>
     <script type="module" src="js/main.js?v=32"></script>
     <script>
         if ('serviceWorker' in navigator) {

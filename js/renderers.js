@@ -1209,13 +1209,17 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         
         if (post.gameType === 'first_to_mine') {
             if (post.gameStatus === 'active') {
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-2xl font-black text-purple-600 dark:text-purple-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
                         ${prizeStr}
+                        ${timerHtml}
                         <button onclick="window.mineGame('${post.id}')" class="bg-purple-600 hover:bg-purple-500 text-white font-black text-xl py-3 px-10 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 animate-pulse"><i class="fa-solid fa-gem mr-2"></i>MINE!</button>
                     </div>`;
             } else {
-                const winnerName = post.gameWinner ? (window.globalUsersCache[post.gameWinner]?.name || "Someone") : "No one";
+                const winnerName = (post.gameWinner && post.gameWinner !== 'none') ? (window.globalUsersCache[post.gameWinner]?.name || "Someone") : "No one";
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80">
                         ${prizeStr}
@@ -1342,6 +1346,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     answerHint = `<p class="text-xs text-gray-400 mt-1">Paste or type the emoji character</p>`;
                 }
 
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-2xl font-black text-blue-600 dark:text-blue-400 mt-2 game-timer" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+
                 gameHtml = `
                     <div class="mt-3 mb-2 p-4 bg-blue-50 dark:bg-slate-800 rounded-xl border-2 border-blue-200 dark:border-blue-900/50 flex flex-col items-center">
                         ${prizeStr}
@@ -1349,6 +1357,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <h4 class="font-bold text-sm text-blue-800 dark:text-blue-200 mb-1">${gameTitle}</h4>
                         ${hostHint}
                         ${answerHint}
+                        ${timerHtml}
                         <button onclick="window.openAnswerModal('${post.id}')" class="mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-keyboard mr-2"></i>Answer</button>
                     </div>`;
             } else {
@@ -1367,7 +1376,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
-        } else if (['flags', 'math', 'jumbled_words', 'trivia', 'periodic_table'].includes(post.gameType)) {
+        } else if (['flags', 'math', 'jumbled_words', 'trivia', 'mythology', 'periodic_table'].includes(post.gameType)) {
             const isHost = window.currentUser && window.currentUser.uid === post.authorId;
             let displayContent = '', gameTitle = '', hostHint = '', answerHint = '';
             let timerHtml = '';
@@ -1425,6 +1434,11 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 gameTitle = 'Trivia Time!';
                 if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameTriviaAnswer}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
+            } else if (post.gameType === 'mythology') {
+                displayContent = `<div class="text-lg font-semibold text-center text-amber-800 dark:text-amber-200 mb-2 max-w-sm">${post.gameMythologyQuestion}</div>`;
+                gameTitle = 'Mythology Challenge!';
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMythologyAnswer}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
             }
 
             if (post.gameStatus === 'active') {
@@ -1463,6 +1477,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 else if (post.gameType === 'math') answerReveal = `<div class="text-xl mb-1">${post.gameMathQuestion} = <strong>${post.gameMathAnswer}</strong></div>`;
                 else if (post.gameType === 'jumbled_words') answerReveal = `<div class="text-lg mb-1">${post.gameJumbledScrambled} ➔ <strong>${post.gameJumbledOriginal}</strong></div>`;
                 else if (post.gameType === 'trivia') answerReveal = `<div class="text-sm mb-1">${post.gameTriviaQuestion}<br>➔ <strong>${post.gameTriviaAnswer}</strong></div>`;
+                else if (post.gameType === 'mythology') answerReveal = `<div class="text-sm mb-1">${post.gameMythologyQuestion}<br>➔ <strong>${post.gameMythologyAnswer}</strong></div>`;
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80 text-center">

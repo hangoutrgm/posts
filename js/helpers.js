@@ -110,6 +110,7 @@ window.gameTypesList = [
     { type: 'math', label: 'Math' },
     { type: 'jumbled_words', label: 'Jumbled Words' },
     { type: 'trivia', label: 'Random Trivia' },
+    { type: 'mythology', label: 'Mythology' },
     { type: 'bingo', label: 'Bingo' },
     { type: 'spin_names', label: 'Spin the Names' },
     { type: 'ncl', label: 'NCL (No Challenge Needed)' },
