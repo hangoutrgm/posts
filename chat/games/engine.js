@@ -38,6 +38,14 @@ const getRaceTo = () => {
 };
 const roundCount = () => getRaceTo();
 
+// ── Board-game per-move timer (same /config → settings.boardGameMoveTimerSec as posts games) ──
+const boardMoveTimerSec = () => {
+  const s = _getSettings();
+  const n = Number(s.boardGameMoveTimerSec);
+  return (Number.isFinite(n) && n > 0) ? n : 60;
+};
+const nextBoardDeadline = () => Date.now() + boardMoveTimerSec() * 1000;
+
 // ── Leaderboard rewards ──
 // Chat game winners earn LB points into the SAME pool as Hangout Posts games:
 //   all-time : users/{uid}/lbPoints
@@ -220,6 +228,7 @@ const buildGame = async (type) => {
         status: 'waiting',                       // waiting for opponent to join
         players: { [me()]: type === 'connect4' ? 'R' : 'X' },
         turn: null,
+        turnDeadline: 0,
         board: Array(type === 'connect4' ? 42 : 9).fill(''),
         lastMove: null,
       };
@@ -452,7 +461,7 @@ export const joinGame = async (mid) => {
     if (Object.keys(g.players).length >= need) return g;
     const marks = g.type === 'connect4' ? ['Y', 'G'] : ['O'];
     g.players[uid] = marks[Object.keys(g.players).length - 1] || marks[marks.length - 1];
-    if (Object.keys(g.players).length >= need) { g.status = 'active'; g.turn = g.hostId; }
+    if (Object.keys(g.players).length >= need) { g.status = 'active'; g.turn = g.hostId; g.turnDeadline = nextBoardDeadline(); }
     return g;
   });
   await refreshMessage(mid);
@@ -466,44 +475,92 @@ export const startNow = async (mid) => {
     if (uid !== g.hostId || Object.keys(g.players || {}).length < 2) return g;
     g.status = 'active';
     g.turn = g.hostId;
+    g.turnDeadline = nextBoardDeadline();
     return g;
   });
   await refreshMessage(mid);
 };
 
-/** Tic-Tac-Toe cell click / Connect-4 column click. */
-export const playMove = async (mid, idx) => {
+/** Tic-Tac-Toe cell click / Connect-4 column click.
+ *  When autoForUid is set (timer auto-move) the move is accepted only for the
+ *  CURRENT turn owner and only after their deadline has actually passed, so
+ *  racing clients can never sneak a move or double-move. */
+export const playMove = async (mid, idx, autoForUid = null) => {
   const uid = me(); if (!uid) return;
+  const isAuto = Boolean(autoForUid);
   await runTransaction(gRef(mid), (g) => {
-    if (!g || g.status !== 'active' || g.turn !== uid) return g;
+    if (!g || g.status !== 'active') return g;
+    if (isAuto) {
+      if (autoForUid !== g.turn || Date.now() <= (g.turnDeadline || 0)) return g;
+    } else if (g.turn !== uid) {
+      return g;
+    }
+    const mover = isAuto ? g.turn : uid;
     const board = [...(g.board || [])];
     let changed = false;
     if (g.type === 'tictactoe') {
-      if (!board[idx]) { board[idx] = g.players[uid] || 'X'; changed = true; }
+      if (!board[idx]) { board[idx] = g.players[mover] || 'X'; changed = true; }
     } else if (g.type === 'connect4') {
       const col = Number(idx);
       for (let r = 5; r >= 0; r--) {
-        if (!board[r * 7 + col]) { board[r * 7 + col] = g.players[uid] || 'R'; changed = true; break; }
+        if (!board[r * 7 + col]) { board[r * 7 + col] = g.players[mover] || 'R'; changed = true; break; }
       }
     }
     if (!changed) return g;
     g.board = board;
     const w = g.type === 'tictactoe' ? tttWinner(board) : c4Winner(board);
-    if (w === 'draw') { g.status = 'done'; g.winner = 'draw'; }
+    if (w === 'draw') { g.status = 'done'; g.winner = 'draw'; g.turnDeadline = 0; }
     else if (w) {
       g.status = 'done';
       g.winnerMark = w;
       g.winner = Object.keys(g.players || {}).find((u) => g.players[u] === w) || null;
+      g.turnDeadline = 0;
     } else {
       // Rotate to the next player in join order (supports 2 or 3 players)
       const order = Object.keys(g.players || {});
-      const i = order.indexOf(uid);
+      const i = order.indexOf(mover);
       g.turn = order.length ? order[(i + 1) % order.length] : null;
+      g.turnDeadline = g.turn ? nextBoardDeadline() : 0;
     }
     return g;
   });
   void maybeAwardLb(mid);
   await refreshMessage(mid);
+};
+
+/** Pick a random legal move for a board game (null when the board is full). */
+const randomBoardMove = (g) => {
+  const board = g.board || [];
+  if (g.type === 'tictactoe') {
+    const empties = [];
+    for (let i = 0; i < board.length; i++) if (!board[i]) empties.push(i);
+    return empties.length ? empties[Math.floor(Math.random() * empties.length)] : null;
+  }
+  if (g.type === 'connect4') {
+    const open = [];
+    for (let c = 0; c < 7; c++) if (!board[c]) open.push(c); // top cell empty → column droppable
+    return open.length ? open[Math.floor(Math.random() * open.length)] : null;
+  }
+  return null;
+};
+
+/** Timer auto-move: plays a random legal move for the current turn owner once
+ *  their deadline passes, so an inactive player can't stall the game. */
+export const autoMoveBoard = async (mid) => {
+  const uid = me(); if (!uid) return;
+  try {
+    const snap = await get(gRef(mid));
+    if (!snap.exists()) return;
+    const g = snap.val();
+    if (!g || g.status !== 'active' || !g.turn) return;
+    if (!['tictactoe', 'connect4'].includes(g.type)) return;
+    if (Date.now() <= (g.turnDeadline || 0)) return;
+    const idx = randomBoardMove(g);
+    if (idx === null) return;
+    await playMove(mid, idx, g.turn);
+  } catch (e) {
+    console.error('Auto board move failed:', e);
+  }
 };
 
 /** Hangman letter guess — cloned from Hangout Posts rules:

@@ -2,8 +2,8 @@
 // chat/games/index.js — public API + picker wiring
 // Exposes window.ChatGames used by app.js and inline onclicks.
 // ============================================================
-import * as engine from './engine.js?v=20';
-import { renderBody, pickerHtml, setContext } from './renderers.js?v=21';
+import * as engine from './engine.js?v=21';
+import { renderBody, pickerHtml, setContext } from './renderers.js?v=22';
 import { GAME_META } from './helpers.js?v=6';
 
 let _getThreadId = () => null;
@@ -172,6 +172,7 @@ window.ChatGames = {
     }
   },
   move: (mid, idx) => engine.playMove(mid, idx),
+  autoMove: (mid) => engine.autoMoveBoard(mid),
   join: (mid) => engine.joinGame(mid),
   start: (mid) => engine.startNow(mid),
   guessLetter: (mid, L) => engine.guessLetter(mid, L),
@@ -210,6 +211,34 @@ if (typeof window !== 'undefined' && !window._cgCooldownTicker) {
       }
     });
   }, 250);
+}
+
+// Board-game turn countdown live ticker: updates ⏱ Ns without a server re-render
+// and fires the auto-move the instant a deadline passes (guarded in-flight so racing
+// tickers can't double-fire for the same game).
+window._cgAutoMoveInFlight = window._cgAutoMoveInFlight || new Set();
+if (typeof window !== 'undefined' && !window._cgBoardTimerTicker) {
+  window._cgBoardTimerTicker = setInterval(() => {
+    const els = document.querySelectorAll('.cg-turn-timer[data-deadline]');
+    if (!els.length) return;
+    const now = Date.now();
+    els.forEach((el) => {
+      const deadline = Number(el.dataset.deadline || 0);
+      if (!deadline) return;
+      const remaining = Math.max(0, Math.ceil((deadline - now) / 1000));
+      const secEl = el.querySelector('.cg-turn-timer-secs');
+      if (secEl) secEl.textContent = String(remaining);
+      const iconEl = el.querySelector('.cg-turn-timer-icon');
+      if (iconEl) iconEl.textContent = (remaining <= 10 && remaining >= 0) ? '⏰' : '⏱️';
+      if (now >= deadline) {
+        const mid = el.dataset.mid;
+        if (mid && !window._cgAutoMoveInFlight.has(mid) && window.ChatGames?.autoMove) {
+          window._cgAutoMoveInFlight.add(mid);
+          Promise.resolve(window.ChatGames.autoMove(mid)).finally(() => window._cgAutoMoveInFlight.delete(mid));
+        }
+      }
+    });
+  }, 500);
 }
 
 export default window.ChatGames;

@@ -32,6 +32,16 @@ window.deviceId = localStorage.getItem('hangout_device_id') || ('dev_' + Math.ra
 localStorage.setItem('hangout_device_id', window.deviceId);
 window.activeEditTarget = null;
 
+// Lightweight toast (board game auto-moves, etc.)
+window.showToast = (message) => {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.remove('hidden');
+    clearTimeout(window.showToast.timer);
+    window.showToast.timer = setTimeout(() => toast.classList.add('hidden'), 3500);
+};
+
 // Leaderboard periods (v6.4)
 window.lbScope = 'weekly'; // 'overall' | 'weekly' | 'monthly' (weekly is default)
 window.lbPeriodKey = '';    // selected period key for weekly/monthly (history)

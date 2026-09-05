@@ -42,6 +42,17 @@ const turnPill = (g, uid) => {
   return `<div class="cg-turn-wait">Waiting for @${esc(nameOf(g.turn))}…</div>`;
 };
 
+/* ── Board turn countdown (settings.boardGameMoveTimerSec) — the ticker in
+ * index.js keeps the seconds fresh and fires window.ChatGames.autoMove(mid)
+ * the moment the deadline passes. ── */
+const turnTimerHtml = (g, mid) => {
+  if (g.status !== 'active' || !g.turn) return '';
+  const deadline = Number(g.turnDeadline || 0);
+  if (!deadline) return '';
+  const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+  return `<div class="cg-turn-timer" data-mid="${mid}" data-deadline="${deadline}"><span class="cg-turn-timer-icon">⏱️</span> <span class="cg-turn-timer-secs">${remaining}</span>s</div>`;
+};
+
 const outcomePill = (g) => {
   if (g.status !== 'done') return '';
   if (g.winner === 'draw') return '<div class="cg-outcome draw">🤝 Draw Match!</div>';
@@ -60,7 +71,7 @@ const tttBody = (mid, g, uid) => {
     return `<button type="button" class="cg-tcell ${v ? 'mark-' + v : ''} ${can ? 'can' : ''}"
       ${can ? `onclick="window.ChatGames.move('${mid}',${i})"` : 'disabled'}>${v || '_'}</button>`;
   }).join('');
-  return `<div style="width:100%;">${turnPill(g, uid)}<div class="cg-ttt">${cells}</div></div>`;
+  return `<div style="width:100%;">${turnPill(g, uid)}${turnTimerHtml(g, mid)}<div class="cg-ttt">${cells}</div></div>`;
 };
 
 /* ── Connect 4 ── */
@@ -76,7 +87,7 @@ const c4Body = (mid, g, uid) => {
     const disc = v ? `<div class="cg-disc ${v}"></div>` : '<div class="cg-disc empty"></div>';
     cells += `<div class="cg-cellwrap ${can ? 'can' : ''}" ${can ? `onclick="window.ChatGames.move('${mid}',${col})"` : ''}>${disc}</div>`;
   }
-  return `<div style="width:100%;">${turnPill(g, uid)}<div class="cg-c4board">${cells}</div></div>`;
+  return `<div style="width:100%;">${turnPill(g, uid)}${turnTimerHtml(g, mid)}<div class="cg-c4board">${cells}</div></div>`;
 };
 
 // ── Hangman (gameplay cloned from Hangout Posts) ──

@@ -67,6 +67,7 @@ window.siteSettings = {
     chatVoiceLimit: 10,
     chatVideoSizeLimitMB: 20,
     postCooldownSec: 60,
+    boardGameMoveTimerSec: 60, // per-move timer (seconds) for board games (Tic Tac Toe / 4-in-a-Row / Connect 4 / Pro Max)
     commentCooldownSec: 60,
     chatCooldownSec: 60,
     chatGameRounds: 5,

@@ -161,6 +161,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatCooldownSec').value = settings.chatCooldownSec ?? window.siteSettings.chatCooldownSec ?? '';
             document.getElementById('set-chatGameCooldownSec').value = settings.chatGameCooldownSec ?? window.siteSettings.chatGameCooldownSec ?? '';
             document.getElementById('set-chatGameRaceTo').value = settings.chatGameRaceTo ?? settings.chatGameRounds ?? window.siteSettings.chatGameRaceTo ?? window.siteSettings.chatGameRounds ?? '';
+            document.getElementById('set-boardGameMoveTimerSec').value = settings.boardGameMoveTimerSec ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
             document.getElementById('set-starsPerLike').value = settings.starsPerLike ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
@@ -187,6 +188,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatCooldownSec').value = '';
             document.getElementById('set-chatGameCooldownSec').value = '';
             document.getElementById('set-chatGameRaceTo').value = '';
+            document.getElementById('set-boardGameMoveTimerSec').value = '';
             document.getElementById('set-starsPerComment').value = '';
             document.getElementById('set-starsPerLike').value = '';
             document.getElementById('set-starsPerPoked').value = '';
@@ -215,6 +217,7 @@ function initAdminDashboard() {
         document.getElementById('set-chatCooldownSec').placeholder = window.siteSettings.chatCooldownSec ?? 60;
         document.getElementById('set-chatGameCooldownSec').placeholder = window.siteSettings.chatGameCooldownSec ?? 60;
         document.getElementById('set-chatGameRaceTo').placeholder = window.siteSettings.chatGameRaceTo ?? window.siteSettings.chatGameRounds ?? 5;
+        document.getElementById('set-boardGameMoveTimerSec').placeholder = window.siteSettings.boardGameMoveTimerSec ?? 60;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
         document.getElementById('set-starsPerLike').placeholder = window.siteSettings.starsPerLike ?? 1;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
@@ -243,6 +246,7 @@ function initAdminDashboard() {
             chatCooldownSec: parseInt(document.getElementById('set-chatCooldownSec').value) || 0,
             chatGameCooldownSec: parseInt(document.getElementById('set-chatGameCooldownSec').value) || 0,
             chatGameRaceTo: parseInt(document.getElementById('set-chatGameRaceTo').value) || 5,
+            boardGameMoveTimerSec: parseInt(document.getElementById('set-boardGameMoveTimerSec').value) || 60,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
             starsPerLike: parseInt(document.getElementById('set-starsPerLike').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,

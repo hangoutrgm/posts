@@ -1297,6 +1297,7 @@ window.submitGame = async () => {
         postData.tictactoePlayerX = window.currentUser.uid;
         postData.tictactoePlayerO = targetUserUid || null;
         postData.tictactoeTurn = 'X';
+        postData.tictactoeTurnDeadline = targetUserUid ? nextBoardDeadline() : 0;
         postData.tictactoeStatus = targetUserUid ? 'in_progress' : 'waiting';
         postData.tictactoeTargetUser = targetUserUid || null;
     }
@@ -1308,6 +1309,7 @@ window.submitGame = async () => {
         postData.fourPlayerB = (fourPlayerCount === 2 && targetUserUid) ? targetUserUid : null;
         postData.fourPlayerY = null;
         postData.fourTurn = 'R';
+        postData.fourTurnDeadline = (fourPlayerCount === 2 && targetUserUid) ? nextBoardDeadline() : 0;
         postData.fourStatus = (fourPlayerCount === 2 && targetUserUid) ? 'in_progress' : 'waiting';
         postData.fourTargetUser = targetUserUid || null;
     }
@@ -1320,6 +1322,7 @@ window.submitGame = async () => {
         postData.dropFourPlayerY = (dropFourPlayerCount === 2 && targetUserUid) ? targetUserUid : null;
         postData.dropFourPlayerB = null;
         postData.dropFourTurn = 'R';
+        postData.dropFourTurnDeadline = (dropFourPlayerCount === 2 && targetUserUid) ? nextBoardDeadline() : 0;
         postData.dropFourStatus = (dropFourPlayerCount === 2 && targetUserUid) ? 'in_progress' : 'waiting';
         postData.dropFourTargetUser = targetUserUid || null;
     }
@@ -1333,6 +1336,7 @@ window.submitGame = async () => {
         postData.proFourPlayerB = null;
         postData.proFourPlayerG = null;
         postData.proFourTurn = 'R';
+        postData.proFourTurnDeadline = 0;
         postData.proFourStatus = 'waiting';
         postData.proFourTargetUser = targetUserUid || null;
     }
@@ -2485,6 +2489,106 @@ window.drawSpinNamesWheelCanvas = (canvas, players, angle) => {
 };
 
 // ============================================================
+// BOARD GAME MOVE TIMER
+// (Tic Tac Toe / 4 in a Row / Connect 4 / Connect 4 Pro Max)
+// Each turn stores a deadline (epoch ms) on the post. Every viewer's
+// client shows a live countdown; when it hits 0 a random legal move
+// is played for the inactive player so the game never stalls. The
+// Firestore transaction makes racing clients safe — only one move can
+// land per turn, and only after the deadline truly passed.
+// Duration is configured in /config → settings.boardGameMoveTimerSec.
+// ============================================================
+const boardGameTimerSec = () => {
+    const v = Number(window.siteSettings?.boardGameMoveTimerSec);
+    return (Number.isFinite(v) && v > 0) ? v : 60;
+};
+const nextBoardDeadline = () => Date.now() + boardGameTimerSec() * 1000;
+
+const pickRandomEmptyCell = (board) => {
+    const empties = [];
+    for (let i = 0; i < board.length; i++) if (!board[i]) empties.push(i);
+    return empties.length ? empties[Math.floor(Math.random() * empties.length)] : null;
+};
+const pickRandomOpenColumn = (board, cols) => {
+    const open = [];
+    for (let c = 0; c < cols; c++) if (!board[c]) open.push(c); // top cell empty → column droppable
+    return open.length ? open[Math.floor(Math.random() * open.length)] : null;
+};
+
+// Fired once per render by the global ticker below when a deadline passes.
+window.autoMoveForTimer = async (postId, gameType) => {
+    if (!window.currentUser) return;
+    try {
+        const snap = await getDoc(getPostDocRef(postId));
+        if (!snap.exists()) return;
+        const p = snap.data();
+        if (p.gameStatus !== 'active') return;
+
+        if (gameType === 'tictactoe') {
+            if (p.tictactoeStatus !== 'in_progress') return;
+            const turn = p.tictactoeTurn || 'X';
+            const targetUid = turn === 'X' ? p.tictactoePlayerX : p.tictactoePlayerO;
+            if (!targetUid || Date.now() <= (p.tictactoeTurnDeadline || 0)) return;
+            const move = pickRandomEmptyCell(p.tictactoeBoard || []);
+            if (move === null) return;
+            await window.makeTicTacToeMove(postId, move, targetUid);
+        } else if (gameType === 'four') {
+            if (p.fourStatus !== 'in_progress') return;
+            const turn = p.fourTurn || 'R';
+            const targetUid = turn === 'R' ? p.fourPlayerR : (turn === 'B' ? p.fourPlayerB : p.fourPlayerY);
+            if (!targetUid || Date.now() <= (p.fourTurnDeadline || 0)) return;
+            const move = pickRandomEmptyCell(p.fourBoard || []);
+            if (move === null) return;
+            await window.makeFourInARowMove(postId, move, targetUid);
+        } else if (gameType === 'drop') {
+            if (p.dropFourStatus !== 'in_progress') return;
+            const turn = p.dropFourTurn || 'R';
+            const targetUid = turn === 'R' ? p.dropFourPlayerR : (turn === 'Y' ? p.dropFourPlayerY : p.dropFourPlayerB);
+            if (!targetUid || Date.now() <= (p.dropFourTurnDeadline || 0)) return;
+            const move = pickRandomOpenColumn(p.dropFourBoard || [], 7);
+            if (move === null) return;
+            await window.makeDropFourMove(postId, move, targetUid);
+        } else if (gameType === 'pro') {
+            if (p.proFourStatus !== 'in_progress') return;
+            const turn = p.proFourTurn || 'R';
+            const targetUid = turn === 'R' ? p.proFourPlayerR : (turn === 'Y' ? p.proFourPlayerY : (turn === 'B' ? p.proFourPlayerB : p.proFourPlayerG));
+            if (!targetUid || Date.now() <= (p.proFourTurnDeadline || 0)) return;
+            const move = pickRandomOpenColumn(p.proFourBoard || [], 7);
+            if (move === null) return;
+            await window.makeConnect4ProMaxMove(postId, move, targetUid);
+        }
+    } catch(e) {
+        console.error("Board game auto-move error:", e);
+    }
+};
+
+// Global 500ms ticker: live-counts every visible turn timer and fires the
+// auto-move the moment a deadline passes (guarded once per render cycle).
+window._autoMoveInFlight = window._autoMoveInFlight || new Set();
+if (!window._boardGameTimerStarted) {
+    window._boardGameTimerStarted = true;
+    setInterval(() => {
+        const now = Date.now();
+        document.querySelectorAll('.turn-timer[data-deadline]').forEach((el) => {
+            const deadline = Number(el.dataset.deadline);
+            if (!deadline) return;
+            const remaining = Math.ceil((deadline - now) / 1000);
+            const secEl = el.querySelector('.turn-timer-secs');
+            if (secEl) secEl.textContent = Math.max(0, remaining);
+            const iconEl = el.querySelector('.turn-timer-icon');
+            if (iconEl) iconEl.textContent = (remaining <= 10 && remaining >= 0) ? '⏰' : '⏱️';
+            if (remaining <= 0 && !window._autoMoveInFlight.has(el.dataset.postid)) {
+                const pid = el.dataset.postid;
+                const type = el.dataset.gametype;
+                if (!pid || !type) return;
+                window._autoMoveInFlight.add(pid);
+                window.autoMoveForTimer(pid, type).finally(() => window._autoMoveInFlight.delete(pid));
+            }
+        });
+    }, 500);
+}
+
+// ============================================================
 // TIC TAC TOE GAME HANDLERS
 // ============================================================
 
@@ -2511,7 +2615,8 @@ window.acceptTicTacToeChallenge = async (postId) => {
 
         await updateDoc(postRef, {
             tictactoePlayerO: window.currentUser.uid,
-            tictactoeStatus: 'in_progress'
+            tictactoeStatus: 'in_progress',
+            tictactoeTurnDeadline: nextBoardDeadline()
         });
 
         window.showAlert("⚔️ Challenge accepted! Game is now in progress.");
@@ -2521,8 +2626,9 @@ window.acceptTicTacToeChallenge = async (postId) => {
     }
 };
 
-window.makeTicTacToeMove = async (postId, cellIndex) => {
+window.makeTicTacToeMove = async (postId, cellIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
     try {
@@ -2539,7 +2645,12 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
             const turn = p.tictactoeTurn || 'X';
             const isXTurn = turn === 'X';
             const expectedUid = isXTurn ? p.tictactoePlayerX : p.tictactoePlayerO;
-            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
+            if (isAuto) {
+                // Timer auto-move: only valid for the CURRENT turn owner, and only after their deadline passed.
+                if (autoForUid !== expectedUid || Date.now() <= (p.tictactoeTurnDeadline || 0)) return { outcome: 'noop' };
+            } else if (window.currentUser.uid !== expectedUid) {
+                return { outcome: 'noop' };
+            }
 
             const board = [...(p.tictactoeBoard || Array(9).fill(''))];
             if (board[cellIndex]) return { outcome: 'noop' };
@@ -2587,6 +2698,7 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
                     tictactoeStatus: 'ended',
                     gameStatus: 'ended',
                     gameWinner: window.currentUser.uid,
+                    tictactoeTurnDeadline: 0,
                     locked: true
                 });
                 return { outcome: 'win', board };
@@ -2596,7 +2708,8 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
                     tictactoeBoard: board,
                     tictactoeStatus: 'ended',
                     gameStatus: 'ended',
-                    gameWinner: 'draw'
+                    gameWinner: 'draw',
+                    tictactoeTurnDeadline: 0
                 });
                 return { outcome: 'draw', board };
             } else {
@@ -2604,17 +2717,19 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
                 const nextTurn = isXTurn ? 'O' : 'X';
                 transaction.update(postRef, {
                     tictactoeBoard: board,
-                    tictactoeTurn: nextTurn
+                    tictactoeTurn: nextTurn,
+                    tictactoeTurnDeadline: nextBoardDeadline()
                 });
                 return { outcome: 'move', board };
             }
         });
 
         if (result.outcome === 'noop') {
+            if (isAuto) return;
             return window.showAlert("That move is no longer valid — it may not be your turn or that space is taken.");
         }
         if (result.outcome === 'win') {
-            const winnerUid = window.currentUser.uid;
+            const winnerUid = autoForUid || window.currentUser.uid;
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
@@ -2630,14 +2745,16 @@ window.makeTicTacToeMove = async (postId, cellIndex) => {
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
                 window.awardHostBonus(post.authorId, hostLbReward);
             }
-
-            let winMsg = `🎉 You won the Tic Tac Toe match!`;
-            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
-            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
-            window.showAlert(winMsg);
+            if (!isAuto) {
+                let winMsg = `🎉 You won the Tic Tac Toe match!`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
+            }
         } else if (result.outcome === 'draw') {
-            window.showAlert("It's a Draw! 🤝 Good game!");
+            if (!isAuto) window.showAlert("It's a Draw! 🤝 Good game!");
         }
+        return result;
     } catch(e) {
         console.error("Tic Tac Toe move error:", e);
         window.showAlert("Error making move: " + e.message);
@@ -2722,10 +2839,12 @@ window.acceptFourInARowChallenge = async (postId) => {
             updates.fourPlayerB = myUid;
             if (count === 2) {
                 updates.fourStatus = 'in_progress';
+                updates.fourTurnDeadline = nextBoardDeadline();
             }
         } else if (count === 3 && !post.fourPlayerY) {
             updates.fourPlayerY = myUid;
             updates.fourStatus = 'in_progress';
+            updates.fourTurnDeadline = nextBoardDeadline();
         }
 
         await updateDoc(postRef, updates);
@@ -2736,8 +2855,9 @@ window.acceptFourInARowChallenge = async (postId) => {
     }
 };
 
-window.makeFourInARowMove = async (postId, cellIndex) => {
+window.makeFourInARowMove = async (postId, cellIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
     try {
@@ -2752,7 +2872,12 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
 
             const turn = p.fourTurn || 'R';
             const expectedUid = turn === 'R' ? p.fourPlayerR : (turn === 'B' ? p.fourPlayerB : p.fourPlayerY);
-            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
+            if (isAuto) {
+                // Timer auto-move: only valid for the CURRENT turn owner, and only after their deadline passed.
+                if (autoForUid !== expectedUid || Date.now() <= (p.fourTurnDeadline || 0)) return { outcome: 'noop' };
+            } else if (window.currentUser.uid !== expectedUid) {
+                return { outcome: 'noop' };
+            }
 
             const board = [...(p.fourBoard || Array(49).fill(''))];
             if (board[cellIndex]) return { outcome: 'noop' };
@@ -2768,6 +2893,7 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
                     fourWinningLine: winResult.line || null,
                     gameStatus: 'ended',
                     gameWinner: window.currentUser.uid,
+                    fourTurnDeadline: 0,
                     locked: true
                 });
                 return { outcome: 'win', board };
@@ -2777,7 +2903,8 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
                     fourBoard: board,
                     fourStatus: 'ended',
                     gameStatus: 'ended',
-                    gameWinner: 'draw'
+                    gameWinner: 'draw',
+                    fourTurnDeadline: 0
                 });
                 return { outcome: 'draw', board };
             } else {
@@ -2791,17 +2918,19 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
                 }
                 transaction.update(postRef, {
                     fourBoard: board,
-                    fourTurn: nextTurn
+                    fourTurn: nextTurn,
+                    fourTurnDeadline: nextBoardDeadline()
                 });
                 return { outcome: 'move', board };
             }
         });
 
         if (result.outcome === 'noop') {
+            if (isAuto) return;
             return window.showAlert("That move is no longer valid — it may not be your turn or that space is taken.");
         }
         if (result.outcome === 'win') {
-            const winnerUid = window.currentUser.uid;
+            const winnerUid = autoForUid || window.currentUser.uid;
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
@@ -2817,14 +2946,16 @@ window.makeFourInARowMove = async (postId, cellIndex) => {
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
                 window.awardHostBonus(post.authorId, hostLbReward);
             }
-
-            let winMsg = `🎉 Connect 4! You won the match!`;
-            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
-            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
-            window.showAlert(winMsg);
+            if (!isAuto) {
+                let winMsg = `🎉 Connect 4! You won the match!`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
+            }
         } else if (result.outcome === 'draw') {
-            window.showAlert("It's a Draw! 🤝 Good game!");
+            if (!isAuto) window.showAlert("It's a Draw! 🤝 Good game!");
         }
+        return result;
     } catch(e) {
         console.error("4 in a Row move error:", e);
         window.showAlert("Error making move: " + e.message);
@@ -2909,10 +3040,12 @@ window.acceptDropFourChallenge = async (postId) => {
             updates.dropFourPlayerY = myUid;
             if (count === 2) {
                 updates.dropFourStatus = 'in_progress';
+                updates.dropFourTurnDeadline = nextBoardDeadline();
             }
         } else if (count === 3 && !post.dropFourPlayerB) {
             updates.dropFourPlayerB = myUid;
             updates.dropFourStatus = 'in_progress';
+            updates.dropFourTurnDeadline = nextBoardDeadline();
         }
 
         await updateDoc(postRef, updates);
@@ -2923,8 +3056,9 @@ window.acceptDropFourChallenge = async (postId) => {
     }
 };
 
-window.makeDropFourMove = async (postId, colIndex) => {
+window.makeDropFourMove = async (postId, colIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
     try {
@@ -2938,7 +3072,12 @@ window.makeDropFourMove = async (postId, colIndex) => {
 
             const turn = p.dropFourTurn || 'R';
             const expectedUid = turn === 'R' ? p.dropFourPlayerR : (turn === 'Y' ? p.dropFourPlayerY : p.dropFourPlayerB);
-            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
+            if (isAuto) {
+                // Timer auto-move: only valid for the CURRENT turn owner, and only after their deadline passed.
+                if (autoForUid !== expectedUid || Date.now() <= (p.dropFourTurnDeadline || 0)) return { outcome: 'noop' };
+            } else if (window.currentUser.uid !== expectedUid) {
+                return { outcome: 'noop' };
+            }
 
             const board = [...(p.dropFourBoard || Array(42).fill(''))];
 
@@ -2965,6 +3104,7 @@ window.makeDropFourMove = async (postId, colIndex) => {
                     dropFourWinningLine: winResult.line || null,
                     gameStatus: 'ended',
                     gameWinner: window.currentUser.uid,
+                    dropFourTurnDeadline: 0,
                     locked: true
                 });
                 return { outcome: 'win', board };
@@ -2974,7 +3114,8 @@ window.makeDropFourMove = async (postId, colIndex) => {
                     dropFourBoard: board,
                     dropFourStatus: 'ended',
                     gameStatus: 'ended',
-                    gameWinner: 'draw'
+                    gameWinner: 'draw',
+                    dropFourTurnDeadline: 0
                 });
                 return { outcome: 'draw', board };
             } else {
@@ -2988,20 +3129,23 @@ window.makeDropFourMove = async (postId, colIndex) => {
                 }
                 transaction.update(postRef, {
                     dropFourBoard: board,
-                    dropFourTurn: nextTurn
+                    dropFourTurn: nextTurn,
+                    dropFourTurnDeadline: nextBoardDeadline()
                 });
                 return { outcome: 'move', board };
             }
         });
 
         if (result.outcome === 'noop') {
+            if (isAuto) return;
             return window.showAlert("That move is no longer valid — it may not be your turn or the game ended.");
         }
         if (result.outcome === 'full') {
+            if (isAuto) return;
             return window.showAlert("That column is full! Please choose another column.");
         }
         if (result.outcome === 'win') {
-            const winnerUid = window.currentUser.uid;
+            const winnerUid = autoForUid || window.currentUser.uid;
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
@@ -3017,14 +3161,16 @@ window.makeDropFourMove = async (postId, colIndex) => {
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
                 window.awardHostBonus(post.authorId, hostLbReward);
             }
-
-            let winMsg = `🎉 Connect 4! You won the match!`;
-            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
-            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
-            window.showAlert(winMsg);
+            if (!isAuto) {
+                let winMsg = `🎉 Connect 4! You won the match!`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
+            }
         } else if (result.outcome === 'draw') {
-            window.showAlert("It's a Draw! 🤝 Good game!");
+            if (!isAuto) window.showAlert("It's a Draw! 🤝 Good game!");
         }
+        return result;
     } catch(e) {
         console.error("Drop Four move error:", e);
         window.showAlert("Error making move: " + e.message);
@@ -3111,6 +3257,7 @@ window.acceptConnect4ProMaxChallenge = async (postId) => {
         } else if (!post.proFourPlayerG) {
             updates.proFourPlayerG = myUid;
             updates.proFourStatus = 'in_progress';
+            updates.proFourTurnDeadline = nextBoardDeadline();
         } else {
             return window.showAlert("This match is already full!");
         }
@@ -3123,8 +3270,9 @@ window.acceptConnect4ProMaxChallenge = async (postId) => {
     }
 };
 
-window.makeConnect4ProMaxMove = async (postId, colIndex) => {
+window.makeConnect4ProMaxMove = async (postId, colIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
     try {
@@ -3138,7 +3286,12 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
 
             const turn = p.proFourTurn || 'R';
             const expectedUid = turn === 'R' ? p.proFourPlayerR : (turn === 'Y' ? p.proFourPlayerY : (turn === 'B' ? p.proFourPlayerB : p.proFourPlayerG));
-            if (window.currentUser.uid !== expectedUid) return { outcome: 'noop' };
+            if (isAuto) {
+                // Timer auto-move: only valid for the CURRENT turn owner, and only after their deadline passed.
+                if (autoForUid !== expectedUid || Date.now() <= (p.proFourTurnDeadline || 0)) return { outcome: 'noop' };
+            } else if (window.currentUser.uid !== expectedUid) {
+                return { outcome: 'noop' };
+            }
 
             const board = [...(p.proFourBoard || Array(63).fill(''))];
             const rows = Number(p.proFourRows) || 9;
@@ -3167,6 +3320,7 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
                     proFourWinningLine: winResult.line || null,
                     gameStatus: 'ended',
                     gameWinner: window.currentUser.uid,
+                    proFourTurnDeadline: 0,
                     locked: true
                 });
                 return { outcome: 'win', board };
@@ -3176,7 +3330,8 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
                     proFourBoard: board,
                     proFourStatus: 'ended',
                     gameStatus: 'ended',
-                    gameWinner: 'draw'
+                    gameWinner: 'draw',
+                    proFourTurnDeadline: 0
                 });
                 return { outcome: 'draw', board };
             } else {
@@ -3184,20 +3339,23 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
                 const nextTurn = turn === 'R' ? 'Y' : (turn === 'Y' ? 'B' : (turn === 'B' ? 'G' : 'R'));
                 transaction.update(postRef, {
                     proFourBoard: board,
-                    proFourTurn: nextTurn
+                    proFourTurn: nextTurn,
+                    proFourTurnDeadline: nextBoardDeadline()
                 });
                 return { outcome: 'move', board };
             }
         });
 
         if (result.outcome === 'noop') {
+            if (isAuto) return;
             return window.showAlert("That move is no longer valid — it may not be your turn or the game ended.");
         }
         if (result.outcome === 'full') {
+            if (isAuto) return;
             return window.showAlert("That column is full! Please choose another column.");
         }
         if (result.outcome === 'win') {
-            const winnerUid = window.currentUser.uid;
+            const winnerUid = autoForUid || window.currentUser.uid;
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
@@ -3213,14 +3371,16 @@ window.makeConnect4ProMaxMove = async (postId, colIndex) => {
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
                 window.awardHostBonus(post.authorId, hostLbReward);
             }
-
-            let winMsg = `🎉 Connect 4 Pro Max! You won the match!`;
-            if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
-            if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
-            window.showAlert(winMsg);
+            if (!isAuto) {
+                let winMsg = `🎉 Connect 4 Pro Max! You won the match!`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
+            }
         } else if (result.outcome === 'draw') {
-            window.showAlert("It's a Draw! 🤝 Good game!");
+            if (!isAuto) window.showAlert("It's a Draw! 🤝 Good game!");
         }
+        return result;
     } catch(e) {
         console.error("Connect 4 Pro Max move error:", e);
         window.showAlert("Error making move: " + e.message);

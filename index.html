@@ -10,7 +10,7 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <!-- Prefetch chat page resources for faster navigation -->
     <link rel="prefetch" href="chat/index.html">
-    <link rel="prefetch" href="chat/js/app.js?v=46">
+    <link rel="prefetch" href="chat/js/app.js?v=50">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: {} } }
@@ -789,9 +789,11 @@
 
 
 
-    <script type="module" src="js/renderers.js?v=34"></script>
-    <script type="module" src="js/helpers.js?v=39"></script>
-    <script type="module" src="js/games.js?v=33"></script>
+    <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
+
+    <script type="module" src="js/renderers.js?v=35"></script>
+    <script type="module" src="js/helpers.js?v=40"></script>
+    <script type="module" src="js/games.js?v=34"></script>
     <script type="module" src="js/main.js?v=32"></script>
     <script>
         if ('serviceWorker' in navigator) {

@@ -5,6 +5,16 @@ import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/fireb
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 window.escapeHtml = escapeHtml;
 
+// Live countdown chip for board games (Tic Tac Toe / 4-in-a-Row / Connect 4 / Pro Max).
+// The 500ms global ticker in games.js keeps the seconds fresh and fires the
+// auto-move once the deadline passes.
+window.turnTimerHtml = (post, gameType, deadlineField) => {
+    const deadline = Number(post[deadlineField] || 0);
+    if (!deadline || deadline <= 0) return '';
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    return `<div class="turn-timer mt-2 inline-flex items-center gap-1.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-[11px] font-bold px-3 py-1 rounded-full" data-deadline="${deadline}" data-postid="${post.id}" data-gametype="${gameType}"><span class="turn-timer-icon">⏱️</span> <span class="turn-timer-secs">${remaining}</span>s</div>`;
+};
+
 window.formatLogPrizeBadges = (prize, lbPoints) => {
     const badges = [];
     if (prize) {
@@ -1731,6 +1741,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     const turnBadge = isMyTurn
                         ? `<div class="bg-emerald-500 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turn})!</div>`
                         : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${turnName} (${turn})'s move...</div>`;
+                    const timerHtml = window.turnTimerHtml(post, 'tictactoe', 'tictactoeTurnDeadline');
 
                     const gridSize = Number(post.tictactoeGridSize) || (board.length === 16 ? 4 : 3);
                     const gridClass = gridSize === 4
@@ -1765,6 +1776,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                                 <span class="text-blue-600 dark:text-blue-400">⭕ @${nameO}</span>
                             </div>
                             ${turnBadge}
+                            ${timerHtml}
                             ${gridHtml}
                         </div>`;
                 }
@@ -1857,6 +1869,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     const turnBadge = isMyTurn
                         ? `<div class="bg-blue-600 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turnColor})!</div>`
                         : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${escapeHtml(turnName)} (${turnColor})'s move...</div>`;
+                    const timerHtml = window.turnTimerHtml(post, 'four', 'fourTurnDeadline');
 
                     const playersBadges = count === 3 ? `
                         <div class="flex flex-wrap items-center justify-between w-full max-w-xs text-xs font-bold mb-2">
@@ -1896,6 +1909,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🔴🔵 4 in a Row (7x7)</h4>
                             ${playersBadges}
                             ${turnBadge}
+                            ${timerHtml}
                             ${gridHtml}
                         </div>`;
                 }
@@ -1989,6 +2003,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     const turnBadge = isMyTurn
                         ? `<div class="bg-blue-600 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turnColor})!</div>`
                         : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${escapeHtml(turnName)} (${turnColor})'s move...</div>`;
+                    const timerHtml = window.turnTimerHtml(post, 'drop', 'dropFourTurnDeadline');
 
                     const playersBadges = count === 3 ? `
                         <div class="flex flex-wrap items-center justify-between w-full max-w-xs text-xs font-bold mb-2">
@@ -2040,6 +2055,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟡🔴 Connect 4</h4>
                             ${playersBadges}
                             ${turnBadge}
+                            ${timerHtml}
                             ${dropBtnsHtml}
                             ${gridHtml}
                         </div>`;
@@ -2140,6 +2156,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     const turnBadge = isMyTurn
                         ? `<div class="bg-blue-600 text-white font-extrabold px-4 py-1.5 rounded-full text-xs animate-bounce shadow"><i class="fa-solid fa-play mr-1"></i>YOUR TURN (${turnColor})!</div>`
                         : `<div class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold px-3 py-1 rounded-full text-xs">Waiting for @${escapeHtml(turnName)} (${turnColor})'s move...</div>`;
+                    const timerHtml = window.turnTimerHtml(post, 'pro', 'proFourTurnDeadline');
 
                     // Top drop buttons for 7 columns
                     let dropBtnsHtml = `<div class="grid grid-cols-7 gap-1 w-72 mx-auto mb-1 shrink-0">`;
@@ -2181,6 +2198,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             <h4 class="font-black text-blue-900 dark:text-blue-200 text-base mb-1">🟢🔴 Connect 4 Pro Max</h4>
                             ${playersBadges}
                             ${turnBadge}
+                            ${timerHtml}
                             ${dropBtnsHtml}
                             ${gridHtml}
                         </div>`;
