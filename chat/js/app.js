@@ -207,7 +207,7 @@ function insertMentionFromSuggestion() {
   input.focus();
 }
 function avatarUrl(user = {}) { const url = String(user.pic || user.photoURL || ''); return /^(https?:|data:image\/)/i.test(url) ? url : fallbackAvatar(user.uid || user.name || 'hangout'); }
-function formatTime(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+function formatTime(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : date.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
 function showToast(message) { const toast = $('toast'); toast.textContent = message; toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 3500); }
 function isOnline(uid) { const presence = state.online[uid]; return presence === true || Boolean(presence && typeof presence === 'object' && Object.keys(presence).length); }
 function threadIdFor(peerId) { return `dm_${[state.user.uid, peerId].sort().join('_')}`; }

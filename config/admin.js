@@ -93,7 +93,7 @@ function initAdminDashboard() {
 
                 const div = document.createElement('div');
                 div.className = "flex flex-col bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700/50";
-                const time = new Date(act.timestamp).toLocaleString();
+                const time = new Date(act.timestamp).toLocaleString([], { hour12: true });
                 div.innerHTML = `
                     <div class="text-[11px] text-slate-700 dark:text-slate-300">
                         <span class="font-bold text-indigo-600 dark:text-indigo-400">${displayUser}</span> ${displayAction}

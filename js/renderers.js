@@ -103,7 +103,7 @@ window.renderNotifications = () => {
             let timeDisplay = '';
             if (n.timestamp) {
                 const d = new Date(n.timestamp);
-                const fullDate = d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                const fullDate = d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
                 timeDisplay = `<span class="text-gray-400 dark:text-gray-500 text-[9px] mt-0.5 block" title="${fullDate}">${window.timeAgo(n.timestamp)} ago • ${fullDate}</span>`;
             }
 
@@ -831,7 +831,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     if (post.timestamp) {
         const ts = post.timestamp?.toMillis ? post.timestamp.toMillis() : post.timestamp;
         const d = new Date(ts);
-        timeStr = d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' at ' + d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+        timeStr = d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' at ' + d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit', hour12: true});
     }
 
     const isBannedAuthor = authorInfo.isBanned === true;

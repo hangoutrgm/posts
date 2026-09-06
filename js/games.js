@@ -379,6 +379,8 @@ window.flagsData = [];
 window.emojisData = [];
 window.elementsData = [];
 window.mythologyData = [];
+window.triviaData = [];
+window.jumbledData = [];
 
 (async function loadFlagsJSON() {
     try {
@@ -424,6 +426,26 @@ window.mythologyData = [];
             if (Array.isArray(parsed) && parsed.length > 0) window.mythologyData = parsed;
         }
     } catch(e) { console.debug('Could not load config/mythology.json'); }
+})();
+
+(async function loadTriviaJSON() {
+    try {
+        const res = await fetch('config/trivia.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (Array.isArray(parsed) && parsed.length > 0) window.triviaData = parsed;
+        }
+    } catch(e) { console.debug('Could not load config/trivia.json'); }
+})();
+
+(async function loadJumbledJSON() {
+    try {
+        const res = await fetch('config/jumbled.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (Array.isArray(parsed) && parsed.length > 0) window.jumbledData = parsed;
+        }
+    } catch(e) { console.debug('Could not load config/jumbled.json'); }
 })();
 
 window.updateElementHint = () => {
@@ -655,6 +677,32 @@ window.rollMythologyQuestion = () => {
     }
 };
 
+window.randomTriviaQuestion = () => {
+    const list = window.triviaData || [];
+    if (!list.length) {
+        return window.showAlert("Trivia questions are still loading — please try again in a moment.");
+    }
+    const item = list[Math.floor(Math.random() * list.length)];
+    const qInput = document.getElementById('game-trivia-question');
+    const aInput = document.getElementById('game-trivia-answer');
+    if (qInput && item.q) qInput.value = item.q;
+    if (aInput && Array.isArray(item.a)) {
+        const pretty = item.a.map(a => a.charAt(0).toUpperCase() + a.slice(1));
+        aInput.value = pretty.join(', ');
+    }
+};
+
+window.randomJumbledWord = () => {
+    const list = window.jumbledData || [];
+    if (!list.length) {
+        return window.showAlert("Jumbled words are still loading — please try again in a moment.");
+    }
+    const word = list[Math.floor(Math.random() * list.length)];
+    if (!word) return;
+    document.getElementById('game-jumbled-original').value = String(word).toUpperCase();
+    window.scrambleWord();
+};
+
 window.generateDotsPuzzle = () => {
     const countInput = document.getElementById('game-dots-count');
     let count = parseInt(countInput.value, 10);
@@ -752,11 +800,23 @@ window.toggleGameSettings = () => {
     if (type === 'math') mathContainer.classList.remove('hidden');
     else mathContainer.classList.add('hidden');
 
-    if (type === 'jumbled_words') jumbledContainer.classList.remove('hidden');
-    else jumbledContainer.classList.add('hidden');
+    if (type === 'jumbled_words') {
+        jumbledContainer.classList.remove('hidden');
+        // Auto-pick + scramble a random word the first time the host selects Jumbled Words
+        const jo = document.getElementById('game-jumbled-original');
+        if (jo && !jo.value.trim()) window.randomJumbledWord();
+    } else {
+        jumbledContainer.classList.add('hidden');
+    }
 
-    if (type === 'trivia') triviaContainer.classList.remove('hidden');
-    else triviaContainer.classList.add('hidden');
+    if (type === 'trivia') {
+        triviaContainer.classList.remove('hidden');
+        // Auto-pick a random question the first time the host selects Trivia
+        const tq = document.getElementById('game-trivia-question');
+        if (tq && !tq.value.trim()) window.randomTriviaQuestion();
+    } else {
+        triviaContainer.classList.add('hidden');
+    }
 
     const mythologyContainer = document.getElementById('game-mythology-container');
     if (type === 'mythology') {
@@ -1159,7 +1219,7 @@ window.submitGame = async () => {
     if (type === 'trivia') {
         triviaQuestion = document.getElementById('game-trivia-question').value.trim();
         triviaAnswer = document.getElementById('game-trivia-answer').value.trim();
-        if (!triviaQuestion || !triviaAnswer) return window.showAlert("Please provide a Trivia Question and Answer.");
+        if (!triviaQuestion || !triviaAnswer) return window.showAlert("Please provide a Trivia Question and Answer (or click 🎲 Random).");
     }
 
     if (type === 'mythology') {
@@ -1322,8 +1382,12 @@ window.submitGame = async () => {
     if (mathAnswer) postData.gameMathAnswer = mathAnswer;
     if (jumbledOriginal) postData.gameJumbledOriginal = jumbledOriginal;
     if (jumbledScrambled) postData.gameJumbledScrambled = jumbledScrambled;
-    if (triviaQuestion) postData.gameTriviaQuestion = triviaQuestion;
-    if (triviaAnswer) postData.gameTriviaAnswer = triviaAnswer;
+    if (triviaQuestion) {
+        postData.gameTriviaQuestion = triviaQuestion;
+        const acceptedT = triviaAnswer.split(',').map(s => s.trim()).filter(Boolean);
+        postData.gameTriviaAnswer = acceptedT[0] || triviaAnswer;
+        postData.gameTriviaAnswers = acceptedT;
+    }
     if (mythologyQuestion) {
         postData.gameMythologyQuestion = mythologyQuestion;
         const accepted = mythologyAnswers.split(',').map(s => s.trim()).filter(Boolean);
@@ -1793,7 +1857,11 @@ window.answerGame = async (postId, answer) => {
         } else if (post.gameType === 'jumbled_words') {
             isCorrect = answerLower === (post.gameJumbledOriginal || '').toLowerCase();
         } else if (post.gameType === 'trivia') {
-            isCorrect = answerLower === (post.gameTriviaAnswer || '').toLowerCase();
+            const accepted = Array.isArray(post.gameTriviaAnswers) && post.gameTriviaAnswers.length
+                ? post.gameTriviaAnswers
+                : [post.gameTriviaAnswer || ''];
+            const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            isCorrect = accepted.some(a => a && (a.toLowerCase() === answerLower || clean(a) === clean(answer)));
         } else if (post.gameType === 'mythology') {
             const accepted = Array.isArray(post.gameMythologyAnswers) && post.gameMythologyAnswers.length
                 ? post.gameMythologyAnswers
