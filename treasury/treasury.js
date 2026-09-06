@@ -12,8 +12,10 @@ const state = {
     lend: {},
     buysell: {},
     savings: {},
+    savingsExpenses: {},
     revealGcash: false,
     rewardFilter: 'all',
+    search: '',
     myUid: null,
     viewingUid: null,
     users: {},
@@ -150,7 +152,8 @@ function switchTreasury(uid) {
         onValue(ref(db, tPath('keep')), (s) => { state.keep = s.val() || {}; renderKeep(); }),
         onValue(ref(db, tPath('lend')), (s) => { state.lend = s.val() || {}; renderLend(); }),
         onValue(ref(db, tPath('buysell')), (s) => { state.buysell = s.val() || {}; renderBuysell(); }),
-        onValue(ref(db, tPath('savings')), (s) => { state.savings = s.val() || {}; renderSavings(); })
+        onValue(ref(db, tPath('savings')), (s) => { state.savings = s.val() || {}; renderSavings(); }),
+        onValue(ref(db, tPath('savingsExpenses')), (s) => { state.savingsExpenses = s.val() || {}; renderSavings(); })
     ];
     // Contacts follow the account on screen: mine normally, the sponsor's while managing theirs
     if (state.contactDetacher) state.contactDetacher();
@@ -306,6 +309,12 @@ function initTreasury() {
     $('btn-savings-add').addEventListener('click', () => openSavingsForm());
     $('btn-treasurers').addEventListener('click', () => openTreasurersModal());
     $('btn-contacts').addEventListener('click', () => openContactsModal());
+    $('btn-savings-expense').addEventListener('click', () => openSavingsExpenseForm());
+    const searchInput = $('treasury-search');
+    if (searchInput) searchInput.addEventListener('input', (e) => {
+        state.search = qM(e.target.value.trim());
+        renderRewards(); renderKeep(); renderLend(); renderBuysell(); renderSavings();
+    });
     $('modal-close').addEventListener('click', closeModal);
     $('modal-cancel').addEventListener('click', closeModal);
     $('modal-form').addEventListener('submit', (e) => e.preventDefault());
@@ -476,6 +485,7 @@ function renderRewards() {
     let filtered = rows.map(id => ({ id, ...state.rewards[id] }));
     filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     if (state.rewardFilter !== 'all') filtered = filtered.filter(r => r.status === state.rewardFilter);
+    filtered = filtered.filter(r => matchesSearch(r.name, r.gcash, r.note, r.amount, STATUS_LABEL[r.status] || r.status));
 
     let toSend = 0, onHold = 0, sent = 0, total = 0;
     rows.forEach(id => {
@@ -514,6 +524,14 @@ function renderRewards() {
 const escapeHtml = (str) => String(str == null ? '' : str)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+// Treasury-wide search helper: every list-filter uses this. Searches name,
+// amount, remarks, status label, GCash, and (for rewards) the user's real name.
+const qM = (v) => String(v == null ? '' : v).toLowerCase();
+const matchesSearch = (...vals) => {
+    const q = qM(state.search);
+    if (!q) return true;
+    return vals.some(v => qM(v).includes(q));
+};
 const today = () => new Date().toISOString().slice(0, 10);
 // Gradient initial-avatar for ledger names (hue derived from the name)
 const avatar = (name) => {
@@ -577,7 +595,7 @@ function renderKeep() {
 
     $('keep-empty').classList.toggle('hidden', rows.length > 0);
     let html = '';
-    rows.forEach(r => {
+    rows.filter(r => matchesSearch(r.name, r.amount, r.remarks, r.date, r.type === 'withdraw' ? 'Withdraw' : 'Deposit')).forEach(r => {
         const isW = r.type === 'withdraw';
         html += `<tr>
             <td><span class="badge ${isW ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300 ring-1 ring-inset ring-rose-500/25' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/25'}"><span class="badge-dot"></span>${isW ? 'Withdraw' : 'Deposit'}</span></td>
@@ -630,6 +648,23 @@ window.editLoan = (id) => openLoanForm(id);
 window.toggleLoanRepaid = (id, status) => {
     update(ref(db, tPath(`lend/${id}`)), { status }).then(() => toast(status === 'repaid' ? 'Marked as paid.' : 'Marked as active.')).catch(() => toast('Failed to update.'));
 };
+window.openLoanRefundForm = (id) => {
+    const r = state.lend[id];
+    if (!r) return;
+    openModal(`Refund — ${r.name || ''}`,
+        `<p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Currently paid: <b class="text-emerald-600 dark:text-emerald-300">${money(r.paid)}</b>. Enter the amount to reverse back to outstanding.</p>` +
+        field('Refund Amount', 'ln-pay-amount', 'number', '0', '') +
+        field('Date', 'ln-pay-date', 'date', '', today()) +
+        textarea('Remarks', 'ln-pay-remarks', 'optional note', r.paidNote || ''),
+        'Save Refund', async () => {
+            const amt = parseFloat($('ln-pay-amount').value);
+            if (isNaN(amt) || amt <= 0) return toast('Enter a valid amount.');
+            const newPaid = Math.max(0, Number(r.paid || 0) - amt);
+            const status = (loanBalance({ ...r, paid: newPaid }) <= 0.009) ? 'repaid' : 'active';
+            await update(ref(db, tPath(`lend/${id}`)), { paid: newPaid, status, paidDate: $('ln-pay-date').value || today(), paidNote: $('ln-pay-remarks').value.trim() || '' });
+            closeModal(); toast('Refund recorded — loan reopened.');
+        });
+};
 window.deleteLoan = (id) => {
     if (!confirm('Delete this loan?')) return;
     remove(ref(db, tPath(`lend/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
@@ -638,40 +673,70 @@ function renderLend() {
     const tbody = $('lend-list');
     const rows = Object.keys(state.lend).map(id => ({ id, ...state.lend[id] }))
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    let totalLent = 0, expected = 0, outstanding = 0;
+    let totalLent = 0, expected = 0, outstanding = 0, totalPaid = 0;
     rows.forEach(r => {
         const p = Number(r.principal || 0);
         const i = Number(r.interest || 0);
         const collect = p + i;
+        const paid = Math.min(Number(r.paid || 0), collect);
         totalLent += p;
         expected += collect;
-        if (r.status !== 'repaid') outstanding += collect;
+        totalPaid += paid;
+        if (collect - paid > 0.009) outstanding += collect - paid;
     });
     $('lend-total').textContent = money(totalLent);
     $('lend-expected').textContent = money(expected);
     $('lend-outstanding').textContent = money(outstanding);
 
-    $('lend-empty').classList.toggle('hidden', rows.length > 0);
+    const filtered = rows.filter(r => matchesSearch(r.name, r.principal, r.interest, r.paid, r.date));
+    $('lend-empty').classList.toggle('hidden', filtered.length > 0);
     let html = '';
-    rows.forEach(r => {
+    filtered.forEach(r => {
         const collect = (Number(r.principal || 0) + Number(r.interest || 0));
-        const repaid = r.status === 'repaid';
+        const paid = Math.min(Number(r.paid || 0), collect);
+        const balance = Math.max(0, collect - paid);
+        const repaid = balance <= 0.009;
         html += `<tr class="${repaid ? 'opacity-50 saturate-50' : ''}">
-            <td><div class="flex items-center gap-2.5">${avatar(r.name)}<span class="block max-w-[120px] sm:max-w-[180px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span></div></td>
+            <td><div class="flex items-center gap-2.5">${avatar(r.name)}<span class="block max-w-[120px] sm:max-w-[170px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span></div></td>
             <td class="text-right font-bold tnum text-slate-700 dark:text-slate-200">${money(r.principal)}</td>
             <td class="text-right tnum text-[12px] text-slate-400 dark:text-slate-500">${money(r.interest)}</td>
             <td class="text-right font-extrabold tnum text-blue-600 dark:text-blue-400">${money(collect)}</td>
+            <td class="text-right font-bold tnum text-emerald-500 dark:text-emerald-400">${money(paid)}</td>
+            <td class="text-right font-bold tnum ${balance > 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-500 dark:text-emerald-400'}">${money(balance)}</td>
             <td class="hidden md:table-cell text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">${fmtDate(r.date)}</td>
             <td><span class="badge ${repaid ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/25' : 'bg-amber-500/10 text-amber-600 dark:text-amber-300 ring-1 ring-inset ring-amber-500/25'}"><span class="badge-dot"></span>${repaid ? 'Paid' : 'Active'}</span></td>
             <td class="text-right"><div class="flex items-center justify-end gap-1.5">
                 <button onclick="window.editLoan('${r.id}')" title="Edit" class="act-btn act-edit"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                ${!repaid ? `<button onclick="window.toggleLoanRepaid('${r.id}','repaid')" title="Mark as Paid" class="act-btn act-ok"><i class="fa-solid fa-check text-[10px]"></i></button>` : `<button onclick="window.toggleLoanRepaid('${r.id}','active')" title="Reopen" class="act-btn act-reopen"><i class="fa-solid fa-rotate-left text-[10px]"></i></button>`}
+                ${!repaid ? `<button onclick="window.openLoanPayForm('${r.id}')" title="Record Payment" class="act-btn act-pay"><i class="fa-solid fa-money-bill-wave text-[10px]"></i></button>` : `<button onclick="window.openLoanRefundForm('${r.id}')" title="Reopen / Refund" class="act-btn act-reopen"><i class="fa-solid fa-rotate-left text-[10px]"></i></button>`}
                 <button onclick="window.deleteLoan('${r.id}')" title="Delete" class="act-btn act-del"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
             </div></td>
         </tr>`;
     });
     tbody.innerHTML = html;
 }
+function loanBalance(r) {
+    const collect = (Number(r.principal || 0) + Number(r.interest || 0));
+    return Math.max(0, collect - Number(r.paid || 0));
+}
+window.openLoanPayForm = (id) => {
+    const r = state.lend[id];
+    if (!r) return;
+    const balance = loanBalance(r);
+    const collect = Number(r.principal || 0) + Number(r.interest || 0);
+    openModal(balance > 0 ? `Payment — ${r.name || ''}` : `Refund — ${r.name || ''}`,
+        `<p class="text-xs text-slate-500 dark:text-slate-400 mb-2">To Collect: <b class="text-blue-600 dark:text-blue-300">${money(collect)}</b> · Paid: <b class="text-emerald-600 dark:text-emerald-300">${money(r.paid)}</b> · Balance: <b class="text-rose-600 dark:text-rose-300">${money(balance)}</b></p>` +
+        field('Payment Amount', 'ln-pay-amount', 'number', '0', '') +
+        field('Date', 'ln-pay-date', 'date', '', today()) +
+        textarea('Remarks', 'ln-pay-remarks', 'optional note', r.paidNote || ''),
+        'Save Payment', async () => {
+            const amt = parseFloat($('ln-pay-amount').value);
+            if (isNaN(amt) || amt <= 0) return toast('Enter a valid amount.');
+            const newPaid = Math.min(collect, (Number(r.paid || 0) + amt));
+            const status = (collect - newPaid) <= 0.009 ? 'repaid' : 'active';
+            await update(ref(db, tPath(`lend/${id}`)), { paid: newPaid, status, paidDate: $('ln-pay-date').value || today(), paidNote: $('ln-pay-remarks').value.trim() || '' });
+            closeModal(); toast(status === 'repaid' ? 'Loan fully paid — marked as paid.' : 'Payment recorded.');
+        });
+};
 
 // ── Buy/Sell ──
 function openBuySellForm(type, id = null) {
@@ -747,18 +812,62 @@ window.deleteSavings = (id) => {
     if (!confirm('Delete this record?')) return;
     remove(ref(db, tPath(`savings/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
 };
+// ── Savings Expense (deduct from savings) ──
+function openSavingsExpenseForm(id = null) {
+    const rec = id ? state.savingsExpenses[id] : null;
+    openModal(rec ? 'Edit Expense' : 'Add Expense',
+        contactPicker('sx-name') +
+        field('Name', 'sx-name', 'text', 'e.g. Groceries — January', rec?.name || '') +
+        field('Amount', 'sx-amount', 'number', '0', rec?.amount ?? '') +
+        field('Date', 'sx-date', 'date', '', rec?.date || today()) +
+        textarea('Remarks', 'sx-remarks', 'optional note', rec?.remarks || ''),
+        rec ? 'Save Changes' : 'Add Expense', async () => {
+            const name = $('sx-name').value.trim();
+            const amount = parseFloat($('sx-amount').value);
+            if (!name || isNaN(amount) || amount <= 0) return toast('Enter a name and valid amount.');
+            try {
+                if (rec) {
+                    await update(ref(db, tPath(`savingsExpenses/${id}`)), {
+                        name, amount,
+                        date: $('sx-date').value || today(),
+                        remarks: $('sx-remarks').value.trim() || ''
+                    });
+                    closeModal(); toast('Expense updated.');
+                } else {
+                    await push(ref(db, tPath('savingsExpenses')), {
+                        name, amount,
+                        date: $('sx-date').value || today(),
+                        remarks: $('sx-remarks').value.trim() || '',
+                        createdAt: Date.now()
+                    });
+                    closeModal(); toast('Expense recorded — deducted from savings.');
+                }
+            } catch (e) { toast('Could not save: ' + e.message); }
+        });
+}
+window.editSavingsExpense = (id) => openSavingsExpenseForm(id);
+window.deleteSavingsExpense = (id) => {
+    if (!confirm('Delete this expense?')) return;
+    remove(ref(db, tPath(`savingsExpenses/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
+};
 function renderSavings() {
     const tbody = $('savings-list');
     const rows = Object.keys(state.savings).map(id => ({ id, ...state.savings[id] }))
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    let total = 0;
+    const expRows = Object.keys(state.savingsExpenses).map(id => ({ id, ...state.savingsExpenses[id] }))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    let total = 0, totalExp = 0;
     rows.forEach(r => { total += Number(r.amount || 0); });
+    expRows.forEach(r => { totalExp += Number(r.amount || 0); });
     $('sv-total').textContent = money(total);
     $('sv-count').textContent = rows.length;
+    const netEl = $('sv-net');
+    if (netEl) netEl.textContent = money(total - totalExp);
 
-    $('savings-empty').classList.toggle('hidden', rows.length > 0);
+    const filtered = rows.filter(r => matchesSearch(r.name, r.amount, r.remarks, r.date));
+    $('savings-empty').classList.toggle('hidden', filtered.length > 0);
     let html = '';
-    rows.forEach(r => {
+    filtered.forEach(r => {
         html += `<tr>
             <td><div class="flex items-center gap-2.5">${avatar(r.name)}<span class="block max-w-[120px] sm:max-w-[190px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span></div></td>
             <td class="text-right font-extrabold tnum text-emerald-500 dark:text-emerald-400">+${money(r.amount)}</td>
@@ -771,6 +880,28 @@ function renderSavings() {
         </tr>`;
     });
     tbody.innerHTML = html;
+
+    // ── Savings Expenses list ──
+    const expBody = $('savings-expenses-list');
+    if (expBody) {
+        const expFiltered = expRows.filter(r => matchesSearch(r.name, r.amount, r.remarks, r.date));
+        const expEmpty = $('savings-expenses-empty');
+        if (expEmpty) expEmpty.classList.toggle('hidden', expFiltered.length > 0);
+        let expHtml = '';
+        expFiltered.forEach(r => {
+            expHtml += `<tr>
+                <td><div class="flex items-center gap-2.5">${avatar(r.name)}<span class="block max-w-[120px] sm:max-w-[190px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span></div></td>
+                <td class="text-right font-extrabold tnum text-rose-500 dark:text-rose-400">\u2212${money(r.amount)}</td>
+                <td><div class="max-w-[150px] truncate text-[11px] text-slate-400 dark:text-slate-500" title="${escapeHtml(r.remarks || '')}">${escapeHtml(r.remarks || '—')}</div></td>
+                <td class="hidden md:table-cell text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">${fmtDate(r.date)}</td>
+                <td class="text-right"><div class="flex items-center justify-end gap-1.5">
+                    <button onclick="window.editSavingsExpense('${r.id}')" title="Edit" class="act-btn act-edit"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                    <button onclick="window.deleteSavingsExpense('${r.id}')" title="Delete" class="act-btn act-del"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                </div></td>
+            </tr>`;
+        });
+        expBody.innerHTML = expHtml;
+    }
 }
 window.deleteBuysell = (id) => {
     if (!confirm('Delete this record?')) return;
@@ -791,7 +922,7 @@ function renderBuysell() {
 
     $('buysell-empty').classList.toggle('hidden', rows.length > 0);
     let html = '';
-    rows.forEach(r => {
+    rows.filter(r => matchesSearch(r.name, r.amount, r.remarks, r.date, r.type === 'sell' ? 'Sale' : 'Buy')).forEach(r => {
         const isSell = r.type === 'sell';
         html += `<tr>
             <td><span class="badge ${isSell ? 'bg-violet-500/10 text-violet-600 dark:text-violet-300 ring-1 ring-inset ring-violet-500/25' : 'bg-sky-500/10 text-sky-600 dark:text-sky-300 ring-1 ring-inset ring-sky-500/25'}"><span class="badge-dot"></span>${isSell ? 'Sale' : 'Buy'}</span></td>

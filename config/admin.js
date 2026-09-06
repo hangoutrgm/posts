@@ -644,13 +644,22 @@ function initAdminDashboard() {
                     }
                 } catch (e) { /* ignore pinned read errors */ }
 
+                // Slow, safe pacing: 10 deletes every 10s (~1 delete/sec average).
+                // Well under Firestore's write limits, and avoids any burst "spam".
+                // Tweak DELETE_BATCH / DELETE_GAP_MS to change the pace.
+                const DELETE_BATCH = 10;       // docs deleted per burst
+                const DELETE_GAP_MS = 10000;   // pause between bursts (10s)
+                const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
                 btnDeleteGames.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deleting...';
                 let deleted = 0;
-                for (let i = 0; i < targets.length; i += 20) {
-                    const batch = targets.slice(i, i + 20);
-                    await Promise.all(batch.map(t => deleteDoc(t.ref).catch(() => {})));
-                    deleted += batch.length;
-                    if (statusGames) statusGames.textContent = `Deleted ${deleted}/${targets.length}...`;
+                for (let i = 0; i < targets.length; i += DELETE_BATCH) {
+                    const slice = targets.slice(i, i + DELETE_BATCH);
+                    await Promise.all(slice.map(t => deleteDoc(t.ref).catch(() => {})));
+                    deleted += slice.length;
+                    const leftSecs = Math.max(0, Math.ceil(((targets.length - deleted) / DELETE_BATCH) * (DELETE_GAP_MS / 1000)));
+                    if (statusGames) statusGames.textContent = `Deleted ${deleted}/${targets.length} · next batch in 10s · ~${leftSecs}s left`;
+                    if (deleted < targets.length) await sleep(DELETE_GAP_MS);
                 }
                 if (pinnedPatch && Object.keys(pinnedPatch).length) await updateDoc(pinnedRef, pinnedPatch).catch(() => {});
                 await fetchPostsCount();
