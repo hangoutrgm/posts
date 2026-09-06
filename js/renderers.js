@@ -2654,6 +2654,12 @@ window.promptCustomReaction = (postId, authorId, commentId = null, commentAuthor
     const input = document.getElementById('edit-content-input');
     const saveBtn = document.getElementById('save-edit-btn');
     const title = modal.querySelector('h2');
+
+    // This flow reuses the edit modal for a completely different purpose —
+    // make sure no leftover post-edit state (category dropdown / target) leaks in.
+    const catWrap = document.getElementById('edit-category-wrap');
+    if (catWrap) catWrap.classList.add('hidden');
+    window.activeEditTarget = null;
     
     title.innerHTML = '<i class="fa-regular fa-face-smile text-blue-500 mr-2"></i> Add Custom Emoji';
     input.value = '';

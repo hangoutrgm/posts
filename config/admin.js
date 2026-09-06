@@ -2,7 +2,7 @@
 import { app, auth, db, fsdb, fsdb2 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-import { collection, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import "../js/globals.js";
 import "../js/helpers.js";
 
@@ -590,6 +590,83 @@ function initAdminDashboard() {
             }
         }
     });
+
+    // 9. Danger Zone: Delete 1,000 Oldest Game Posts
+    const confirmGamesInput = document.getElementById('confirm-delete-games');
+    const btnDeleteGames = document.getElementById('btn-delete-games');
+    const statusGames = document.getElementById('delete-games-status');
+    if (confirmGamesInput && btnDeleteGames) {
+        confirmGamesInput.addEventListener('input', (e) => {
+            if (e.target.value === 'delete 1k game posts') btnDeleteGames.removeAttribute('disabled');
+            else btnDeleteGames.setAttribute('disabled', 'true');
+        });
+        btnDeleteGames.addEventListener('click', async () => {
+            if (!confirm('PERMANENTLY delete the 1,000 oldest game posts? This cannot be undone.')) return;
+            btnDeleteGames.setAttribute('disabled', 'true');
+            const origHtml = btnDeleteGames.innerHTML;
+            btnDeleteGames.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Scanning...';
+            if (statusGames) statusGames.textContent = '';
+            try {
+                const candidates = [];
+                for (const fsInst of [fsdb, fsdb2]) {
+                    try {
+                        const snap = await getDocs(fsQuery(collection(fsInst, 'community_posts'), orderBy('timestamp', 'asc'), limit(2000)));
+                        snap.forEach(d => {
+                            const data = d.data() || {};
+                            if (data.isGame !== true && data.category !== 'Games') return;
+                            const ts = data.timestamp && typeof data.timestamp.toMillis === 'function' ? data.timestamp.toMillis() : (typeof data.timestamp === 'number' ? data.timestamp : 0);
+                            candidates.push({ ref: d.ref, id: d.id, ts });
+                        });
+                    } catch (e) { console.warn('Old-game scan failed on a database:', e); }
+                }
+                candidates.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                const targets = candidates.slice(0, 1000);
+                if (!targets.length) {
+                    if (statusGames) statusGames.textContent = 'No game posts found.';
+                    alert('No game posts to delete.');
+                    return;
+                }
+                // Snapshot pinned ids -> clean up any deleted pins at the end.
+                const pinnedRef = doc(fsdb, 'settings', 'pinned');
+                let pinnedPatch = null;
+                try {
+                    const pinnedSnap = await getDoc(pinnedRef);
+                    if (pinnedSnap.exists()) {
+                        const pd = pinnedSnap.data() || {};
+                        const targetIds = new Set(targets.map(t => t.id));
+                        const feed = (pd.feedPinnedIds || []).filter(id => !targetIds.has(id));
+                        const prof = (pd.profilePinnedIds || []).filter(id => !targetIds.has(id));
+                        if (feed.length !== (pd.feedPinnedIds || []).length || prof.length !== (pd.profilePinnedIds || []).length) {
+                            pinnedPatch = {};
+                            if (feed.length !== (pd.feedPinnedIds || []).length) pinnedPatch.feedPinnedIds = feed;
+                            if (prof.length !== (pd.profilePinnedIds || []).length) pinnedPatch.profilePinnedIds = prof;
+                        }
+                    }
+                } catch (e) { /* ignore pinned read errors */ }
+
+                btnDeleteGames.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Deleting...';
+                let deleted = 0;
+                for (let i = 0; i < targets.length; i += 20) {
+                    const batch = targets.slice(i, i + 20);
+                    await Promise.all(batch.map(t => deleteDoc(t.ref).catch(() => {})));
+                    deleted += batch.length;
+                    if (statusGames) statusGames.textContent = `Deleted ${deleted}/${targets.length}...`;
+                }
+                if (pinnedPatch && Object.keys(pinnedPatch).length) await updateDoc(pinnedRef, pinnedPatch).catch(() => {});
+                await fetchPostsCount();
+                await push(ref(db, 'activity_log'), { user: 'Admin', action: `deleted ${deleted} oldest game posts`, timestamp: Date.now() });
+                confirmGamesInput.value = '';
+                if (statusGames) statusGames.textContent = `Done — deleted ${deleted} oldest game posts.`;
+                alert(`Successfully deleted ${deleted} oldest game posts.`);
+            } catch (err) {
+                console.error(err);
+                if (statusGames) statusGames.textContent = `Error: ${err.message}`;
+                alert('Error deleting game posts: ' + err.message);
+            } finally {
+                btnDeleteGames.innerHTML = origHtml;
+            }
+        });
+    }
 }
 
 function renderUsersList() {

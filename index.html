@@ -163,6 +163,12 @@
             <h2 class="text-lg font-bold mb-3 dark:text-white flex items-center"><i class="fa-solid fa-pen text-blue-500 mr-2"></i> Edit Content</h2>
             
             <textarea id="edit-content-input" class="w-full bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none h-32 border border-gray-100 dark:border-slate-700 shadow-inner" placeholder="Edit your text here..."></textarea>
+
+            <div id="edit-category-wrap" class="hidden mt-3">
+                <label class="block text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-1 ml-0.5">Category</label>
+                <select id="edit-category" class="w-full bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none border border-gray-100 dark:border-slate-700"></select>
+                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 ml-0.5">Admins can use General / Announcements / Rules. Mods can use General / Announcements.</p>
+            </div>
             
             <div class="flex justify-end mt-3 space-x-2">
                 <button onclick="document.getElementById('edit-modal').classList.add('hidden')" class="px-4 py-1.5 text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-gray-100 dark:bg-slate-700 rounded-lg transition">Cancel</button>
@@ -808,10 +814,10 @@
 
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
-    <script type="module" src="js/renderers.js?v=39"></script>
+    <script type="module" src="js/renderers.js?v=40"></script>
     <script type="module" src="js/helpers.js?v=41"></script>
     <script type="module" src="js/games.js?v=39"></script>
-    <script type="module" src="js/main.js?v=32"></script>
+    <script type="module" src="js/main.js?v=33"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

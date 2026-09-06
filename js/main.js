@@ -1385,6 +1385,47 @@ window.prepareReplyToReply = (cId, prefix, targetUid) => {
 window.openEditModal = (targetData, currentText) => {
     window.activeEditTarget = targetData;
     document.getElementById('edit-content-input').value = currentText || "";
+
+    // Reset shared modal (it is also used for custom reactions / comment-reply edits)
+    const titleEl = document.querySelector('#edit-modal h2');
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-pen text-blue-500 mr-2"></i> Edit Content';
+    const inputEl = document.getElementById('edit-content-input');
+    if (inputEl) inputEl.placeholder = 'Edit your text here...';
+
+    // Category change: only for top-level posts, authored by an Admin or Mod, and never game posts.
+    const catWrap = document.getElementById('edit-category-wrap');
+    const catSelect = document.getElementById('edit-category');
+    let allowed = null;
+    if (catWrap && catSelect && targetData && typeof targetData.path === 'string') {
+        const parts = targetData.path.split('/');
+        const isTopLevelPost = parts.length === 2 && parts[0] === 'community_posts';
+        catSelect.innerHTML = '';
+        if (isTopLevelPost) {
+            const post = (window.allPosts || []).find(p => p.id === targetData.postId)
+                || (window.globalPinnedPosts || []).find(p => p.id === targetData.postId)
+                || (window.profilePinnedPosts || []).find(p => p.id === targetData.postId)
+                || (window.isolatedPostData && window.isolatedPostData.id === targetData.postId ? window.isolatedPostData : null);
+            const roleLevel = window.currentUser ? window.getRole(window.currentUser.uid).level : 1;
+            const currentCat = post ? post.category : null;
+            if (post && !post.isGame && currentCat !== 'Games' && roleLevel >= 2) {
+                allowed = roleLevel >= 3 ? ['General', 'Announcements', 'Rules'] : ['General', 'Announcements'];
+                allowed.forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    if (currentCat === cat) opt.selected = true;
+                    catSelect.appendChild(opt);
+                });
+            }
+        }
+    }
+    if (allowed && catSelect.childNodes.length > 0) {
+        catWrap.classList.remove('hidden');
+    } else {
+        catWrap.classList.add('hidden');
+    }
+    window.activeEditTarget.allowedCategories = allowed;
+
     document.getElementById('edit-modal').classList.remove('hidden');
     setTimeout(() => document.getElementById('edit-content-input').focus(), 100);
 };
@@ -1399,7 +1440,13 @@ document.getElementById('save-edit-btn').addEventListener('click', () => {
             const postId = parts[1];
             const postDocRef = getPostDocRef(postId);
             if (parts.length === 2) {
-                updateDoc(postDocRef, { text: newText, edited: true });
+                const edits = { text: newText, edited: true };
+                const catSelect = document.getElementById('edit-category');
+                const allowed = window.activeEditTarget.allowedCategories;
+                if (allowed && Array.isArray(allowed) && catSelect && allowed.includes(catSelect.value)) {
+                    edits.category = catSelect.value;
+                }
+                updateDoc(postDocRef, edits);
             } else if (parts.length === 4 && parts[2] === 'comments') {
                 const cId = parts[3];
                 updateDoc(postDocRef, {
