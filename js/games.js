@@ -1082,6 +1082,98 @@ window.votePoll = async (postId, optionIndex) => {
     }
 };
 
+// ── Add an option to an already-posted poll (author only, appends at the end) ──
+// Appending is safe: votes are stored as option INDEXES, so existing votes stay valid.
+window.addPollOptionPost = async (postId) => {
+    if (!window.currentUser) return window.showAlert("Please sign in first.");
+    const input = document.getElementById(`poll-new-opt-${postId}`);
+    const opt = (input ? input.value : '').trim();
+    if (!opt) return window.showAlert("Enter an option first.");
+    try {
+        const snap = await getDoc(getPostDocRef(postId));
+        if (!snap.exists()) return window.showAlert("Poll not found.");
+        const post = snap.data();
+        if (post.authorId !== window.currentUser.uid) return window.showAlert("Only the poll author can add options.");
+        if (post.pollEndTime && Date.now() >= post.pollEndTime) return window.showAlert("Voting is closed — cannot add options.");
+        if ((post.pollOptions || []).length >= 6) return window.showAlert("Maximum 6 options.");
+        await updateDoc(getPostDocRef(postId), { pollOptions: arrayUnion(opt) });
+        if (input) input.value = '';
+    } catch (e) {
+        console.error("Add option error:", e);
+        window.showAlert("Could not add the option.");
+    }
+};
+
+// ── Edit an option on a posted poll (author only, while open) ──
+// Editing keeps the same index, so existing votes remain valid.
+// prompt() is called synchronously from cached data — calling it after an
+// await can freeze the page in some browsers (dialog never renders).
+// The write replaces the ENTIRE pollOptions array (never dot-notation on an
+// array index — Firestore can convert the array to a map and corrupt it).
+window.editPollOption = (postId, index) => {
+    if (!window.currentUser) return window.showAlert("Please sign in first.");
+    const post = (window.allPosts || []).find(p => p.id === postId)
+        || (window.globalPinnedPosts || []).find(p => p.id === postId)
+        || (window.profilePinnedPosts || []).find(p => p.id === postId)
+        || (window.isolatedPostData && window.isolatedPostData.id === postId ? window.isolatedPostData : null);
+    if (!post) return window.showAlert("Poll not found.");
+    if (post.authorId !== window.currentUser.uid) return window.showAlert("Only the poll author can edit options.");
+    if (post.pollEndTime && Date.now() >= post.pollEndTime) return window.showAlert("Voting is closed — cannot edit options.");
+    const opts = Array.isArray(post.pollOptions) ? post.pollOptions : [];
+    const oldText = opts[index];
+    if (oldText === undefined) return window.showAlert("Option not found.");
+    const newText = (prompt(`Edit option:`, oldText) || '').trim();
+    if (!newText || newText === oldText) return;
+    // Read the full array from Firestore, modify, then write the whole array back
+    const postRef = getPostDocRef(postId);
+    getDoc(postRef).then(snap => {
+        if (!snap.exists()) return;
+        const fresh = snap.data();
+        if (fresh.authorId !== window.currentUser.uid) return;
+        if (fresh.pollEndTime && Date.now() >= fresh.pollEndTime) return;
+        const freshOpts = Array.isArray(fresh.pollOptions) ? [...fresh.pollOptions] : [];
+        if (index < 0 || index >= freshOpts.length) return;
+        freshOpts[index] = newText;
+        return updateDoc(postRef, { pollOptions: freshOpts });
+    }).catch(e => {
+        console.error("Edit option error:", e);
+        window.showAlert("Could not edit the option.");
+    });
+};
+
+// ── Delete an option on a posted poll (author only, while open) ──
+// Votes are stored by option index, so deleting index i drops votes for that
+// option and shifts every later index down by one to keep counts accurate.
+// Done inside a single Firestore transaction so it's atomic.
+window.deletePollOption = (postId, index) => {
+    if (!window.currentUser) return window.showAlert("Please sign in first.");
+    if (!confirm("Delete this option? Votes on it will be removed.")) return;
+    const postRef = getPostDocRef(postId);
+    fsRunTransaction(getFirestoreForPost(postId), async (transaction) => {
+        const tSnap = await transaction.get(postRef);
+        if (!tSnap.exists()) return false;
+        const p = tSnap.data();
+        if (p.authorId !== window.currentUser.uid) return false;
+        if (p.pollEndTime && Date.now() >= p.pollEndTime) return false;
+        const opts = p.pollOptions || [];
+        if (index < 0 || index >= opts.length) return false;
+        if (opts.length <= 2) return false; // keep the 2-option minimum
+        const newOptions = opts.filter((_, i) => i !== index);
+        const votes = p.pollVotes || {};
+        const newVotes = {};
+        Object.entries(votes).forEach(([uid, v]) => {
+            const vi = Number(v);
+            if (vi === index) return; // drop votes that were on the deleted option
+            newVotes[uid] = vi > index ? vi - 1 : vi;
+        });
+        transaction.update(postRef, { pollOptions: newOptions, pollVotes: newVotes });
+        return true;
+    }).catch(e => {
+        console.error("Delete option error:", e);
+        window.showAlert("Could not delete the option.");
+    });
+};
+
 // ── Event RSVP ──
 window.rsvpEvent = async (postId, status) => {
     if (!window.currentUser) return window.showAlert("Please sign in to RSVP.");

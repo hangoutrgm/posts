@@ -1693,9 +1693,10 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             const myUid = window.currentUser?.uid;
             const myVote = myUid ? post.pollVotes?.[myUid] : undefined;
             const isOpen = !post.pollEndTime || Date.now() < post.pollEndTime;
-            const votes = post.pollVotes || {};
+            const isHost = myUid && post.authorId === myUid;
+            const votes = (post.pollVotes && typeof post.pollVotes === 'object' && !Array.isArray(post.pollVotes)) ? post.pollVotes : {};
             const totalVotes = Object.keys(votes).length;
-            const options = post.pollOptions || [];
+            const options = Array.isArray(post.pollOptions) ? post.pollOptions : [];
             const counts = options.map((_, i) => Object.values(votes).filter(v => v === i).length);
             const maxCount = Math.max(...counts, 0);
             let pollHtml = '';
@@ -1704,11 +1705,19 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 const isMine = myVote === i;
                 const isLeader = totalVotes > 0 && counts[i] === maxCount && maxCount > 0;
                 if (isOpen) {
-                    pollHtml += `<button onclick="window.votePoll('${post.id}', ${i})" class="w-full text-left px-3.5 py-2.5 rounded-xl border transition text-sm font-semibold flex items-center gap-2.5 ${isMine ? 'border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-sky-300 dark:hover:border-sky-500/40'}">
-                        <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isMine ? 'border-sky-500 bg-sky-500' : 'border-slate-300 dark:border-slate-600'}">${isMine ? '<i class="fa-solid fa-check text-white text-[8px]"></i>' : ''}</span>
-                        <span class="flex-1 min-w-0 text-slate-800 dark:text-slate-200">${escapeHtml(opt)}</span>
-                        ${totalVotes > 0 ? `<span class="text-[11px] font-bold ${isLeader ? 'text-sky-600 dark:text-sky-300' : 'text-slate-400 dark:text-slate-500'} tnum shrink-0">${counts[i]} · ${pct}%</span>` : ''}
-                    </button>`;
+                    const hostActions = isHost
+                        ? `<span class="flex items-center gap-1 shrink-0">
+                            <button onclick="window.editPollOption('${post.id}', ${i})" title="Edit option" class="grid place-items-center w-6 h-6 rounded-md text-slate-400 hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-100/60 dark:hover:bg-sky-500/10 transition"><i class="fa-solid fa-pen text-[9px]"></i></button>
+                            ${options.length > 2 ? `<button onclick="window.deletePollOption('${post.id}', ${i})" title="Delete option" class="grid place-items-center w-6 h-6 rounded-md text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-100/60 dark:hover:bg-rose-500/10 transition"><i class="fa-solid fa-trash-can text-[9px]"></i></button>` : ''}
+                        </span>` : '';
+                    pollHtml += `<div class="flex items-center gap-1.5">
+                        <button onclick="window.votePoll('${post.id}', ${i})" class="flex-1 min-w-0 text-left px-3.5 py-2.5 rounded-xl border transition text-sm font-semibold flex items-center gap-2.5 ${isMine ? 'border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-sky-300 dark:hover:border-sky-500/40'}">
+                            <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isMine ? 'border-sky-500 bg-sky-500' : 'border-slate-300 dark:border-slate-600'}">${isMine ? '<i class="fa-solid fa-check text-white text-[8px]"></i>' : ''}</span>
+                            <span class="flex-1 min-w-0 text-slate-800 dark:text-slate-200">${escapeHtml(opt)}</span>
+                            ${totalVotes > 0 ? `<span class="text-[11px] font-bold ${isLeader ? 'text-sky-600 dark:text-sky-300' : 'text-slate-400 dark:text-slate-500'} tnum shrink-0">${counts[i]} · ${pct}%</span>` : ''}
+                        </button>
+                        ${hostActions}
+                    </div>`;
                 } else {
                     pollHtml += `<div class="w-full px-3.5 py-2.5 rounded-xl border ${isMine ? 'border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04]'} relative overflow-hidden">
                         ${totalVotes > 0 ? `<div class="absolute inset-y-0 left-0 ${isLeader ? 'bg-sky-500/15' : 'bg-slate-200/50 dark:bg-white/[0.05]'}" style="width:${pct}%"></div>` : ''}
@@ -1723,6 +1732,12 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 ? (isOpen ? `<div class="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-2"><i class="fa-regular fa-clock mr-1"></i>Voting ends ${new Date(post.pollEndTime).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</div>`
                   : `<div class="text-[10px] font-bold text-rose-400 mt-2"><i class="fa-solid fa-lock mr-1"></i>Voting closed</div>`)
                 : '';
+            const addOptRow = (isOpen && isHost && options.length < 6)
+                ? `<div class="flex items-center gap-1.5 mt-2">
+                    <input id="poll-new-opt-${post.id}" type="text" maxlength="60" placeholder="Add an option…" onkeydown="if(event.key==='Enter'){window.addPollOptionPost('${post.id}')}" class="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-white outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-400">
+                    <button onclick="window.addPollOptionPost('${post.id}')" title="Add option" class="shrink-0 grid place-items-center w-7 h-7 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-xs shadow-sm transition active:scale-90"><i class="fa-solid fa-plus"></i></button>
+                </div>`
+                : '';
             gameHtml = `
                 <div class="mt-3 mb-2 p-4 bg-sky-50 dark:bg-slate-800 rounded-xl border-2 border-sky-200 dark:border-sky-900/50">
                     <div class="flex items-center gap-2 mb-2.5">
@@ -1730,6 +1745,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <h4 class="font-bold text-sm text-sky-800 dark:text-sky-200">${escapeHtml(post.pollQuestion)}</h4>
                     </div>
                     <div class="space-y-2">${pollHtml}</div>
+                    ${addOptRow}
                     <div class="flex items-center justify-between mt-2.5">
                         <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500">${totalVotes} vote${totalVotes !== 1 ? 's' : ''}${isOpen ? '' : ' · Final results'}</span>
                         ${isOpen ? `<span class="text-[10px] font-semibold text-sky-500 dark:text-sky-400">Tap to vote${myVote !== undefined ? ' · tap again to change' : ''}</span>` : ''}
