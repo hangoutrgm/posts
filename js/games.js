@@ -349,6 +349,8 @@ window.gameTypeLabel = (type) => {
         'trivia': 'Trivia Game',
         'mythology': 'Mythology Quiz',
         'guess_logo': 'Guess the Logo',
+        'poll': 'Poll',
+        'event': 'Event',
         'jumbled_words': 'Jumbled Words',
         'flags': 'Guess the Flag',
         'periodic_table': 'Periodic Table of Elements',
@@ -815,7 +817,7 @@ window.toggleGameSettings = () => {
     
     // Default rewards container (Prize PHP, LB Points, Bonus prize)
     if (defaultRewardsContainer) {
-        if (type === 'spin_names') {
+        if (type === 'spin_names' || type === 'poll' || type === 'event') {
             defaultRewardsContainer.classList.add('hidden');
         } else {
             defaultRewardsContainer.classList.remove('hidden');
@@ -873,13 +875,17 @@ window.toggleGameSettings = () => {
         if (type === 'guess_logo') {
             logoContainer.classList.remove('hidden');
             window.populateLogoDatalist();
-            // Auto-pick a random logo the first time the host selects Guess the Logo
             const ln = document.getElementById('game-logo-name');
             if (ln && !ln.value.trim()) window.randomLogoGame();
         } else {
             logoContainer.classList.add('hidden');
         }
     }
+
+    const pollContainer = document.getElementById('game-poll-container');
+    if (pollContainer) pollContainer.classList.toggle('hidden', type !== 'poll');
+    const eventContainer = document.getElementById('game-event-container');
+    if (eventContainer) eventContainer.classList.toggle('hidden', type !== 'event');
 
     const mythologyContainer = document.getElementById('game-mythology-container');
     if (type === 'mythology') {
@@ -1044,6 +1050,50 @@ window.scrambleWord = () => {
     document.getElementById('game-jumbled-scrambled').value = scrambledWords.join(' ');
 };
 
+// ── Poll option helpers ──
+window.addPollOption = () => {
+    const wrap = document.getElementById('game-poll-options');
+    if (!wrap) return;
+    const count = wrap.querySelectorAll('.poll-opt').length;
+    if (count >= 6) return window.showAlert("Maximum 6 options.");
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'poll-opt w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none';
+    inp.placeholder = `Option ${count + 1}`;
+    wrap.appendChild(inp);
+};
+window.removePollOption = () => {
+    const wrap = document.getElementById('game-poll-options');
+    if (!wrap) return;
+    const opts = wrap.querySelectorAll('.poll-opt');
+    if (opts.length <= 2) return window.showAlert("Minimum 2 options.");
+    opts[opts.length - 1].remove();
+};
+
+// ── Poll vote (atomic, changeable) ──
+window.votePoll = async (postId, optionIndex) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to vote.");
+    try {
+        const postRef = getPostDocRef(postId);
+        await updateDoc(postRef, { [`pollVotes.${window.currentUser.uid}`]: optionIndex });
+    } catch (e) {
+        console.error("Vote error:", e);
+        window.showAlert("Could not record your vote.");
+    }
+};
+
+// ── Event RSVP ──
+window.rsvpEvent = async (postId, status) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to RSVP.");
+    try {
+        const postRef = getPostDocRef(postId);
+        await updateDoc(postRef, { [`eventRsvps.${window.currentUser.uid}`]: status });
+    } catch (e) {
+        console.error("RSVP error:", e);
+        window.showAlert("Could not record your RSVP.");
+    }
+};
+
 window.submitGame = async () => {
     if (!window.currentUser) return;
 
@@ -1079,8 +1129,8 @@ window.submitGame = async () => {
         return window.showAlert(`LB Points reward must be between 0 and ${maxLbAllowed}.`);
     }
 
-    // Require at least prize, bonus, or lb points for non-spin_names games
-    if (type !== 'spin_names' && prize <= 0 && !bonusPrize && lbPointsReward <= 0) {
+    // Require at least prize, bonus, or lb points for non-spin_names games (skip for poll/event)
+    if (type !== 'spin_names' && type !== 'poll' && type !== 'event' && prize <= 0 && !bonusPrize && lbPointsReward <= 0) {
         return window.showAlert("Please enter a prize amount (PHP), bonus prize, or LB points.");
     }
 
@@ -1107,6 +1157,14 @@ window.submitGame = async () => {
     let logoName = null;
     let logoSlug = null;
     let logoUrl = null;
+    let pollQuestion = null;
+    let pollOptions = null;
+    let pollEndTime = null;
+    let eventName = null;
+    let eventDesc = null;
+    let eventStart = null;
+    let eventDuration = null;
+    let eventLocation = null;
     let bingoLetterCount = 0;
     let bingoNumberCount = 0;
     let bingoMaxLetter = 'Z';
@@ -1302,10 +1360,35 @@ window.submitGame = async () => {
             logoSlug = match.slug;
             logoUrl = LOGO_CDN + encodeURIComponent(match.slug);
         } else {
-            // Allow custom brands: derive a best-effort CDN slug from the typed name.
             logoSlug = logoSlugify(logoName) || logoName;
-            logoUrl = null; // custom brands have no verified CDN icon — render the name only
+            logoUrl = null;
         }
+    }
+
+    if (type === 'poll') {
+        pollQuestion = document.getElementById('game-poll-question').value.trim();
+        if (!pollQuestion) return window.showAlert("Please enter a poll question.");
+        const optInputs = document.querySelectorAll('.poll-opt');
+        pollOptions = Array.from(optInputs).map(inp => inp.value.trim()).filter(Boolean);
+        if (pollOptions.length < 2) return window.showAlert("Please provide at least 2 poll options.");
+        const peVal = document.getElementById('game-poll-end')?.value;
+        if (peVal) {
+            pollEndTime = new Date(peVal).getTime();
+            if (isNaN(pollEndTime) || pollEndTime <= Date.now()) return window.showAlert("Poll end time must be in the future.");
+        }
+    }
+
+    if (type === 'event') {
+        eventName = document.getElementById('game-event-name').value.trim();
+        eventDesc = document.getElementById('game-event-desc').value.trim();
+        eventLocation = document.getElementById('game-event-location')?.value.trim() || '';
+        const startVal = document.getElementById('game-event-start')?.value;
+        eventDuration = parseInt(document.getElementById('game-event-duration')?.value) || 2;
+        if (!eventName) return window.showAlert("Please enter an event name.");
+        if (!startVal) return window.showAlert("Please select a start date and time.");
+        eventStart = new Date(startVal).getTime();
+        if (isNaN(eventStart)) return window.showAlert("Invalid start date/time.");
+        if (eventDuration < 1) eventDuration = 1;
     }
 
     if (type === 'bingo') {
@@ -1387,6 +1470,8 @@ window.submitGame = async () => {
     else if (type === 'trivia') text = `Trivia Time! 🤔 ${triviaQuestion}`;
     else if (type === 'mythology') text = `Mythology Challenge! ${mythologyQuestion}`;
     else if (type === 'guess_logo') text = `🔤 Guess the Logo! What brand is this?`;
+    else if (type === 'poll') text = `📊 Poll: ${pollQuestion}`;
+    else if (type === 'event') text = `📅 Event: ${eventName}${eventLocation ? ' @ ' + eventLocation : ''}`;
     else if (type === 'gibberish') text = `🗣️ Guess the Gibberish! Say it out loud: "${gibberishClue}"`;
     else if (type === 'emoji_riddle') {
         const catLabel = emojiRiddleCategory === 'movies' ? 'Movie' : emojiRiddleCategory === 'songs' ? 'Song' : emojiRiddleCategory === 'idioms' ? 'Idiom' : 'Emoji Riddle';
@@ -1479,6 +1564,26 @@ window.submitGame = async () => {
         postData.gameLogoName = logoName;
         postData.gameLogoSlog = logoSlug;
         if (logoUrl) postData.gameLogoUrl = logoUrl;
+    }
+    if (type === 'poll') {
+        postData.pollQuestion = pollQuestion;
+        postData.pollOptions = pollOptions;
+        postData.pollVotes = {};
+        if (pollEndTime) postData.pollEndTime = pollEndTime;
+        postData.gameEndTime = pollEndTime || 0;
+        postData.gameStatus = 'active';
+        postData.gameWinner = null;
+    }
+    if (type === 'event') {
+        postData.eventName = eventName;
+        postData.eventDescription = eventDesc;
+        postData.eventStart = eventStart;
+        postData.eventDurationHours = eventDuration;
+        postData.eventLocation = eventLocation;
+        postData.eventRsvps = {};
+        postData.gameEndTime = eventStart + (eventDuration * 3600000);
+        postData.gameStatus = 'active';
+        postData.gameWinner = null;
     }
     if (type === 'gibberish') {
         postData.gameGibberishClue = gibberishClue;

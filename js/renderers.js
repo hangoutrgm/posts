@@ -1689,6 +1689,100 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                     <h4 class="font-black text-pink-800 dark:text-pink-300 text-lg mb-1">ncl @${winnerName}</h4>
                     ${prizeStr ? `<div class="mt-2">${prizeStr}</div>` : (post.gamePrize ? `<div class="mt-2 bg-white dark:bg-slate-800/80 px-4 py-2 rounded-lg font-bold text-pink-600 dark:text-pink-400 shadow-inner text-sm">${escapeHtml(String(post.gamePrize))}</div>` : '')}
                 </div>`;
+        } else if (post.gameType === 'poll') {
+            const myUid = window.currentUser?.uid;
+            const myVote = myUid ? post.pollVotes?.[myUid] : undefined;
+            const isOpen = !post.pollEndTime || Date.now() < post.pollEndTime;
+            const votes = post.pollVotes || {};
+            const totalVotes = Object.keys(votes).length;
+            const options = post.pollOptions || [];
+            const counts = options.map((_, i) => Object.values(votes).filter(v => v === i).length);
+            const maxCount = Math.max(...counts, 0);
+            let pollHtml = '';
+            options.forEach((opt, i) => {
+                const pct = totalVotes > 0 ? Math.round((counts[i] / totalVotes) * 100) : 0;
+                const isMine = myVote === i;
+                const isLeader = totalVotes > 0 && counts[i] === maxCount && maxCount > 0;
+                if (isOpen) {
+                    pollHtml += `<button onclick="window.votePoll('${post.id}', ${i})" class="w-full text-left px-3.5 py-2.5 rounded-xl border transition text-sm font-semibold flex items-center gap-2.5 ${isMine ? 'border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-sky-300 dark:hover:border-sky-500/40'}">
+                        <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isMine ? 'border-sky-500 bg-sky-500' : 'border-slate-300 dark:border-slate-600'}">${isMine ? '<i class="fa-solid fa-check text-white text-[8px]"></i>' : ''}</span>
+                        <span class="flex-1 min-w-0 text-slate-800 dark:text-slate-200">${escapeHtml(opt)}</span>
+                        ${totalVotes > 0 ? `<span class="text-[11px] font-bold ${isLeader ? 'text-sky-600 dark:text-sky-300' : 'text-slate-400 dark:text-slate-500'} tnum shrink-0">${counts[i]} · ${pct}%</span>` : ''}
+                    </button>`;
+                } else {
+                    pollHtml += `<div class="w-full px-3.5 py-2.5 rounded-xl border ${isMine ? 'border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04]'} relative overflow-hidden">
+                        ${totalVotes > 0 ? `<div class="absolute inset-y-0 left-0 ${isLeader ? 'bg-sky-500/15' : 'bg-slate-200/50 dark:bg-white/[0.05]'}" style="width:${pct}%"></div>` : ''}
+                        <div class="relative flex items-center gap-2 text-sm font-semibold">
+                            <span class="flex-1 min-w-0 text-slate-800 dark:text-slate-200">${escapeHtml(opt)}</span>
+                            ${totalVotes > 0 ? `<span class="text-[11px] font-bold text-slate-400 dark:text-slate-500 tnum shrink-0">${pct}%</span>` : ''}
+                        </div>
+                    </div>`;
+                }
+            });
+            const endLabel = post.pollEndTime
+                ? (isOpen ? `<div class="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-2"><i class="fa-regular fa-clock mr-1"></i>Voting ends ${new Date(post.pollEndTime).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</div>`
+                  : `<div class="text-[10px] font-bold text-rose-400 mt-2"><i class="fa-solid fa-lock mr-1"></i>Voting closed</div>`)
+                : '';
+            gameHtml = `
+                <div class="mt-3 mb-2 p-4 bg-sky-50 dark:bg-slate-800 rounded-xl border-2 border-sky-200 dark:border-sky-900/50">
+                    <div class="flex items-center gap-2 mb-2.5">
+                        <i class="fa-solid fa-chart-bar text-sky-500 dark:text-sky-300"></i>
+                        <h4 class="font-bold text-sm text-sky-800 dark:text-sky-200">${escapeHtml(post.pollQuestion)}</h4>
+                    </div>
+                    <div class="space-y-2">${pollHtml}</div>
+                    <div class="flex items-center justify-between mt-2.5">
+                        <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500">${totalVotes} vote${totalVotes !== 1 ? 's' : ''}${isOpen ? '' : ' · Final results'}</span>
+                        ${isOpen ? `<span class="text-[10px] font-semibold text-sky-500 dark:text-sky-400">Tap to vote${myVote !== undefined ? ' · tap again to change' : ''}</span>` : ''}
+                    </div>
+                    ${endLabel}
+                </div>`;
+        } else if (post.gameType === 'event') {
+            const now = Date.now();
+            const start = post.eventStart || 0;
+            const end = start + ((post.eventDurationHours || 2) * 3600000);
+            const rsvps = post.eventRsvps || {};
+            const goingCount = Object.values(rsvps).filter(v => v === 'going').length;
+            const interestedCount = Object.values(rsvps).filter(v => v === 'interested').length;
+            const myRsvp = window.currentUser?.uid ? rsvps[window.currentUser.uid] : null;
+            const isGoing = myRsvp === 'going';
+            const isInterested = myRsvp === 'interested';
+            let statusHtml;
+            if (now < start) {
+                const diff = start - now;
+                const d = Math.floor(diff / 86400000);
+                const h = Math.floor((diff % 86400000) / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                const countdownHtml = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+                statusHtml = `<div class="inline-flex items-center gap-1.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/25 font-bold px-3.5 py-1.5 rounded-full text-xs shadow-sm"><i class="fa-regular fa-clock"></i> Starts in <span class="font-black tnum">${countdownHtml}</span></div>`;
+            } else if (now < end) {
+                statusHtml = `<div class="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/25 font-bold px-3.5 py-1.5 rounded-full text-xs shadow-sm animate-pulse"><i class="fa-solid fa-circle animate-pulse text-[8px]"></i> Happening now!</div>`;
+            } else {
+                statusHtml = `<div class="inline-flex items-center gap-1.5 bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20 font-bold px-3.5 py-1.5 rounded-full text-xs"><i class="fa-solid fa-flag-checkered"></i> Event ended</div>`;
+            }
+            const startStr = new Date(start).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+            const canRsvp = now < end && window.currentUser;
+            const rsvpHtml = canRsvp
+                ? `<div class="flex items-center justify-center gap-2 mt-3">
+                    <button onclick="window.rsvpEvent('${post.id}','going')" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition ${isGoing ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25' : 'bg-white dark:bg-white/[0.06] border border-emerald-300 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'}"><i class="fa-solid fa-check"></i> Going (${goingCount})</button>
+                    <button onclick="window.rsvpEvent('${post.id}','interested')" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition ${isInterested ? 'bg-amber-400 text-white shadow-md shadow-amber-400/25' : 'bg-white dark:bg-white/[0.06] border border-amber-300 dark:border-amber-400/30 text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-400/10'}"><i class="fa-regular fa-star"></i> Interested (${interestedCount})</button>
+                </div>`
+                : `<div class="flex items-center justify-center gap-3 mt-3 text-[11px] font-bold text-slate-400 dark:text-slate-500"><span>🟢 ${goingCount} going</span><span>⭐ ${interestedCount} interested</span></div>`;
+            gameHtml = `
+                <div class="mt-3 mb-2 p-4 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900 rounded-xl border-2 border-purple-200 dark:border-purple-900/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="grid place-items-center w-9 h-9 rounded-xl bg-purple-500/10 text-purple-500 dark:text-purple-300 border border-purple-500/15 shrink-0"><i class="fa-solid fa-calendar-days text-sm"></i></span>
+                        <div class="min-w-0">
+                            <h4 class="font-extrabold text-sm text-slate-800 dark:text-white truncate">${escapeHtml(post.eventName)}</h4>
+                            ${post.eventLocation ? `<p class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 truncate"><i class="fa-solid fa-location-dot mr-0.5"></i>${escapeHtml(post.eventLocation)}</p>` : ''}
+                        </div>
+                    </div>
+                    ${post.eventDescription ? `<p class="text-xs text-slate-500 dark:text-slate-400 mb-2.5 leading-relaxed">${escapeHtml(post.eventDescription)}</p>` : ''}
+                    <div class="flex items-center justify-between flex-wrap gap-1.5 mb-2">
+                        ${statusHtml}
+                        <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500"><i class="fa-regular fa-calendar mr-0.5"></i>${startStr}</span>
+                    </div>
+                    ${rsvpHtml}
+                </div>`;
         } else if (post.gameType === 'count_dots') {
             if (post.gameStatus === 'active') {
                 const timerHtml = post.gameEndTime

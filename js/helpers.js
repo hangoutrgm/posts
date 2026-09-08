@@ -115,6 +115,8 @@ window.gameTypesList = [
     { type: 'bingo', label: 'Bingo' },
     { type: 'spin_names', label: 'Spin the Names' },
     { type: 'ncl', label: 'NCL (No Challenge Needed)' },
+    { type: 'poll', label: 'Poll' },
+    { type: 'event', label: 'Event' },
     { type: 'chat_first_to_mine', label: 'Chat - First to Mine' },
     { type: 'chat_gibberish', label: 'Chat - Gibberish' }
 ];

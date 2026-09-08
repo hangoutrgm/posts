@@ -391,6 +391,8 @@
                     <option value="bingo">Bingo</option>
                     <option value="spin_names">Spin the Names</option>
                     <option value="ncl">ncl</option>
+                    <option value="poll">📊 Poll</option>
+                    <option value="event">📅 Event</option>
                 </select>
 
                 <div id="game-limit-indicator" class="hidden mb-3 flex items-center gap-2 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
@@ -557,6 +559,43 @@
                     <input type="text" id="game-logo-name" list="game-logo-datalist" placeholder="e.g. Google" oninput="window.refreshLogoPreview()" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                     <datalist id="game-logo-datalist"></datalist>
                     <p class="text-[10px] text-gray-400 dark:text-gray-400 mt-1">Or type any brand name — the logo preview updates automatically.</p>
+                </div>
+
+                <div id="game-poll-container" class="hidden mb-3 border border-sky-200 dark:border-sky-900/50 rounded-lg p-3 bg-sky-50 dark:bg-sky-900/20">
+                    <p class="text-xs font-bold text-sky-700 dark:text-sky-300 mb-2">📊 Poll Settings</p>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Question</label>
+                    <textarea id="game-poll-question" placeholder="e.g. What should we play next?" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 resize-none h-14"></textarea>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Options (2–6)</label>
+                    <div id="game-poll-options" class="space-y-1.5 mb-2">
+                        <input type="text" class="poll-opt w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none" placeholder="Option 1">
+                        <input type="text" class="poll-opt w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none" placeholder="Option 2">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="window.addPollOption()" class="text-[10px] font-bold text-sky-600 dark:text-sky-300 hover:underline">+ Add Option</button>
+                        <button type="button" onclick="window.removePollOption()" class="text-[10px] font-bold text-rose-500 hover:underline">− Remove</button>
+                    </div>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 mt-2">Voting Ends (optional)</label>
+                    <input type="datetime-local" id="game-poll-end" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                </div>
+
+                <div id="game-event-container" class="hidden mb-3 border border-purple-200 dark:border-purple-900/50 rounded-lg p-3 bg-purple-50 dark:bg-purple-900/20">
+                    <p class="text-xs font-bold text-purple-700 dark:text-purple-300 mb-2">📅 Event Settings</p>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Event Name</label>
+                    <input type="text" id="game-event-name" placeholder="e.g. Community Game Night" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2">
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                    <textarea id="game-event-desc" placeholder="Tell people what to expect…" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none mb-2 resize-none h-16"></textarea>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Starts</label>
+                            <input type="datetime-local" id="game-event-start" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Duration (hrs)</label>
+                            <input type="number" id="game-event-duration" placeholder="2" min="1" max="72" class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
+                        </div>
+                    </div>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Location <span class="text-[10px] text-gray-400 font-normal">(optional)</span></label>
+                    <input type="text" id="game-event-location" placeholder="e.g. Discord VC, In-game, etc." class="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white outline-none">
                 </div>
 
                 <div id="game-challenge-targets" class="hidden mb-3 grid grid-cols-2 gap-2">
@@ -827,9 +866,9 @@
 
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
-    <script type="module" src="js/renderers.js?v=41"></script>
-    <script type="module" src="js/helpers.js?v=42"></script>
-    <script type="module" src="js/games.js?v=40"></script>
+    <script type="module" src="js/renderers.js?v=42"></script>
+    <script type="module" src="js/helpers.js?v=43"></script>
+    <script type="module" src="js/games.js?v=41"></script>
     <script type="module" src="js/main.js?v=33"></script>
     <script>
         if ('serviceWorker' in navigator) {
