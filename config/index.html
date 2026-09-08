@@ -191,6 +191,21 @@
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Chat Host LB Reward</label>
                                     <input type="number" id="set-chatGameHostLbReward" min="0" placeholder="0" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
                                 </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">LB Game-Night Boost (×)</label>
+                                    <input type="number" id="set-lbBoostMultiplier" min="1" step="0.5" placeholder="1" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Boost Start</label>
+                                    <input type="time" id="set-lbBoostStart" placeholder="22:00" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Boost End</label>
+                                    <input type="time" id="set-lbBoostEnd" placeholder="00:00" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                </div>
+                                <div class="col-span-2">
+                                    <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Game-night boost: winner + host LB rewards are multiplied by this value between Boost Start and Boost End (end earlier than start crosses midnight). Set to 1 to disable. During 10pm–12mn at ×3, a 5-LB win pays 15 LB.</p>
+                                </div>
                             </div>
                             <!-- Cooldown -->
                             <div class="grid grid-cols-2 gap-3 pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
@@ -400,6 +415,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=17"></script>
+    <script type="module" src="admin.js?v=18"></script>
 </body>
 </html>

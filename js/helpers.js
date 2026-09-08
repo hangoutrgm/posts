@@ -66,6 +66,9 @@ window.siteSettings = {
     pokeLimit: 3,
     gameHostLbReward: 0,
     maxLbPointsPrize: 100,
+    lbBoostMultiplier: 1,   // LB game-night boost: winner+host LB rewards are multiplied by this inside the window (1 = off)
+    lbBoostStart: '22:00',  // boost window start (HH:MM, 24h)
+    lbBoostEnd: '00:00',    // boost window end (HH:MM, 24h; if <= start it crosses midnight)
     hideHostGameAnswers: false, // /config → Site Control: when true, hosts cannot see game answers while a game is live
     gameLbRewards: {},          // per-game max LB reward cap: { gameType: number } (configured in /config)
     imageUploadLimit: 10,

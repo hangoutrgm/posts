@@ -153,13 +153,41 @@ window.creditLbPeriods = (uid, pts) => {
 };
 
 // Award a host LB bonus: all-time counter + weekly/monthly period counters.
+// The LB game-night boost applies here the same as for winners.
 window.awardHostBonus = (hostUid, pts) => {
-    pts = Number(pts || 0);
+    pts = window.boostedLb(pts);
     if (!hostUid || pts <= 0) return;
     set(ref(db, `users/${hostUid}/lbPoints`), increment(pts)).catch(e => console.warn('host LB credit error:', e));
     window.creditLbPeriods(hostUid, pts);
     console.log('awardHostBonus =>', hostUid, pts, 'siteSettings.gameHostLbReward=', window.siteSettings.gameHostLbReward);
 };
+
+// ============================================================
+// LB GAME-NIGHT BOOST — configured in /config → settings:
+//   lbBoostMultiplier (x1 = off), lbBoostStart / lbBoostEnd ("HH:MM", 24h).
+// During the window the multiplier is returned (1 outside it), so winner
+// and host LB rewards are multiplied for the boost duration (e.g. x3
+// between 10pm and midnight). An end earlier than start crosses midnight
+// (22:00 → 00:00 means "until midnight tonight").
+// ============================================================
+window.getLbBoostMultiplier = () => {
+    const s = window.siteSettings || {};
+    const mult = Number(s.lbBoostMultiplier);
+    if (!Number.isFinite(mult) || mult <= 1) return 1;
+    const toMin = (t) => {
+        const p = String(t || '').split(':');
+        return Number(p[0]) * 60 + Number(p[1] || 0);
+    };
+    const now = new Date();
+    let nowMin = now.getHours() * 60 + now.getMinutes();
+    let start = toMin(s.lbBoostStart || '22:00');
+    let end = toMin(s.lbBoostEnd || '00:00');
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return 1;
+    if (end <= start) end += 1440;                       // crosses midnight
+    if (nowMin < start && end > 1440) nowMin += 1440;    // after midnight, still inside an overnight window
+    return (nowMin >= start && nowMin < end) ? mult : 1;
+};
+window.boostedLb = (base) => Math.round(Number(base || 0) * window.getLbBoostMultiplier());
 
 window.logEarnings = (uid, postId, title, prize, lbPoints) => {
     if (!uid) return;
@@ -1885,7 +1913,7 @@ window.mineGame = async (postId) => {
             return window.showAlert("Too late! Someone else already claimed this game.");
         }
 
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+        const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${window.currentUser.uid}/lbPoints`), increment(lbPoints));
         window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -1967,7 +1995,7 @@ window.endLastCommentGame = async (postId) => {
         if (!finalClaimed) return;
 
         if (lastCommenterId) {
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${lastCommenterId}/lbPoints`), increment(lbPoints));
             window.logEarnings(lastCommenterId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2055,7 +2083,7 @@ window.checkChallenge = async (postId) => {
             // whose transaction commits gets the true return — prizes/LB credit once.
             const claimed = await window.claimGame(postRef, post.gameTargetUser);
             if (claimed) {
-                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+                const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${post.gameTargetUser}/lbPoints`), increment(lbPoints));
                 window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2179,7 +2207,7 @@ window.answerGame = async (postId, answer) => {
             return window.showAlert("Too late! Someone else already got it right.");
         }
 
-        const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+        const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${window.currentUser.uid}/lbPoints`), increment(lbPoints));
         window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2475,7 +2503,7 @@ window.spinBingoWheel = async (postId) => {
             const post = snap.data();
             if (!post) return;
             const winnerId = result.winnerId;
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerId}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -3145,7 +3173,7 @@ window.makeTicTacToeMove = async (postId, cellIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Tic Tac Toe', prizeLogged, lbPoints);
@@ -3346,7 +3374,7 @@ window.makeFourInARowMove = async (postId, cellIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, '4 in a Row', prizeLogged, lbPoints);
@@ -3561,7 +3589,7 @@ window.makeDropFourMove = async (postId, colIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Connect 4', prizeLogged, lbPoints);
@@ -3771,7 +3799,7 @@ window.makeConnect4ProMaxMove = async (postId, colIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Connect 4 Pro Max', prizeLogged, lbPoints);
@@ -3904,7 +3932,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                         return window.showAlert("Too late! Someone else already won this Hangman game.");
                     }
 
-                    const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+                    const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
                     const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                     if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
                     window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);
@@ -3964,7 +3992,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     return window.showAlert("Too late! Someone else already won this Hangman game.");
                 }
 
-                const lbPoints = post.gameLbPoints !== undefined ? post.gameLbPoints : 5;
+                const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
                 window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);

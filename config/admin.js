@@ -173,6 +173,9 @@ function initAdminDashboard() {
             document.getElementById('set-gameHostLbReward').value = settings.gameHostLbReward ?? '';
             document.getElementById('set-chatGameLbReward').value = settings.chatGameLbReward ?? window.siteSettings.chatGameLbReward ?? '';
             document.getElementById('set-chatGameHostLbReward').value = settings.chatGameHostLbReward ?? window.siteSettings.chatGameHostLbReward ?? '';
+            document.getElementById('set-lbBoostMultiplier').value = settings.lbBoostMultiplier ?? '';
+            document.getElementById('set-lbBoostStart').value = settings.lbBoostStart ?? '';
+            document.getElementById('set-lbBoostEnd').value = settings.lbBoostEnd ?? '';
             document.getElementById('set-imageUploadLimit').value = settings.imageUploadLimit ?? '';
             document.getElementById('set-videoUploadLimit').value = settings.videoUploadLimit ?? '';
             document.getElementById('set-videoSizeLimitMB').value = settings.videoSizeLimitMB ?? '';
@@ -201,6 +204,9 @@ function initAdminDashboard() {
             document.getElementById('set-gameHostLbReward').value = '';
             document.getElementById('set-chatGameLbReward').value = '';
             document.getElementById('set-chatGameHostLbReward').value = '';
+            document.getElementById('set-lbBoostMultiplier').value = '';
+            document.getElementById('set-lbBoostStart').value = '';
+            document.getElementById('set-lbBoostEnd').value = '';
             document.getElementById('set-imageUploadLimit').value = '';
             document.getElementById('set-videoUploadLimit').value = '';
             document.getElementById('set-videoSizeLimitMB').value = '';
@@ -231,6 +237,9 @@ function initAdminDashboard() {
         document.getElementById('set-gameHostLbReward').placeholder = window.siteSettings.gameHostLbReward || '0';
         document.getElementById('set-chatGameLbReward').placeholder = window.siteSettings.chatGameLbReward ?? '5';
         document.getElementById('set-chatGameHostLbReward').placeholder = window.siteSettings.chatGameHostLbReward ?? '0';
+        document.getElementById('set-lbBoostMultiplier').placeholder = window.siteSettings.lbBoostMultiplier ?? '1';
+        document.getElementById('set-lbBoostStart').placeholder = window.siteSettings.lbBoostStart ?? '22:00';
+        document.getElementById('set-lbBoostEnd').placeholder = window.siteSettings.lbBoostEnd ?? '00:00';
         document.getElementById('set-imageUploadLimit').placeholder = window.siteSettings.imageUploadLimit;
         document.getElementById('set-videoUploadLimit').placeholder = window.siteSettings.videoUploadLimit;
         document.getElementById('set-videoSizeLimitMB').placeholder = window.siteSettings.videoSizeLimitMB;
@@ -261,6 +270,9 @@ function initAdminDashboard() {
             gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
             chatGameLbReward: parseInt(document.getElementById('set-chatGameLbReward').value) || 0,
             chatGameHostLbReward: parseInt(document.getElementById('set-chatGameHostLbReward').value) || 0,
+            lbBoostMultiplier: parseFloat(document.getElementById('set-lbBoostMultiplier').value) || 1,
+            lbBoostStart: document.getElementById('set-lbBoostStart').value || '22:00',
+            lbBoostEnd: document.getElementById('set-lbBoostEnd').value || '00:00',
             imageUploadLimit: parseInt(document.getElementById('set-imageUploadLimit').value) || 0,
             videoUploadLimit: parseInt(document.getElementById('set-videoUploadLimit').value) || 0,
             videoSizeLimitMB: parseInt(document.getElementById('set-videoSizeLimitMB').value) || 0,

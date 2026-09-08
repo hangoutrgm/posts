@@ -71,6 +71,26 @@ const creditLb = (uid, pts) => {
   update(ref(db, `lbWeekly/${lbWeekKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
   update(ref(db, `lbMonthly/${lbMonthKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
 };
+// LB game-night boost — /config → settings (same knob as Hangout Posts games):
+// lbBoostMultiplier (1 = off) applies between lbBoostStart and lbBoostEnd
+// ("HH:MM", 24h; end <= start crosses midnight). Boosts both winner + host pts.
+const lbBoostMultiplier = () => {
+  const s = _getSettings();
+  const mult = Number(s.lbBoostMultiplier);
+  if (!Number.isFinite(mult) || mult <= 1) return 1;
+  const toMin = (t) => {
+    const p = String(t || '').split(':');
+    return Number(p[0]) * 60 + Number(p[1] || 0);
+  };
+  const now = new Date();
+  let nowMin = now.getHours() * 60 + now.getMinutes();
+  let start = toMin(s.lbBoostStart || '22:00');
+  let end = toMin(s.lbBoostEnd || '00:00');
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return 1;
+  if (end <= start) end += 1440;
+  if (nowMin < start && end > 1440) nowMin += 1440;
+  return (nowMin >= start && nowMin < end) ? mult : 1;
+};
 // Idempotent award: called after every game action. The atomic claim ensures
 // exactly ONE client credits the winner, no matter how many people saw the end.
 async function maybeAwardLb(mid) {
@@ -91,8 +111,9 @@ async function maybeAwardLb(mid) {
   }
   if (!allowed) return;
 
-  const pts = Number(_getSettings().chatGameLbReward || 0);
-  const hostPts = Number(_getSettings().chatGameHostLbReward || 0);
+  const boost = lbBoostMultiplier();
+  const pts = Math.round(Number(_getSettings().chatGameLbReward || 0) * boost);
+  const hostPts = Math.round(Number(_getSettings().chatGameHostLbReward || 0) * boost);
   if (!(pts > 0 || hostPts > 0)) return;
   try {
     // Atomically claim awards in one transaction
