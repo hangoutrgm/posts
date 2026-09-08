@@ -224,6 +224,11 @@
                                     <input type="number" id="set-boardGameMoveTimerSec" min="5" placeholder="60" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
                                     <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Per-move countdown for Tic Tac Toe, 4 in a Row, Connect 4 &amp; Pro Max. When a player runs out of time a random legal move is played for them.</p>
                                 </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Presence Sweep (sec)</label>
+                                    <input type="number" id="set-presenceSweepSec" min="0" placeholder="0" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
+                                    <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Interval (sec) at which the admin's browser checks the online-presence node. 0 = off. When 2+ users are online, the whole /presence node is wiped (same as deleting it manually) so stale "online" users never accumulate.</p>
+                                </div>
                             </div>
                             <!-- Posts Upload Limits -->
                             <div class="grid grid-cols-3 gap-3 pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">

@@ -20,7 +20,7 @@ if (window.ChatGames) {
 }
 
 // Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
-const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameRaceTo: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, chatGameHostLbReward: 0, gameHostLbReward: 0, boardGameMoveTimerSec: 60 };
+const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameRaceTo: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, chatGameHostLbReward: 0, gameHostLbReward: 0, boardGameMoveTimerSec: 60, presenceSweepSec: 0 };
 let sitePaused = false; // Site Control (/config): when true, only admins can send messages
 onValue(ref(db, 'settings'), (snap) => {
   if (snap.exists()) {
@@ -38,6 +38,7 @@ onValue(ref(db, 'settings'), (snap) => {
     chatSettings.gameHostLbReward = s.gameHostLbReward ?? 0;
     chatSettings.gameLimits = s.gameLimits || {};
     chatSettings.boardGameMoveTimerSec = s.boardGameMoveTimerSec ?? 60;
+    chatSettings.presenceSweepSec = s.presenceSweepSec ?? 0;
     sitePaused = s.pauseChat === true;
   } else {
     chatSettings.gameLimits = {};
@@ -2206,13 +2207,28 @@ function stopOwnPresence(user = state.user) {
   if (state.stopPresenceWatch) { state.stopPresenceWatch(); state.stopPresenceWatch = null; state.presenceWatchUid = null; }
   if (user) remove(ref(db, `presence/${user.uid}/${presenceSessionId}`)).catch(() => {});
 }
-// 1-minute presence sweeper (same as the Hangout Posts feed): delete all /presence
-// entries so stale sessions can never keep an offline user shown as online.
+// Presence sweeper (same simple scheme as the Hangout Posts feed): interval is
+// admin-controlled via /config → settings.presenceSweepSec (0 = off). ONLY an
+// admin client checks the /presence node at that cadence; if it shows more than
+// one online user, the whole node is removed (same as deleting it manually).
+// Gating to admin means only ONE client ever wipes it, so 10+ online users
+// never cause one wipe per user. No rules change needed — "presence/.write:
+// auth != null" already permits the removal.
+let lastChatPresenceSweepAt = 0;
 setInterval(() => {
-  if (document.visibilityState === 'visible' && state.user) {
-    remove(ref(db, 'presence')).catch(() => {});
-  }
-}, 60000);
+  const sec = Number(chatSettings.presenceSweepSec || 0);
+  if (sec < 15) return;
+  if (document.visibilityState !== 'visible' || !state.user || !isSiteAdmin()) return;
+  const now = Date.now();
+  if (now - lastChatPresenceSweepAt < sec * 1000) return;
+  lastChatPresenceSweepAt = now;
+  get(ref(db, 'presence')).then(snap => {
+    const p = snap.val();
+    if (p && typeof p === 'object' && Object.keys(p).length > 1) {
+      remove(ref(db, 'presence')).catch(() => {});
+    }
+  }).catch(() => {});
+}, 5000);
 function reportRealtimeError(scope, error) {
   console.error(`Realtime ${scope} listener failed:`, error);
   showToast('Live updates disconnected. Refresh the page and check your connection.');

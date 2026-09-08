@@ -79,16 +79,35 @@ function stopOwnPresence(user = auth.currentUser) {
 }
 
 // ==========================================
-// PRESENCE SWEEPER — every 1 minute
-// Deletes every UID under /presence. Genuinely online & visible clients re-add
-// their session immediately via ensurePresenceWatch; stale/offline sessions stay
-// gone. Permanently fixes "shows online even when the user is offline".
+// PRESENCE SWEEPER — admin-controlled via /config → settings.presenceSweepSec.
+// 0 = off. When set (>= 15 sec), ONLY the admin's own signed-in client checks
+// the /presence node at that cadence. If it currently shows MORE THAN ONE
+// online user, the whole node is removed (the exact same thing as deleting it
+// manually in the Firebase console). No buckets, no transactions, no rule
+// changes: "presence/.write: auth != null" already lets a signed-in user
+// remove the node, and gating to admin means only ONE client ever wipes it.
 // ==========================================
+let lastPresenceSweepAt = 0;
 setInterval(() => {
-    if (document.visibilityState === 'visible' && auth.currentUser) {
-        remove(ref(db, 'presence')).catch(() => {});
-    }
-}, 60000);
+    const sec = Number(window.siteSettings?.presenceSweepSec);
+    if (!(Number.isFinite(sec) && sec >= 15)) return;
+    if (document.visibilityState !== 'visible' || !auth.currentUser) return;
+    // Admin-only gate so a single client (the admin's) performs the wipe.
+    const myLevel = window.getRole ? window.getRole(auth.currentUser.uid).level : 0;
+    const isAdmin = auth.currentUser.uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2' || myLevel === 3;
+    if (!isAdmin) return;
+    // Honour the configured cadence (live changes to the setting take effect).
+    const now = Date.now();
+    if (now - lastPresenceSweepAt < sec * 1000) return;
+    lastPresenceSweepAt = now;
+    // Wipe only when the node shows more than 1 online user, like a manual delete.
+    get(ref(db, 'presence')).then((snap) => {
+        const p = snap.val();
+        if (p && typeof p === 'object' && Object.keys(p).length > 1) {
+            remove(ref(db, 'presence')).catch(() => {});
+        }
+    }).catch(() => {});
+}, 5000);
 
 // ==========================================
 // SEARCH & FILTERS

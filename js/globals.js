@@ -68,6 +68,7 @@ window.siteSettings = {
     chatVideoSizeLimitMB: 20,
     postCooldownSec: 60,
     boardGameMoveTimerSec: 60, // per-move timer (seconds) for board games (Tic Tac Toe / 4-in-a-Row / Connect 4 / Pro Max)
+    presenceSweepSec: 0,       // 0 = sweeping disabled; >0 = admin-controlled interval (sec) for the presence sweeper
     commentCooldownSec: 60,
     chatCooldownSec: 60,
     chatGameRounds: 5,
