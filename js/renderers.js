@@ -1376,7 +1376,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
-        } else if (['flags', 'math', 'jumbled_words', 'trivia', 'mythology', 'periodic_table'].includes(post.gameType)) {
+        } else if (['flags', 'math', 'jumbled_words', 'trivia', 'mythology', 'guess_logo', 'periodic_table'].includes(post.gameType)) {
             const isHost = window.currentUser && window.currentUser.uid === post.authorId;
             let displayContent = '', gameTitle = '', hostHint = '', answerHint = '';
             let timerHtml = '';
@@ -1439,6 +1439,14 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 gameTitle = 'Mythology Challenge!';
                 if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMythologyAnswer}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
+            } else if (post.gameType === 'guess_logo') {
+                const logoImg = post.gameLogoUrl
+                    ? `<div class="flex items-center justify-center bg-white dark:bg-white rounded-2xl px-5 py-3 shadow-sm"><img src="${post.gameLogoUrl}" alt="Logo" class="h-14 w-auto select-none" draggable="false"></div>`
+                    : '';
+                displayContent = `<div class="mb-2 flex flex-col items-center">${logoImg}</div>`;
+                gameTitle = 'Guess the Logo!';
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameLogoName}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type the brand name</p>`;
             }
 
             if (post.gameStatus === 'active') {
@@ -1478,6 +1486,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 else if (post.gameType === 'jumbled_words') answerReveal = `<div class="text-lg mb-1">${post.gameJumbledScrambled} ➔ <strong>${post.gameJumbledOriginal}</strong></div>`;
                 else if (post.gameType === 'trivia') answerReveal = `<div class="text-sm mb-1">${post.gameTriviaQuestion}<br>➔ <strong>${post.gameTriviaAnswer}</strong></div>`;
                 else if (post.gameType === 'mythology') answerReveal = `<div class="text-sm mb-1">${post.gameMythologyQuestion}<br>➔ <strong>${post.gameMythologyAnswer}</strong></div>`;
+                else if (post.gameType === 'guess_logo') answerReveal = `<div class="flex flex-col items-center mb-1">${post.gameLogoUrl ? `<div class="flex items-center justify-center bg-white dark:bg-white rounded-xl px-4 py-2 shadow-sm"><img src="${post.gameLogoUrl}" alt="Logo" class="h-10 w-auto select-none" draggable="false"></div>` : ''}<span class="font-bold">${post.gameLogoName}</span></div>`;
 
                 gameHtml = `
                     <div class="mt-3 mb-2 p-3 bg-gray-50 dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-80 text-center">
