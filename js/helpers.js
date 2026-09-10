@@ -555,7 +555,7 @@ window.generateEmbed = (text) => {
     
     const tiktokMatch = text.match(/https?:\/\/(?:www\.)?tiktok\.com\/@[^\/]+\/video\/(\d+)/i);
     if(tiktokMatch) {
-        embedHtml += `<div class="mt-2 relative w-full max-w-[325px] rounded-xl overflow-hidden border border-gray-100 dark:border-slate-700 shadow-sm bg-black" style="aspect-ratio: 9/16;"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.tiktok.com/embed/v2/${tiktokMatch[1]}" frameborder="0" allowfullscreen loading="lazy"></iframe></div>`;
+        embedHtml += `<div class="mt-2 relative w-full max-w-[325px] mx-auto rounded-xl overflow-hidden border border-gray-100 dark:border-slate-700 shadow-sm bg-black" style="aspect-ratio: 9/16;"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.tiktok.com/embed/v2/${tiktokMatch[1]}" frameborder="0" allowfullscreen loading="lazy"></iframe></div>`;
         return embedHtml;
     }
 
