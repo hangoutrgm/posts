@@ -1,7 +1,7 @@
 import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=31';
+import '../games/index.js?v=32';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {
@@ -20,7 +20,7 @@ if (window.ChatGames) {
 }
 
 // Dynamic settings — loaded from Firebase /settings, falls back to safe defaults
-const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameRaceTo: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, chatGameHostLbReward: 0, gameHostLbReward: 0, boardGameMoveTimerSec: 60, presenceSweepSec: 0, lbBoostMultiplier: 1, lbBoostStart: '22:00', lbBoostEnd: '00:00' };
+const chatSettings = { chatImageLimit: 10, chatVideoLimit: 3, chatVoiceLimit: 10, chatVideoSizeLimitMB: 20, chatCooldownSec: 60, chatGameRounds: 5, chatGameRaceTo: 5, chatGameCooldownSec: 60, chatGameLbReward: 0, chatGameHostLbReward: 0, gameHostLbReward: 0, boardGameMoveTimerSec: 60, presenceSweepSec: 0, lbBoostMultiplier: 1, lbBoostStart: '22:00', lbBoostEnd: '00:00', zeroLbForFlaggedPair: false };
 let sitePaused = false; // Site Control (/config): when true, only admins can send messages
 onValue(ref(db, 'settings'), (snap) => {
   if (snap.exists()) {
@@ -43,6 +43,7 @@ onValue(ref(db, 'settings'), (snap) => {
     chatSettings.lbBoostMultiplier = (Number.isFinite(_bm) && _bm > 1) ? _bm : 1;
     chatSettings.lbBoostStart = s.lbBoostStart || '22:00';
     chatSettings.lbBoostEnd = s.lbBoostEnd || '00:00';
+    chatSettings.zeroLbForFlaggedPair = s.zeroLbForFlaggedPair === true;
     sitePaused = s.pauseChat === true;
   } else {
     chatSettings.gameLimits = {};

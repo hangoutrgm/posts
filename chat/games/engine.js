@@ -71,6 +71,35 @@ const creditLb = (uid, pts) => {
   update(ref(db, `lbWeekly/${lbWeekKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
   update(ref(db, `lbMonthly/${lbMonthKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
 };
+
+// ── Same-IP LB shield — same /flaggedGroups mirror as Hangout Posts games ──
+// The admin's /config page mirrors flagged IP groups (uids ONLY, no IPs) into
+// the public /flaggedGroups node. When a chat-game host & winner are in the same
+// flagged group, the game awards 0 LB (soft guard — nobody is blocked/banned).
+let _flaggedGroupOf = {};       // uid -> gid
+let _shieldRefreshAt = 0;
+const flaggedShieldOn = () => Number(_getSettings().zeroLbForFlaggedPair) === 1;
+const refreshFlaggedGroups = async () => {
+  const now = Date.now();
+  if (now - _shieldRefreshAt < 60_000) return; // cache 1 min, cheap
+  _shieldRefreshAt = now;
+  try {
+    const snap = await get(ref(db, 'flaggedGroups'));
+    const map = {};
+    if (snap.exists()) {
+      Object.entries(snap.val()).forEach(([gid, g]) => {
+        const uids = Array.isArray(g?.uids) ? g.uids : [];
+        if (uids.length > 1) uids.forEach(uid => { map[uid] = gid; });
+      });
+    }
+    _flaggedGroupOf = map;
+  } catch (_) { /* best-effort: keep last known groups */ }
+};
+const inFlaggedPair = (uidA, uidB) => {
+  if (!uidA || !uidB || uidA === uidB) return false;
+  const gA = _flaggedGroupOf[uidA];
+  return Boolean(gA && gA === _flaggedGroupOf[uidB]);
+};
 // LB game-night boost — /config → settings (same knob as Hangout Posts games):
 // lbBoostMultiplier (1 = off) applies between lbBoostStart and lbBoostEnd
 // ("HH:MM", 24h; end <= start crosses midnight). Boosts both winner + host pts.
@@ -116,6 +145,10 @@ async function maybeAwardLb(mid) {
   const hostPts = Math.round(Number(_getSettings().chatGameHostLbReward || 0) * boost);
   if (!(pts > 0 || hostPts > 0)) return;
   try {
+    // Same-IP LB shield: refresh the admin-mirrored flagged groups so the
+    // transaction below can zero the award when host & winner share an IP group.
+    await refreshFlaggedGroups();
+
     // Atomically claim awards in one transaction
     const claim = await runTransaction(gRef(mid), (gm) => {
       if (!gm || gm.status !== 'done') return undefined;
@@ -154,6 +187,14 @@ async function maybeAwardLb(mid) {
         }
       }
 
+      // Same-IP LB shield: when the host & winner appear (by flagged IP group) to
+      // be the same person, zero the award for both — same soft guard as Posts games.
+      if (flaggedShieldOn() && gm.hostId && gm.winner && inFlaggedPair(gm.hostId, gm.winner)) {
+        gm.lbAbortedSolo = true;
+        gm.lbAbortedSameIp = true;
+        return gm;
+      }
+
       let changed = false;
       // Single winner only (ties/draws/losses get nothing)
       if (pts > 0) {
@@ -176,7 +217,10 @@ async function maybeAwardLb(mid) {
     if (!claim || claim.committed !== true) return;
     const snapNow = await get(gRef(mid));
     const gm = snapNow.val();
-    if (!gm || gm.lbAbortedSolo) return;
+    if (!gm || gm.lbAbortedSolo) {
+      if (gm?.lbAbortedSameIp) _toast("⚠️ Same-IP play detected — no LB points awarded. If this is an error, contact an admin.");
+      return;
+    }
     if (gm.lbWinnerUid && gm.lbRewardPts > 0) {
       creditLb(gm.lbWinnerUid, gm.lbRewardPts);
       _toast(`🏆 +${gm.lbRewardPts} LB points!`);

@@ -2,7 +2,7 @@
 // chat/games/index.js — public API + picker wiring
 // Exposes window.ChatGames used by app.js and inline onclicks.
 // ============================================================
-import * as engine from './engine.js?v=22';
+import * as engine from './engine.js?v=23';
 import { renderBody, pickerHtml, setContext } from './renderers.js?v=22';
 import { GAME_META } from './helpers.js?v=6';
 
