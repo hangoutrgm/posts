@@ -36,7 +36,7 @@ window.activeEditTarget = null;
 // IP ANTI-ABUSE — best-effort public-IP capture.
 // Used by admins to spot dummy/multi accounts (e.g. someone's "dummy" winning
 // against their own alt in a fixed match). No keys, no backend needed: calls a
-// free CORS-enabled IP echo service and stores up to 3 distinct public IPs per
+// free CORS-enabled IP echo service and stores up to 5 distinct public IPs per
 // user (with last-seen timestamps) under /user_ips/{uid} → { ips: { ip: lastSeen } }
 // so a user who switches WiFi ↔ mobile data still carries the whole trail.
 // Admins-only read, owner-only write.
@@ -61,21 +61,26 @@ window.captureUserIP = async (uid) => {
         const snap = await get(ref(db, `user_ips/${uid}`));
         const cur = snap.exists() ? snap.val() : {};
 
+        // RTDB keys can't contain "." so real IPs are stored with dots swapped
+        // for underscores (real IPs never contain underscores, so this is safe).
+        const ipKey = ip => String(ip).replace(/\./g, '_');
+
         // Normalize any existing data into an { ips: { ip: lastSeen } map.
+        // (Legacy rows that stored a raw dotted IP get re-keyed on this write.)
         const ips = (cur.ips && typeof cur.ips === 'object')
             ? { ...cur.ips }
-            : (cur.ip ? { [cur.ip]: cur.at || 0 } : {});
+            : (cur.ip ? { [ipKey(cur.ip)]: cur.at || 0 } : {});
 
         // Record this IP (refresh its timestamp if it's already known from WiFi/mobile.
-        ips[ip] = Date.now();
+        ips[ipKey(ip)] = Date.now();
 
-        // Keep only the 3 most-recent distinct IPs.
+        // Keep only the 5 most-recent distinct IPs.
         const sorted = Object.entries(ips)
-            .map(([ipKey, ts]) => [ipKey, Number(ts) || 0])
+            .map(([ipKey2, ts]) => [ipKey2, Number(ts) || 0])
             .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
+            .slice(0, 5);
         const pruned = {};
-        sorted.forEach(([ipKey, ts]) => { pruned[ipKey] = ts; });
+        sorted.forEach(([ipKey2, ts]) => { pruned[ipKey2] = ts; });
 
         await set(ref(db, `user_ips/${uid}`), { ips: pruned });
     } catch (e) {

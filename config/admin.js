@@ -708,12 +708,14 @@ function initAdminDashboard() {
 }
 
 // Resolve every captured IP for a user — supports both the legacy { ip, at }
-// shape and the new { ips: { ip: lastSeen } } multi-IP map (up to 3 IPs).
+// shape and the new { ips: { ip: lastSeen } } multi-IP map (up to 5 IPs).
+// Stored keys swap "." for "_" (RTDB can't use dotted keys) — reverse for display.
 function uidIps(uid) {
     const d = globalIps[uid];
     if (!d) return [];
-    if (d.ips && typeof d.ips === 'object') return Object.keys(d.ips);
-    if (d.ip) return [d.ip];
+    const decode = k => String(k).replace(/_/g, '.');
+    if (d.ips && typeof d.ips === 'object') return Object.keys(d.ips).map(decode);
+    if (d.ip) return [decode(d.ip)];
     return [];
 }
 
