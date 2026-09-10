@@ -542,6 +542,10 @@ window.formatText = (text) => {
 window.generateEmbed = (text) => {
     if(!text) return '';
     let embedHtml = '';
+    // Shared HTML-escape helper (window.escapeHtml is registered by renderers.js, this is a local fallback).
+    const esc = (typeof window.escapeHtml === 'function')
+        ? window.escapeHtml
+        : (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     
     const ytMatch = text.match(/(?:https?:\/\/)?(?:m\.|www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i);
     if(ytMatch) {
@@ -555,17 +559,59 @@ window.generateEmbed = (text) => {
         return embedHtml;
     }
 
-    const fbPostMatch = text.match(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:[a-zA-Z0-9_.-]+\/posts\/\d+|share\/p\/[a-zA-Z0-9_-]+|[a-zA-Z0-9_.-]+\/photos\/.*)/i);
+    const fbPostMatch = text.match(/(?:https?:\/\/)?(?:(?:www|m|web)\.)?facebook\.com\/(?:[a-zA-Z0-9_.-]+\/posts\/\d+|share\/p\/[a-zA-Z0-9_-]+|[a-zA-Z0-9_.-]+\/photos\/.*|story\.php\?.*|permalink\.php\?.*|photo\.php\?.*)/i);
     if (fbPostMatch) {
-        const fbUrl = encodeURIComponent(fbPostMatch[0]);
-        embedHtml += `<div class="mt-2 w-full overflow-hidden rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-white"><iframe src="https://www.facebook.com/plugins/post.php?href=${fbUrl}&show_text=true&width=500" width="100%" height="400" style="border:none;overflow:hidden" scrolling="auto" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy"></iframe></div>`;
+        // Facebook single-post embeds are blocked for most content by FB itself — the
+        // plugins/post.php iframe just renders "This post is no longer available…".
+        // Show a clean, clickable link card instead: it can't fail and still gets users to the post.
+        const fbHref = fbPostMatch[0].replace(/[),.!?]+$/, '');
+        const fbHrefEsc = esc(fbHref);
+        embedHtml += `<div class="mt-2 w-full overflow-hidden rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800">
+            <div class="flex items-center gap-2.5 p-2.5">
+                <div class="shrink-0 w-9 h-9 rounded-lg bg-[#1877F2] flex items-center justify-center shadow-sm">
+                    <span class="text-white font-bold text-base leading-none" aria-hidden="true">f</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-bold text-gray-900 dark:text-gray-100 leading-tight">Facebook Post</div>
+                    <div class="text-[11px] text-gray-500 dark:text-gray-400 truncate">${fbHrefEsc}</div>
+                </div>
+                <a href="${fbHrefEsc}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-[#1877F2] hover:bg-[#0f63ce] px-3 py-1.5 rounded-full transition"><i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>View on Facebook</a>
+            </div>
+        </div>`;
         return embedHtml;
     }
 
-    const fbVideoMatch = text.match(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:video\.php\?v=\d+|[a-zA-Z0-9_.-]+\/videos\/\d+|reel\/\d+|share\/r\/[a-zA-Z0-9_-]+)/i);
+    // Facebook reel/video SHARE links (share/r, share/v) can't be embedded by the FB
+    // plugin (they just render a broken box), so show a clean link card for those.
+    const fbShareVideoMatch = text.match(/(?:https?:\/\/)?(?:(?:www|m|web)\.)?facebook\.com\/share\/(?:r|v)\/[a-zA-Z0-9_-]+/i);
+    if (fbShareVideoMatch) {
+        const isShareReel = /\/share\/r\//i.test(fbShareVideoMatch[0]);
+        const fbShareHref = fbShareVideoMatch[0].replace(/[),.!?]+$/, '');
+        const fbShareHrefEsc = esc(fbShareHref);
+        embedHtml += `<div class="mt-2 w-full overflow-hidden rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800">
+            <div class="flex items-center gap-2.5 p-2.5">
+                <div class="shrink-0 w-9 h-9 rounded-lg bg-[#1877F2] flex items-center justify-center shadow-sm">
+                    <span class="text-white font-bold text-base leading-none" aria-hidden="true">f</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-bold text-gray-900 dark:text-gray-100 leading-tight">Facebook ${isShareReel ? 'Reel' : 'Video'}</div>
+                    <div class="text-[11px] text-gray-500 dark:text-gray-400 truncate">${fbShareHrefEsc}</div>
+                </div>
+                <a href="${fbShareHrefEsc}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-[#1877F2] hover:bg-[#0f63ce] px-3 py-1.5 rounded-full transition"><i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>View on Facebook</a>
+            </div>
+        </div>`;
+        return embedHtml;
+    }
+
+    const fbVideoMatch = text.match(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:video\.php\?v=\d+|[a-zA-Z0-9_.-]+\/videos\/\d+|reel\/\d+)/i);
     if(fbVideoMatch) {
         const fbUrl = encodeURIComponent(fbVideoMatch[0]);
-        embedHtml += `<div class="mt-2 relative overflow-hidden pb-[56.25%] rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-black"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.facebook.com/plugins/video.php?href=${fbUrl}&show_text=false&width=auto" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy"></iframe></div>`;
+        const isReel = /\/reel\//i.test(fbVideoMatch[0]);
+        // Reels are vertical (9:16) — a 16:9 box crops most of the video, so give reels a 9:16 box.
+        const boxCls = isReel
+            ? 'mt-2 relative w-full max-w-[325px] mx-auto aspect-[9/16] overflow-hidden rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-black'
+            : 'mt-2 relative overflow-hidden pb-[56.25%] rounded-lg border border-gray-100 dark:border-slate-700 shadow-sm bg-black';
+        embedHtml += `<div class="${boxCls}"><iframe class="absolute top-0 left-0 w-full h-full" src="https://www.facebook.com/plugins/video.php?href=${fbUrl}&show_text=false&width=${isReel ? 325 : 'auto'}" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy"></iframe></div>`;
         return embedHtml;
     }
 
