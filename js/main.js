@@ -109,6 +109,12 @@ setInterval(() => {
     }).catch(() => {});
 }, 5000);
 
+// Same-IP LB shield: keep the flagged-groups mirror fresh on every client even if
+// the admin just flagged a new group (small, public node — cheap periodic read).
+setInterval(() => {
+    if (window.currentUser && window.refreshFlaggedGroups) window.refreshFlaggedGroups();
+}, 5 * 60 * 1000);
+
 // ==========================================
 // SEARCH & FILTERS
 // ==========================================
@@ -412,6 +418,9 @@ onValue(ref(db, 'settings'), (snap) => {
             if (window.usersReady && window.renderFeed) window.renderFeed(false);
             if (window.activeProfileUid && window.renderProfileData) window.renderProfileData(false);
         }
+        // Same-IP LB shield: when it's switched ON, refresh flagged groups right
+        // away so the next game award sees the groups even if the interval hasn't fired.
+        if (window.siteSettings.zeroLbForFlaggedPair === true) window.refreshFlaggedGroups?.();
     }
 });
 
@@ -1753,6 +1762,10 @@ onAuthStateChanged(auth, (user) => {
         // captureUserIP() only writes when the IP actually changed, and it retries
         // on later logins, so even if the /user_ips rules deploy late it self-heals.
         window.captureUserIP && window.captureUserIP(user.uid);
+
+        // Same-IP LB shield: load the admin-mirrored flagged groups (uids only) so
+        // game awards can zero LB for host+winner same-IP pairs.
+        window.refreshFlaggedGroups && window.refreshFlaggedGroups();
         
         document.getElementById('open-login-btn').classList.add('hidden');
         document.getElementById('user-info').classList.remove('hidden');

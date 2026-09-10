@@ -122,6 +122,13 @@
                     </span>
                     <i id="hide-host-answers-icon" class="fa-solid fa-circle-notch fa-spin text-slate-400"></i>
                 </button>
+                <button type="button" id="toggle-zero-lb" class="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:border-indigo-400 transition">
+                    <span class="text-left">
+                        <span class="block text-xs font-bold text-slate-700 dark:text-slate-200">Zero LB for Same-IP Games</span>
+                        <span class="block text-[10px] text-slate-400" id="zero-lb-label">Loading…</span>
+                    </span>
+                    <i id="zero-lb-icon" class="fa-solid fa-shield text-slate-400"></i>
+                </button>
             </div>
             <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
                 <button type="button" id="heal-names-btn" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition">
@@ -440,6 +447,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=23"></script>
+    <script type="module" src="admin.js?v=24"></script>
 </body>
 </html>

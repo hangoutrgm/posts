@@ -145,6 +145,7 @@ window.siteSettings = {
     chatGameCooldownSec: 60,
     chatGameLbReward: 0,
     chatGameHostLbReward: 0,
+    zeroLbForFlaggedPair: false, // /config → Site Control: zero LB when host+winner share a flagged IP group (anti-fixed-match shield)
     gameLimits: {},
     minGamePlayers: 5 // /config → minimum players required to start Bingo / Spin the Names draw (0 = no minimum)
 };

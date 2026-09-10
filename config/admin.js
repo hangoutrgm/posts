@@ -408,6 +408,51 @@ function initAdminDashboard() {
         renderHostAnswersControl();
     });
 
+    // 5f. Site Control — Zero LB for Same-IP (flagged) host+winner pairs.
+    // Soft anti-fixed-match shield: when a host & winner appear to be the same
+    // person (same flagged IP group), neither receives LB for that game.
+    let currentZeroLbState = false;
+    function renderZeroLbControl() {
+        const btn = document.getElementById('toggle-zero-lb');
+        const label = document.getElementById('zero-lb-label');
+        const icon = document.getElementById('zero-lb-icon');
+        if (!btn || !label || !icon) return;
+        if (currentZeroLbState) {
+            label.textContent = "ON — same-IP host+winner games award 0 LB";
+            label.classList.remove('text-slate-400');
+            label.classList.add('text-amber-500');
+            icon.className = 'fa-solid fa-shield-halved text-amber-500';
+            btn.classList.add('border-amber-400', 'bg-amber-50', 'dark:bg-amber-500/10');
+        } else {
+            label.textContent = "OFF — LB rewards are awarded normally";
+            label.classList.add('text-slate-400');
+            label.classList.remove('text-amber-500');
+            icon.className = 'fa-solid fa-shield text-slate-400';
+            btn.classList.remove('border-amber-400', 'bg-amber-50', 'dark:bg-amber-500/10');
+        }
+    }
+    async function toggleZeroLbFlag(isCurrentlyOn) {
+        try {
+            await update(ref(db, 'settings'), { zeroLbForFlaggedPair: !isCurrentlyOn });
+        } catch (error) {
+            console.error('Error toggling zeroLbForFlaggedPair:', error);
+            alert("Error updating setting: " + error.message);
+        }
+    }
+    const zeroLbBtn = document.getElementById('toggle-zero-lb');
+    if (zeroLbBtn) {
+        zeroLbBtn.addEventListener('click', () => {
+            const msg = currentZeroLbState
+                ? "Turn OFF the same-IP LB shield? LB rewards go back to normal for everyone."
+                : "Turn ON the same-IP shield? When a game host and the winner appear (by IP) to be the same person, NEITHER receives LB points for that game. Soft, fair-play safeguard — nobody is blocked or banned.";
+            if (confirm(msg)) toggleZeroLbFlag(currentZeroLbState);
+        });
+    }
+    onValue(ref(db, 'settings/zeroLbForFlaggedPair'), (snap) => {
+        currentZeroLbState = snap.val() === true;
+        renderZeroLbControl();
+    });
+
     // 5b. Maintenance — heal users with missing / "undefined" name or pic.
     // Only fills gaps; never overwrites valid values.
     const healBtn = document.getElementById('heal-names-btn');
@@ -801,6 +846,23 @@ function renderUsersList() {
     });
 }
 
+// Mirror flagged groups (uids ONLY — no IPs) to a public node so the game
+// award code can detect same-IP host+winner pairs without exposing IP addresses.
+let _lastFlaggedSig = '';
+function writeFlaggedGroups(groups) {
+    const mapped = {};
+    groups.forEach(([, uids], i) => {
+        mapped[`g${i}`] = { at: Date.now(), uids: [...uids] };
+    });
+    const sig = JSON.stringify(Object.values(mapped).map(g => g.uids.sort().join(',')));
+    if (sig === _lastFlaggedSig) return; // unchanged — skip write churn
+    _lastFlaggedSig = sig;
+    try {
+        if (groups.length === 0) set(ref(db, 'flaggedGroups'), null).catch(() => {});
+        else set(ref(db, 'flaggedGroups'), mapped).catch(() => {});
+    } catch (e) { /* best-effort */ }
+}
+
 // Possible Multi-Accounts — group the anti-abuse /user_ips data by shared IP and
 // list each account so admins can review suspected dummy accounts at a glance.
 function renderMultiAccounts() {
@@ -876,6 +938,9 @@ function renderMultiAccounts() {
 
         listEl.appendChild(group);
     });
+
+    // Keep the public shield mirror in sync with what's rendered here.
+    writeFlaggedGroups(groups);
 }
 
 // Mark a user inactive/active — hidden from leaderboards & stars (their points,

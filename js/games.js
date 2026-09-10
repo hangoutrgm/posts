@@ -152,9 +152,51 @@ window.creditLbPeriods = (uid, pts) => {
     if (curMonth) update(ref(db, `lbMonthly/${curMonth}`), { [uid]: increment(pts) }).catch(e => console.warn('lbMonthly period credit error:', e));
 };
 
+// ============================================================
+// SAME-IP LB SHIELD — zero LB rewards when a host & winner appear
+// to be the same person (flagged IP group). NOT harsh: nobody gets
+// punished/banned; the game just awards 0 LB points for that pair.
+//
+// /user_ips itself stays admin-only (privacy), so the admin page
+// mirrors ONLY group membership (uids, NO IPs) into a public node
+// /flaggedGroups: { g0: { at, uids: [...] } }. Games read that.
+// Toggle: /config → Site Control → settings.zeroLbForFlaggedPair.
+// ============================================================
+window._flaggedGroupOf = window._flaggedGroupOf || {}; // uid -> gid
+window.refreshFlaggedGroups = async () => {
+    try {
+        const snap = await get(ref(db, 'flaggedGroups'));
+        const map = {};
+        if (snap.exists()) {
+            Object.entries(snap.val()).forEach(([gid, g]) => {
+                const uids = Array.isArray(g?.uids) ? g.uids : [];
+                if (uids.length > 1) uids.forEach(uid => { map[uid] = gid; });
+            });
+        }
+        window._flaggedGroupOf = map;
+    } catch (e) { /* best-effort: keep last known groups */ }
+};
+window.inFlaggedPair = (uidA, uidB) => {
+    if (!uidA || !uidB || uidA === uidB) return false;
+    const gA = window._flaggedGroupOf[uidA];
+    return Boolean(gA && gA === window._flaggedGroupOf[uidB]);
+};
+window.flaggedLbShieldOn = () => Number(window.siteSettings?.zeroLbForFlaggedPair) === 1;
+// Winner LB scorer — returns 0 (and notifies) when host+winner share a flagged group.
+window.winnerLbFor = (hostUid, winnerUid, basePts) => {
+    const pts = window.boostedLb(basePts);
+    if (pts <= 0 || !window.flaggedLbShieldOn() || !window.inFlaggedPair(hostUid, winnerUid)) return pts;
+    window.showToast?.("⚠️ Same-IP play detected — no LB points awarded for this game. If this is an error, contact an admin.");
+    return 0;
+};
+
 // Award a host LB bonus: all-time counter + weekly/monthly period counters.
 // The LB game-night boost applies here the same as for winners.
-window.awardHostBonus = (hostUid, pts) => {
+window.awardHostBonus = (hostUid, pts, winnerUid) => {
+    if (window.flaggedLbShieldOn() && window.inFlaggedPair(hostUid, winnerUid)) {
+        console.log('awardHostBonus skipped (same-IP flagged pair):', hostUid, '<=>', winnerUid);
+        return;
+    }
     pts = window.boostedLb(pts);
     if (!hostUid || pts <= 0) return;
     set(ref(db, `users/${hostUid}/lbPoints`), increment(pts)).catch(e => console.warn('host LB credit error:', e));
@@ -1838,10 +1880,16 @@ window.submitGame = async () => {
         const starsToAdd = window.siteSettings.starsPerPost ?? 10;
         update(ref(db, `users/${window.currentUser.uid}`), { points: increment(starsToAdd) });
 
-        // For NCL: log the earning immediately since it's awarded on post creation
+        // For NCL: log the earning immediately since it's awarded on post creation.
+        // The same-IP shield applies too (host picking a flagged target gets 0 LB).
         if (type === 'ncl' && targetUserUid) {
             const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
-            window.logEarnings(targetUserUid, newPostRef.id, 'NCL Reward', nclPrizeFormatted, lbPointsReward);
+            let nclLb = lbPointsReward;
+            if (nclLb > 0 && window.flaggedLbShieldOn?.() && window.inFlaggedPair?.(window.currentUser.uid, targetUserUid)) {
+                nclLb = 0;
+                window.showToast?.("⚠️ Same-IP play detected — no LB points awarded for this game. If this is an error, contact an admin.");
+            }
+            window.logEarnings(targetUserUid, newPostRef.id, 'NCL Reward', nclPrizeFormatted, nclLb);
             const nclWinnerName = window.globalUsersCache?.[targetUserUid]?.name || targetUserUid;
             window.logHostedGame(window.currentUser.uid, newPostRef.id, 'NCL Reward', nclPrizeFormatted, targetUserUid, nclWinnerName);
         }
@@ -1913,7 +1961,7 @@ window.mineGame = async (postId) => {
             return window.showAlert("Too late! Someone else already claimed this game.");
         }
 
-        const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+        const lbPoints = window.winnerLbFor(post.authorId, window.currentUser.uid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${window.currentUser.uid}/lbPoints`), increment(lbPoints));
         window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -1923,7 +1971,7 @@ window.mineGame = async (postId) => {
         }
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId && post.authorId !== window.currentUser.uid) {
-            window.awardHostBonus(post.authorId, hostLbReward);
+            window.awardHostBonus(post.authorId, hostLbReward, window.currentUser.uid);
         }
         let winMsg = `You won!`;
         if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
@@ -1995,7 +2043,7 @@ window.endLastCommentGame = async (postId) => {
         if (!finalClaimed) return;
 
         if (lastCommenterId) {
-            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+            const lbPoints = window.winnerLbFor(post.authorId, lastCommenterId, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${lastCommenterId}/lbPoints`), increment(lbPoints));
             window.logEarnings(lastCommenterId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2006,7 +2054,7 @@ window.endLastCommentGame = async (postId) => {
             // Reward host only if someone actually won
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId) {
-                window.awardHostBonus(post.authorId, hostLbReward);
+                window.awardHostBonus(post.authorId, hostLbReward, lastCommenterId);
             }
         }
     } catch(e) {
@@ -2083,7 +2131,7 @@ window.checkChallenge = async (postId) => {
             // whose transaction commits gets the true return — prizes/LB credit once.
             const claimed = await window.claimGame(postRef, post.gameTargetUser);
             if (claimed) {
-                const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+                const lbPoints = window.winnerLbFor(post.authorId, post.gameTargetUser, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${post.gameTargetUser}/lbPoints`), increment(lbPoints));
                 window.logEarnings(post.gameTargetUser, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2093,7 +2141,7 @@ window.checkChallenge = async (postId) => {
                 }
                 const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                 if (hostLbReward > 0 && post.authorId) {
-                    window.awardHostBonus(post.authorId, hostLbReward);
+                    window.awardHostBonus(post.authorId, hostLbReward, post.gameTargetUser);
                 }
                 window.showAlert(`Challenge completed! @${winnerName} won!`);
             }
@@ -2207,7 +2255,7 @@ window.answerGame = async (postId, answer) => {
             return window.showAlert("Too late! Someone else already got it right.");
         }
 
-        const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+        const lbPoints = window.winnerLbFor(post.authorId, window.currentUser.uid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
         const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
         if (lbPoints > 0) set(ref(db, `users/${window.currentUser.uid}/lbPoints`), increment(lbPoints));
         window.logEarnings(window.currentUser.uid, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2217,7 +2265,7 @@ window.answerGame = async (postId, answer) => {
         }
         const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
         if (hostLbReward > 0 && post.authorId && post.authorId !== window.currentUser.uid) {
-            window.awardHostBonus(post.authorId, hostLbReward);
+            window.awardHostBonus(post.authorId, hostLbReward, window.currentUser.uid);
         }
         document.getElementById('game-answer-modal').classList.add('hidden');
         let winMsg = `Correct! 🎉 You won!`;
@@ -2513,7 +2561,7 @@ window.spinBingoWheel = async (postId) => {
             const post = snap.data();
             if (!post) return;
             const winnerId = result.winnerId;
-            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+            const lbPoints = window.winnerLbFor(post.authorId, winnerId, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerId}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerId, postId, window.gameTypeLabel(post.gameType), prizeLogged, lbPoints);
@@ -2523,7 +2571,7 @@ window.spinBingoWheel = async (postId) => {
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId) {
-                window.awardHostBonus(post.authorId, hostLbReward);
+                window.awardHostBonus(post.authorId, hostLbReward, winnerId);
             }
         }
     } catch(e) {
@@ -2865,16 +2913,18 @@ window.drawSpinNamesItem = async (postId) => {
             const post = snap.data();
             if (!post) return;
 
-            if (result.matchingLb > 0) set(ref(db, `users/${result.winnerUid}/lbPoints`), increment(result.matchingLb));
+            const shieldLb = window.winnerLbFor(post.authorId, result.winnerUid, result.matchingLb);
+            const spinLb = shieldLb || 0;
+            if (spinLb > 0) set(ref(db, `users/${result.winnerUid}/lbPoints`), increment(spinLb));
             if (result.matchingPrize) {
-                window.logEarnings(result.winnerUid, postId, `Spin the Names (#${result.spinNumber})`, result.matchingPrize, result.matchingLb);
+                window.logEarnings(result.winnerUid, postId, `Spin the Names (#${result.spinNumber})`, result.matchingPrize, spinLb);
                 if (post.authorId) {
                     window.logHostedGame(post.authorId, postId, `Spin the Names (#${result.spinNumber})`, result.matchingPrize, result.winnerUid, result.winnerName);
                 }
             }
             if (result.endsGame && post.authorId) {
                 const hostLbReward = window.siteSettings?.gameHostLbReward ?? 0;
-                if (hostLbReward > 0) window.awardHostBonus(post.authorId, hostLbReward);
+                if (hostLbReward > 0) window.awardHostBonus(post.authorId, hostLbReward, result.winnerUid);
             }
         }
     } catch(e) {
@@ -3188,7 +3238,7 @@ window.makeTicTacToeMove = async (postId, cellIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+            const lbPoints = window.winnerLbFor(post.authorId, winnerUid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Tic Tac Toe', prizeLogged, lbPoints);
@@ -3198,7 +3248,7 @@ window.makeTicTacToeMove = async (postId, cellIndex, autoForUid = null) => {
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
-                window.awardHostBonus(post.authorId, hostLbReward);
+                window.awardHostBonus(post.authorId, hostLbReward, winnerUid);
             }
             if (!isAuto) {
                 let winMsg = `🎉 You won the Tic Tac Toe match!`;
@@ -3389,7 +3439,7 @@ window.makeFourInARowMove = async (postId, cellIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+            const lbPoints = window.winnerLbFor(post.authorId, winnerUid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, '4 in a Row', prizeLogged, lbPoints);
@@ -3399,7 +3449,7 @@ window.makeFourInARowMove = async (postId, cellIndex, autoForUid = null) => {
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
-                window.awardHostBonus(post.authorId, hostLbReward);
+                window.awardHostBonus(post.authorId, hostLbReward, winnerUid);
             }
             if (!isAuto) {
                 let winMsg = `🎉 Connect 4! You won the match!`;
@@ -3604,7 +3654,7 @@ window.makeDropFourMove = async (postId, colIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+            const lbPoints = window.winnerLbFor(post.authorId, winnerUid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Connect 4', prizeLogged, lbPoints);
@@ -3614,7 +3664,7 @@ window.makeDropFourMove = async (postId, colIndex, autoForUid = null) => {
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
-                window.awardHostBonus(post.authorId, hostLbReward);
+                window.awardHostBonus(post.authorId, hostLbReward, winnerUid);
             }
             if (!isAuto) {
                 let winMsg = `🎉 Connect 4! You won the match!`;
@@ -3814,7 +3864,7 @@ window.makeConnect4ProMaxMove = async (postId, colIndex, autoForUid = null) => {
             const snap = await getDoc(postRef);
             const post = snap.data();
             if (!post) return;
-            const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+            const lbPoints = window.winnerLbFor(post.authorId, winnerUid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
             const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
             if (lbPoints > 0) set(ref(db, `users/${winnerUid}/lbPoints`), increment(lbPoints));
             window.logEarnings(winnerUid, postId, 'Connect 4 Pro Max', prizeLogged, lbPoints);
@@ -3824,7 +3874,7 @@ window.makeConnect4ProMaxMove = async (postId, colIndex, autoForUid = null) => {
             }
             const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
             if (hostLbReward > 0 && post.authorId && post.authorId !== winnerUid) {
-                window.awardHostBonus(post.authorId, hostLbReward);
+                window.awardHostBonus(post.authorId, hostLbReward, winnerUid);
             }
             if (!isAuto) {
                 let winMsg = `🎉 Connect 4 Pro Max! You won the match!`;
@@ -3947,7 +3997,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                         return window.showAlert("Too late! Someone else already won this Hangman game.");
                     }
 
-                    const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+                    const lbPoints = window.winnerLbFor(post.authorId, uid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
                     const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                     if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
                     window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);
@@ -3957,7 +4007,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     }
                     const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                     if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
-                        window.awardHostBonus(post.authorId, hostLbReward);
+                        window.awardHostBonus(post.authorId, hostLbReward, uid);
                     }
 
                     document.getElementById('hangman-guess-modal').classList.add('hidden');
@@ -4007,7 +4057,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                     return window.showAlert("Too late! Someone else already won this Hangman game.");
                 }
 
-                const lbPoints = window.boostedLb(post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+                const lbPoints = window.winnerLbFor(post.authorId, uid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
                 const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
                 if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
                 window.logEarnings(uid, postId, 'Hangman', prizeLogged, lbPoints);
@@ -4017,7 +4067,7 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
                 }
                 const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
                 if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
-                    window.awardHostBonus(post.authorId, hostLbReward);
+                    window.awardHostBonus(post.authorId, hostLbReward, uid);
                 }
 
                 document.getElementById('hangman-guess-modal').classList.add('hidden');
