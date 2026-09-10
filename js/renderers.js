@@ -1500,6 +1500,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             const myEntry = post.bingoEntries && window.currentUser ? post.bingoEntries[window.currentUser.uid] : null;
             const entryCount = post.bingoEntries ? Object.keys(post.bingoEntries).length : 0;
             const calledItems = Array.isArray(post.bingoCalledItems) ? post.bingoCalledItems : [];
+            const minPlayers = Math.max(0, Number(window.siteSettings?.minGamePlayers || 5));
 
             const animatingItem = (post.bingoLastSpin && Date.now() - post.bingoLastSpin.startTime < 4000) ? post.bingoLastSpin.item : null;
             
@@ -1525,7 +1526,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${prizeStr}
                         <h4 class="font-black text-purple-800 dark:text-purple-200 text-lg mb-1">🎱 BINGO!</h4>
                         <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">Pick <strong>${post.bingoLetterCount}</strong> letters (A–${post.bingoMaxLetter || 'Z'}) + <strong>${post.bingoNumberCount}</strong> numbers (1–${post.bingoMaxNumber || 10}) for your entry.</p>
-                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} entries submitted</p>
+                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount}${minPlayers > 0 ? `/${minPlayers}` : ''} entries submitted${minPlayers > 0 ? ` — need ${minPlayers}+ to start` : ''}</p>
                         ${timerHtml}
                         ${myEntryBadge}
                         ${!myEntry && !isHost ? `<button onclick="window.openBingoEntryModal('${post.id}')" class="mt-3 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-dice mr-2"></i>Submit My Entry</button>` : ''}
@@ -1592,6 +1593,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 : [];
             const hasJoined = window.currentUser ? joinedArray.some(u => u.uid === window.currentUser.uid) : false;
             const entryCount = joinedArray.length;
+            const minPlayers = Math.max(0, Number(window.siteSettings?.minGamePlayers || 5));
             const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
             let prizesBadges = '';
             if (prizes.length > 0) {
@@ -1609,7 +1611,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <h4 class="font-black text-blue-800 dark:text-blue-200 text-lg mb-1">🎡 Spin the Names!</h4>
                         <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">Join the draw for a chance to win.</p>
                         ${prizesBadges ? `<div class="flex flex-wrap gap-1.5 justify-center mb-2">${prizesBadges}</div>` : ''}
-                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount} players joined</p>
+                        <p class="text-xs text-gray-400 mb-2"><i class="fa-solid fa-users mr-1"></i>${entryCount}${minPlayers > 0 ? `/${minPlayers}` : ''} players joined${minPlayers > 0 ? ` — need ${minPlayers}+ to start` : ''}</p>
                         ${hasJoined 
                             ? `<div class="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full font-bold mb-2"><i class="fa-solid fa-check mr-1"></i>You joined!</div>`
                             : (!isHost ? `<button onclick="window.joinSpinNames('${post.id}')" class="mt-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow transition"><i class="fa-solid fa-right-to-bracket mr-2"></i>Join Spin</button>` : `<div class="text-xs text-gray-400 italic">You are the host</div>`)

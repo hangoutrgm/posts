@@ -244,6 +244,11 @@
                                     <input type="number" id="set-presenceSweepSec" min="0" placeholder="0" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
                                     <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Interval (sec) at which the admin's browser checks the online-presence node. 0 = off. When 2+ users are online, the whole /presence node is wiped (same as deleting it manually) so stale "online" users never accumulate.</p>
                                 </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Min Players to Start Draw Games</label>
+                                    <input type="number" id="set-minGamePlayers" min="0" placeholder="5" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs outline-none transition">
+                                    <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Bingo &amp; Spin the Names: minimum players that must join before the host can start the draw/spin. 0 = no minimum.</p>
+                                </div>
                             </div>
                             <!-- Posts Upload Limits -->
                             <div class="grid grid-cols-3 gap-3 pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
@@ -415,6 +420,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=18"></script>
+    <script type="module" src="admin.js?v=19"></script>
 </body>
 </html>

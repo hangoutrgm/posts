@@ -79,5 +79,6 @@ window.siteSettings = {
     chatGameCooldownSec: 60,
     chatGameLbReward: 0,
     chatGameHostLbReward: 0,
-    gameLimits: {}
+    gameLimits: {},
+    minGamePlayers: 5 // /config → minimum players required to start Bingo / Spin the Names draw (0 = no minimum)
 };

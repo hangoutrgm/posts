@@ -3,7 +3,7 @@ import { app, auth, db, fsdb, fsdb2 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js";
+import "../js/globals.js?v=2";
 import "../js/helpers.js";
 
 const loadingScreen = document.getElementById('loading-screen');
@@ -163,6 +163,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatGameRaceTo').value = settings.chatGameRaceTo ?? settings.chatGameRounds ?? window.siteSettings.chatGameRaceTo ?? window.siteSettings.chatGameRounds ?? '';
             document.getElementById('set-boardGameMoveTimerSec').value = settings.boardGameMoveTimerSec ?? '';
             document.getElementById('set-presenceSweepSec').value = settings.presenceSweepSec ?? '';
+            document.getElementById('set-minGamePlayers').value = settings.minGamePlayers ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
             document.getElementById('set-starsPerLike').value = settings.starsPerLike ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
@@ -194,6 +195,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatGameRaceTo').value = '';
             document.getElementById('set-boardGameMoveTimerSec').value = '';
             document.getElementById('set-presenceSweepSec').value = '';
+            document.getElementById('set-minGamePlayers').value = '';
             document.getElementById('set-starsPerComment').value = '';
             document.getElementById('set-starsPerLike').value = '';
             document.getElementById('set-starsPerPoked').value = '';
@@ -227,6 +229,7 @@ function initAdminDashboard() {
         document.getElementById('set-chatGameRaceTo').placeholder = window.siteSettings.chatGameRaceTo ?? window.siteSettings.chatGameRounds ?? 5;
         document.getElementById('set-boardGameMoveTimerSec').placeholder = window.siteSettings.boardGameMoveTimerSec ?? 60;
         document.getElementById('set-presenceSweepSec').placeholder = window.siteSettings.presenceSweepSec ?? 0;
+        document.getElementById('set-minGamePlayers').placeholder = window.siteSettings.minGamePlayers ?? 5;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
         document.getElementById('set-starsPerLike').placeholder = window.siteSettings.starsPerLike ?? 1;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
@@ -260,6 +263,7 @@ function initAdminDashboard() {
             chatGameRaceTo: parseInt(document.getElementById('set-chatGameRaceTo').value) || 5,
             boardGameMoveTimerSec: parseInt(document.getElementById('set-boardGameMoveTimerSec').value) || 60,
             presenceSweepSec: parseInt(document.getElementById('set-presenceSweepSec').value) || 0,
+            minGamePlayers: parseInt(document.getElementById('set-minGamePlayers').value) || 5,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
             starsPerLike: parseInt(document.getElementById('set-starsPerLike').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,

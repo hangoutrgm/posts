@@ -2375,6 +2375,16 @@ window.submitBingoEntry = async () => {
 };
 
 window.closeBingoSubmissions = async (postId) => {
+    if (!window.currentUser) return;
+    const snap = await getDoc(getPostDocRef(postId));
+    if (!snap.exists()) return;
+    const post = snap.data();
+    if (post.authorId !== window.currentUser.uid) return;
+    if (post.bingoPhase !== 'submission') return window.showAlert('Submissions are closed.');
+    const entryCount = post.bingoEntries ? Object.keys(post.bingoEntries).length : 0;
+    const minPlayers = Math.max(0, Number(window.siteSettings?.minGamePlayers || 5));
+    if (minPlayers > 0 && entryCount < minPlayers)
+        return window.showAlert(`Need at least ${minPlayers} entries to start the draw. (${entryCount}/${minPlayers})`);
     await updateDoc(getPostDocRef(postId), { bingoPhase: 'drawing' });
 };
 
@@ -2677,7 +2687,9 @@ window.closeSpinNames = async (postId) => {
     const post = snap.data();
     if (post.authorId !== window.currentUser.uid) return;
     const joined = post.spinNamesJoined ? Object.values(post.spinNamesJoined) : [];
-    if (joined.length < 2) return window.showAlert('Need at least 2 players to start the draw.');
+    const minPlayers = Math.max(0, Number(window.siteSettings?.minGamePlayers || 5));
+    if (minPlayers > 0 && joined.length < minPlayers)
+        return window.showAlert(`Need at least ${minPlayers} players to start the draw. (${joined.length}/${minPlayers})`);
 
     // Warn host if the last prize spin is unreachable with current participants
     const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
@@ -2698,6 +2710,9 @@ window.startSpinNamesWheel = async (postId) => {
     const post = snap.data();
     
     if (!post.spinNamesJoined || Object.keys(post.spinNamesJoined).length === 0) return window.showAlert("No players have joined yet.");
+    const minPlayers = Math.max(0, Number(window.siteSettings?.minGamePlayers || 5));
+    if (minPlayers > 0 && Object.keys(post.spinNamesJoined).length < minPlayers)
+        return window.showAlert(`Need at least ${minPlayers} players to start the draw. (${Object.keys(post.spinNamesJoined).length}/${minPlayers})`);
 
     // Warn host if the last prize spin is unreachable with current participants
     const prizes = Array.isArray(post.spinNamesPrizes) ? post.spinNamesPrizes : [];
