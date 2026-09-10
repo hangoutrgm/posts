@@ -36,8 +36,10 @@ window.activeEditTarget = null;
 // IP ANTI-ABUSE — best-effort public-IP capture.
 // Used by admins to spot dummy/multi accounts (e.g. someone's "dummy" winning
 // against their own alt in a fixed match). No keys, no backend needed: calls a
-// free CORS-enabled IP echo service once per browser session and stores the IP
-// under /user_ips/{uid} (admins-only read, owner-only write).
+// free CORS-enabled IP echo service and stores up to 3 distinct public IPs per
+// user (with last-seen timestamps) under /user_ips/{uid} → { ips: { ip: lastSeen } }
+// so a user who switches WiFi ↔ mobile data still carries the whole trail.
+// Admins-only read, owner-only write.
 // ==========================================
 window.captureUserIP = async (uid) => {
     if (!uid || window._capturingIP) return;
@@ -57,9 +59,25 @@ window.captureUserIP = async (uid) => {
     }
     try {
         const snap = await get(ref(db, `user_ips/${uid}`));
-        const cur = snap.exists() ? snap.val() : null;
-        if (cur && cur.ip === ip) return; // unchanged — nothing to write
-        await set(ref(db, `user_ips/${uid}`), { ip, at: Date.now() });
+        const cur = snap.exists() ? snap.val() : {};
+
+        // Normalize any existing data into an { ips: { ip: lastSeen } map.
+        const ips = (cur.ips && typeof cur.ips === 'object')
+            ? { ...cur.ips }
+            : (cur.ip ? { [cur.ip]: cur.at || 0 } : {});
+
+        // Record this IP (refresh its timestamp if it's already known from WiFi/mobile.
+        ips[ip] = Date.now();
+
+        // Keep only the 3 most-recent distinct IPs.
+        const sorted = Object.entries(ips)
+            .map(([ipKey, ts]) => [ipKey, Number(ts) || 0])
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
+        const pruned = {};
+        sorted.forEach(([ipKey, ts]) => { pruned[ipKey] = ts; });
+
+        await set(ref(db, `user_ips/${uid}`), { ips: pruned });
     } catch (e) {
         // Most common cause: the updated database.rules.json (/user_ips) isn't deployed yet.
         console.warn('captureUserIP: could not save IP to /user_ips (ensure the new database.rules.json is deployed):', e);

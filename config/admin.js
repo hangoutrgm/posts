@@ -707,6 +707,16 @@ function initAdminDashboard() {
     }
 }
 
+// Resolve every captured IP for a user — supports both the legacy { ip, at }
+// shape and the new { ips: { ip: lastSeen } } multi-IP map (up to 3 IPs).
+function uidIps(uid) {
+    const d = globalIps[uid];
+    if (!d) return [];
+    if (d.ips && typeof d.ips === 'object') return Object.keys(d.ips);
+    if (d.ip) return [d.ip];
+    return [];
+}
+
 function renderUsersList() {
     const listEl = document.getElementById('admin-users-list');
     const query = document.getElementById('admin-user-search').value.toLowerCase();
@@ -714,11 +724,12 @@ function renderUsersList() {
     listEl.innerHTML = '';
     
     // Build a map of ip -> [uids] so we can flag accounts sharing the same IP.
+    // A user may have multiple IPs (WiFi + mobile), so every captured IP counts.
     const ipGroups = {};
-    Object.entries(globalIps).forEach(([uid, ipData]) => {
-        const ip = ipData && ipData.ip;
-        if (!ip) return;
-        (ipGroups[ip] = ipGroups[ip] || []).push(uid);
+    Object.entries(globalIps).forEach(([uid]) => {
+        uidIps(uid).forEach(ip => {
+            (ipGroups[ip] = ipGroups[ip] || []).push(uid);
+        });
     });
     const sharedIps = Object.entries(ipGroups).filter(([, uids]) => uids.length > 1);
     
@@ -744,11 +755,13 @@ function renderUsersList() {
         const role = window.getRole(u.uid);
         const isInactive = u.isInactive === true;
 
-        const ipData = globalIps[u.uid];
-        const myIp = ipData && ipData.ip;
-        const ipShared = myIp && ipGroups[myIp] && ipGroups[myIp].length > 1;
-        const ipChip = myIp
-            ? `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center ${ipShared ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/40' : 'bg-slate-200/50 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400'}" title="${myIp}${ipShared ? ` — shared by ${ipGroups[myIp].length} accounts` : ''}"><i class="fa-solid fa-network-wired mr-1 text-[8px]"></i>${myIp}${ipShared ? ` ⚠×${ipGroups[myIp].length}` : ''}</span>`
+        const myIps = uidIps(u.uid);
+        const ipChip = myIps.length
+            ? `<span class="flex flex-col items-end gap-0.5">${myIps.map(ipx => {
+                const group = ipGroups[ipx] || [];
+                const ipShared = group.length > 1;
+                return `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center ${ipShared ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/40' : 'bg-slate-200/50 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400'}" title="${ipx}${ipShared ? ` — shared by ${group.length} accounts` : ''}"><i class="fa-solid fa-network-wired mr-1 text-[8px]"></i>${ipx}${ipShared ? ` ⚠×${group.length}` : ''}</span>`;
+              }).join('')}</span>`
             : `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800 text-slate-400 dark:text-slate-500" title="No IP captured yet (user hasn't logged in again since this feature shipped)"><i class="fa-solid fa-circle-question mr-1 text-[8px]"></i>no IP</span>`;
 
         const div = document.createElement('div');
@@ -793,12 +806,12 @@ function renderMultiAccounts() {
     const countEl = document.getElementById('admin-multiacc-count');
     if (!listEl) return;
 
-    // uid -> { ip, at }; group uids that share an IP.
+    // uid -> { ips: { ip: lastSeen } }; group uids that share an IP (any of a user's IPs).
     const ipGroups = {};
-    Object.entries(globalIps).forEach(([uid, ipData]) => {
-        const ip = ipData && ipData.ip;
-        if (!ip) return;
-        (ipGroups[ip] = ipGroups[ip] || []).push(uid);
+    Object.entries(globalIps).forEach(([uid]) => {
+        uidIps(uid).forEach(ip => {
+            (ipGroups[ip] = ipGroups[ip] || []).push(uid);
+        });
     });
 
     const groups = Object.entries(ipGroups)
@@ -844,6 +857,7 @@ function renderMultiAccounts() {
                             <span class="text-[9px] font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-1 py-0.5 rounded">🏆 ${u.lbPoints || 0}</span>
                             <span class="text-[8px] font-mono text-slate-400 dark:text-slate-500">${esc(uid.substring(0, 8))}…</span>
                         </div>
+                        <div class="text-[8px] font-mono text-slate-400 dark:text-slate-500 mt-0.5 truncate"><i class="fa-solid fa-network-wired mr-0.5 text-[7px]"></i>${esc(uidIps(uid).join(' · ') || 'no IP')}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
