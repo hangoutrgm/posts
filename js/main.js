@@ -1715,7 +1715,11 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
 
 document.getElementById('logout-btn').addEventListener('click', async () => { 
     try { await stopOwnPresence(window.currentUser); } catch(e) {}
-    window.logActivity("logged out");
+    try { await window.logActivity("logged out"); } catch(e) {}
+    // Clear session flags so the NEXT login in this tab is logged again as a fresh
+    // login (and its IP is re-captured). Refresh keeps them, so a reload stays quiet.
+    sessionStorage.removeItem('session_started');
+    if (window._notifPruneTimer) { clearTimeout(window._notifPruneTimer); window._notifPruneTimer = null; }
     await signOut(auth); 
     window.showAlert("Logged out successfully!");
 });
@@ -1745,6 +1749,11 @@ onAuthStateChanged(auth, (user) => {
         
         startOwnPresence(user);
         
+        // Anti-abuse: keep this account's public IP fresh on every login/load.
+        // captureUserIP() only writes when the IP actually changed, and it retries
+        // on later logins, so even if the /user_ips rules deploy late it self-heals.
+        window.captureUserIP && window.captureUserIP(user.uid);
+        
         document.getElementById('open-login-btn').classList.add('hidden');
         document.getElementById('user-info').classList.remove('hidden');
         
@@ -1761,8 +1770,11 @@ onAuthStateChanged(auth, (user) => {
         // Start the dedicated notifications listener for this user
         if (window._startNotifListener) window._startNotifListener(user.uid);
 
-        // Auto-cleanup: keep only the latest 50 notifications in the database
-        setTimeout(() => {
+        // Auto-cleanup: keep only the latest 50 notifications in the database.
+        // Stored as a named timer so logout can cancel it (prevents a read that
+        // lands after signOut and shows "Permission denied").
+        window._notifPruneTimer = setTimeout(() => {
+            if (!auth.currentUser || auth.currentUser.uid !== user.uid) return; // user signed out meanwhile
             get(ref(db, `notifications/${user.uid}`)).then(snap => {
                 const allNotifs = snap.val();
                 if (allNotifs) {

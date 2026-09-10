@@ -32,6 +32,42 @@ window.deviceId = localStorage.getItem('hangout_device_id') || ('dev_' + Math.ra
 localStorage.setItem('hangout_device_id', window.deviceId);
 window.activeEditTarget = null;
 
+// ==========================================
+// IP ANTI-ABUSE — best-effort public-IP capture.
+// Used by admins to spot dummy/multi accounts (e.g. someone's "dummy" winning
+// against their own alt in a fixed match). No keys, no backend needed: calls a
+// free CORS-enabled IP echo service once per browser session and stores the IP
+// under /user_ips/{uid} (admins-only read, owner-only write).
+// ==========================================
+window.captureUserIP = async (uid) => {
+    if (!uid || window._capturingIP) return;
+    window._capturingIP = true;
+    let ip = null;
+    for (const url of ['https://api.ipify.org?format=json', 'https://api64.ipify.org?format=json']) {
+        try {
+            const res = await fetch(url, { mode: 'cors' });
+            const data = await res.json();
+            if (data && data.ip) { ip = data.ip; break; }
+        } catch (e) { /* try the next endpoint */ }
+    }
+    if (!ip) {
+        console.warn('captureUserIP: could not determine public IP (network/CORS blocked?).');
+        window._capturingIP = false;
+        return;
+    }
+    try {
+        const snap = await get(ref(db, `user_ips/${uid}`));
+        const cur = snap.exists() ? snap.val() : null;
+        if (cur && cur.ip === ip) return; // unchanged — nothing to write
+        await set(ref(db, `user_ips/${uid}`), { ip, at: Date.now() });
+    } catch (e) {
+        // Most common cause: the updated database.rules.json (/user_ips) isn't deployed yet.
+        console.warn('captureUserIP: could not save IP to /user_ips (ensure the new database.rules.json is deployed):', e);
+    } finally {
+        window._capturingIP = false;
+    }
+};
+
 // Lightweight toast (board game auto-moves, etc.)
 window.showToast = (message) => {
     const toast = document.getElementById('toast');
@@ -157,17 +193,30 @@ window.showConfirm = (msg, onConfirm) => {
 };
 
 window.logActivity = async (actionText) => {
-    if (!window.currentUser) return;
+    const cu = window.currentUser;
+    if (!cu) return;
+    // The log's .read is admin-only, but .write is allowed for any signed-in user.
+    // So for non-admins we only push (which succeeds) and skip the prune (which
+    // would otherwise fail with "Permission denied" on the admin-only read).
+    // We capture `cu` at the top so a concurrent signOut() can't null it mid-flight.
     try {
-        const userName = window.globalUsersCache?.[window.currentUser.uid]?.name 
-                      || window.currentUser.displayName 
-                      || (window.currentUser.email ? window.currentUser.email.split('@')[0] : 'Unknown User');
+        const userName = window.globalUsersCache?.[cu.uid]?.name 
+                      || cu.displayName 
+                      || (cu.email ? cu.email.split('@')[0] : 'Unknown User');
         await push(ref(db, 'activity_log'), {
             user: userName,
-            userId: window.currentUser.uid,
+            userId: cu.uid,
             action: actionText,
             timestamp: Date.now()
         });
+    } catch(e) {
+        console.warn('logActivity failed:', e);
+    }
+
+    try {
+        const isLogReader = cu.uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2'
+            || window.getRole(cu.uid).level === 3;
+        if (!isLogReader) return;
 
         // Auto-prune activity_log: keep only the latest 50 logs
         const snap = await get(ref(db, 'activity_log'));
@@ -183,7 +232,7 @@ window.logActivity = async (actionText) => {
             }
         }
     } catch(e) {
-        console.warn('logActivity failed:', e);
+        console.warn('activity_log prune failed:', e);
     }
 };
 

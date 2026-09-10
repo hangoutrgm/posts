@@ -10,6 +10,7 @@ const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
 let globalUsers = {};
 let allPostsCount = 0;
+let globalIps = {}; // uid -> { ip, at } (anti-abuse)
 
 const ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
 
@@ -132,6 +133,14 @@ function initAdminDashboard() {
             renderUsersList();
             renderActivityList();
         }
+        renderMultiAccounts();
+    });
+
+    // Anti-abuse: watch /user_ips so the users list can flag accounts sharing an IP.
+    onValue(ref(db, 'user_ips'), (snap) => {
+        globalIps = snap.exists() ? snap.val() : {};
+        renderUsersList();
+        renderMultiAccounts();
     });
 
     // 3. Get Posts count from Firestore
@@ -704,6 +713,22 @@ function renderUsersList() {
     
     listEl.innerHTML = '';
     
+    // Build a map of ip -> [uids] so we can flag accounts sharing the same IP.
+    const ipGroups = {};
+    Object.entries(globalIps).forEach(([uid, ipData]) => {
+        const ip = ipData && ipData.ip;
+        if (!ip) return;
+        (ipGroups[ip] = ipGroups[ip] || []).push(uid);
+    });
+    const sharedIps = Object.entries(ipGroups).filter(([, uids]) => uids.length > 1);
+    
+    if (sharedIps.length > 0) {
+        const warn = document.createElement('div');
+        warn.className = "mb-2 px-2.5 py-2 rounded-lg text-[10px] font-semibold bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400 flex items-center gap-2";
+        warn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${sharedIps.length} IP group${sharedIps.length > 1 ? 's' : ''} share${sharedIps.length > 1 ? '' : 's'} one address — possible dummy/multi accounts. Review flagged rows below.`;
+        listEl.appendChild(warn);
+    }
+    
     let usersArray = Object.entries(globalUsers).map(([uid, data]) => ({ uid, ...data }));
     
     if (query) {
@@ -718,6 +743,13 @@ function renderUsersList() {
         window.globalUsersCache[u.uid] = u;
         const role = window.getRole(u.uid);
         const isInactive = u.isInactive === true;
+
+        const ipData = globalIps[u.uid];
+        const myIp = ipData && ipData.ip;
+        const ipShared = myIp && ipGroups[myIp] && ipGroups[myIp].length > 1;
+        const ipChip = myIp
+            ? `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded flex items-center ${ipShared ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/40' : 'bg-slate-200/50 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400'}" title="${myIp}${ipShared ? ` — shared by ${ipGroups[myIp].length} accounts` : ''}"><i class="fa-solid fa-network-wired mr-1 text-[8px]"></i>${myIp}${ipShared ? ` ⚠×${ipGroups[myIp].length}` : ''}</span>`
+            : `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800 text-slate-400 dark:text-slate-500" title="No IP captured yet (user hasn't logged in again since this feature shipped)"><i class="fa-solid fa-circle-question mr-1 text-[8px]"></i>no IP</span>`;
 
         const div = document.createElement('div');
         div.className = "flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800 transition-colors group";
@@ -736,8 +768,11 @@ function renderUsersList() {
                 </div>
             </div>
             <div class="flex items-center">
-                <div class="text-[9px] font-mono text-slate-400 dark:text-slate-500 bg-slate-200/50 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                    ${u.uid.substring(0, 8)}...
+                <div class="flex flex-col items-end gap-1 mr-1">
+                    ${ipChip}
+                    <div class="text-[9px] font-mono text-slate-400 dark:text-slate-500 bg-slate-200/50 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                        ${u.uid.substring(0, 8)}...
+                    </div>
                 </div>
                 <button onclick="navigator.clipboard.writeText('${u.uid}'); alert('Copied UID: ${u.uid}');" class="ml-1 w-5 h-5 rounded text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 flex items-center justify-center transition opacity-0 group-hover:opacity-100" title="Copy UID">
                     <i class="fa-solid fa-copy text-[10px]"></i>
@@ -748,6 +783,82 @@ function renderUsersList() {
             </div>
         `;
         listEl.appendChild(div);
+    });
+}
+
+// Possible Multi-Accounts — group the anti-abuse /user_ips data by shared IP and
+// list each account so admins can review suspected dummy accounts at a glance.
+function renderMultiAccounts() {
+    const listEl = document.getElementById('admin-multiacc-list');
+    const countEl = document.getElementById('admin-multiacc-count');
+    if (!listEl) return;
+
+    // uid -> { ip, at }; group uids that share an IP.
+    const ipGroups = {};
+    Object.entries(globalIps).forEach(([uid, ipData]) => {
+        const ip = ipData && ipData.ip;
+        if (!ip) return;
+        (ipGroups[ip] = ipGroups[ip] || []).push(uid);
+    });
+
+    const groups = Object.entries(ipGroups)
+        .filter(([, uids]) => uids.length > 1)
+        .sort((a, b) => b[1].length - a[1].length);
+
+    if (countEl) countEl.textContent = `${groups.length} group${groups.length === 1 ? '' : 's'}`;
+
+    if (groups.length === 0) {
+        listEl.innerHTML = '<div class="text-[11px] text-slate-400 dark:text-slate-500 text-center py-5"><i class="fa-solid fa-shield-halved mr-1"></i> No shared IPs detected.</div>';
+        return;
+    }
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+    listEl.innerHTML = '';
+
+    groups.forEach(([ip, uids]) => {
+        const group = document.createElement('div');
+        group.className = 'rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10 overflow-hidden';
+
+        const head = document.createElement('div');
+        head.className = 'flex items-center justify-between px-2.5 py-1.5 bg-amber-100/60 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-900/40';
+        head.innerHTML = `
+            <div class="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 truncate">
+                <i class="fa-solid fa-network-wired text-[9px] shrink-0"></i> <span class="truncate">${esc(ip)}</span>
+            </div>
+            <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500 text-white shrink-0 ml-2">${uids.length} accounts</span>
+        `;
+        group.appendChild(head);
+
+        uids.forEach(uid => {
+            const u = globalUsers[uid] || {};
+            const isInactive = u.isInactive === true;
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between px-2.5 py-2 hover:bg-white dark:hover:bg-slate-800/60 transition-colors';
+            row.innerHTML = `
+                <div class="flex items-center space-x-2 min-w-0">
+                    <img src="${esc(u.pic || window.generateAvatar(uid))}" class="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+                    <div class="min-w-0">
+                        <p class="font-bold text-[11px] text-slate-800 dark:text-slate-100 truncate">${esc(u.name || 'Unknown')}</p>
+                        <div class="flex items-center space-x-1.5 mt-0.5">
+                            <span class="text-[9px] font-semibold text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-1 py-0.5 rounded">★ ${u.points || 0}</span>
+                            <span class="text-[9px] font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-1 py-0.5 rounded">🏆 ${u.lbPoints || 0}</span>
+                            <span class="text-[8px] font-mono text-slate-400 dark:text-slate-500">${esc(uid.substring(0, 8))}…</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button onclick="navigator.clipboard.writeText('${esc(uid)}'); alert('Copied UID: ${esc(uid)}');" class="w-6 h-6 rounded text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 flex items-center justify-center transition" title="Copy UID">
+                        <i class="fa-solid fa-copy text-[9px]"></i>
+                    </button>
+                    <button onclick="window.toggleInactive('${esc(uid)}')" class="px-2 py-1 rounded text-[9px] font-bold transition ${isInactive ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-amber-500 hover:text-white'}" title="${isInactive ? 'Mark as active' : 'Mark as inactive (hidden from leaderboards & stars)'}">
+                        <i class="fa-solid ${isInactive ? 'fa-user-check' : 'fa-user-slash'} mr-1 text-[8px]"></i>${isInactive ? 'Active' : 'Inactive'}
+                    </button>
+                </div>
+            `;
+            group.appendChild(row);
+        });
+
+        listEl.appendChild(group);
     });
 }
 
