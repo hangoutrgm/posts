@@ -237,8 +237,17 @@ window.openEditProfile = () => {
     const cache = window.globalUsersCache[window.currentUser.uid] || {};
     document.getElementById('profile-name').value = cache.name || window.currentUser.displayName || '';
     document.getElementById('profile-preview').src = cache.pic || window.currentUser.photoURL || window.generateAvatar(window.currentUser.uid);
-    document.getElementById('profile-pic-url').value = '';
     document.getElementById('profile-pic-file').value = '';
+    const coverFileEl = document.getElementById('profile-cover-file');
+    if (coverFileEl) coverFileEl.value = '';
+    const coverPrev = document.getElementById('profile-cover-preview');
+    if (cache.cover) {
+        coverPrev.src = cache.cover; // onload reveals it once loaded
+    } else {
+        coverPrev.removeAttribute('src');
+        coverPrev.style.display = 'none'; // gray box + "Upload Cover Photo" text shows
+    }
+    if (coverFileEl) coverFileEl.value = '';
     
     document.getElementById('profile-gender').value = cache.gender || '';
     document.getElementById('profile-relationship').value = cache.relationship || '';
@@ -666,9 +675,10 @@ window.renderProfileData = (resetLimit = true) => {
 
     document.getElementById('profile-header').innerHTML = `
         <div class="flex flex-col items-center bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 relative">
+            ${uData.cover ? `<div class="-mx-5 -mt-5 h-28 overflow-hidden rounded-t-xl bg-gray-100 dark:bg-slate-900" style="width:calc(100% + 40px)"><img src="${uData.cover}" loading="lazy" class="w-full h-full object-cover"></div>` : ''}
             <button onclick="window.copyProfileLink('${window.activeProfileUid}')" class="absolute top-4 right-4 text-gray-400 hover:text-blue-500 transition bg-gray-50 dark:bg-slate-900 rounded-full w-8 h-8 flex items-center justify-center border border-gray-100 dark:border-slate-700 shadow-sm"><i class="fa-solid fa-share"></i></button>
             
-            <div class="relative mt-2">
+            <div class="relative ${uData.cover ? '-mt-12' : 'mt-2'}">
                 <img src="${uData.pic || window.generateAvatar(window.activeProfileUid)}" loading="lazy" class="w-20 h-20 rounded-full object-cover border-4 ${isBanned ? 'border-red-500 grayscale' : 'border-gray-50 dark:border-slate-700'}">
                 <div class="absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 ${isOnline ? 'bg-green-500' : 'bg-gray-400'}"></div>
             </div>
@@ -692,10 +702,6 @@ window.renderProfileData = (resetLimit = true) => {
                 ${pokeBtn}
             </div>
         </div>
-        <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-            <h3 class="text-xs font-bold text-gray-500 uppercase mb-1">Followers (${followerCount})</h3>
-            ${followersHtml}
-        </div>
         ${(uData.galleryImages && uData.galleryImages.filter(u => u).length > 0) ? `
         <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
             <h3 class="text-xs font-bold text-gray-500 uppercase mb-2"><i class="fa-solid fa-images text-blue-500 mr-1"></i> Photos</h3>
@@ -707,6 +713,10 @@ window.renderProfileData = (resetLimit = true) => {
                 `).join('')}
             </div>
         </div>` : ''}
+        <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+            <h3 class="text-xs font-bold text-gray-500 uppercase mb-1">Followers (${followerCount})</h3>
+            ${followersHtml}
+        </div>
     `;
 
     const profPostsFilter = document.getElementById('profile-posts-filter')?.value || 'All';

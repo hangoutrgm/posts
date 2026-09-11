@@ -70,7 +70,6 @@
                     <button onclick="window.openEditProfile()" class="hover:opacity-80 transition">
                         <img id="nav-avatar" class="w-7 h-7 rounded-full border border-blue-500 object-cover" src="">
                     </button>
-                    <button id="logout-btn" class="text-gray-400 hover:text-red-500 p-1"><i class="fa-solid fa-right-from-bracket"></i></button>
                 </div>
             </div>
         </div>
@@ -312,6 +311,25 @@
                 ">
             </label>
 
+            <div class="mb-3">
+                <p class="text-xs font-bold text-gray-500 mb-1"><i class="fa-solid fa-image mr-1"></i> Cover Photo</p>
+                <div class="relative h-16 bg-gray-100 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden flex items-center justify-center">
+                    <span id="cover-placeholder" class="text-[10px] font-bold text-gray-400 dark:text-slate-500 select-none pointer-events-none"><i class="fa-solid fa-camera mr-1"></i>Upload Cover Photo</span>
+                    <img id="profile-cover-preview" class="absolute inset-0 w-full h-full object-cover" style="display:none" onload="this.style.display=''" onerror="this.style.display='none'">
+                    <label class="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/30 text-white text-[10px] font-bold opacity-0 hover:opacity-100 transition">
+                        <i class="fa-solid fa-camera mr-1"></i> Upload
+                        <input type="file" id="profile-cover-file" accept="image/*" class="hidden" onchange="
+                            const f = this.files[0];
+                            if(f) {
+                                const r = new FileReader();
+                                r.onload = function(e) { document.getElementById('profile-cover-preview').src = e.target.result; }
+                                r.readAsDataURL(f);
+                            }
+                        ">
+                    </label>
+                </div>
+            </div>
+
             <input type="text" id="profile-name" placeholder="Display Name" class="w-full bg-gray-100 dark:bg-slate-900 text-sm p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
             
             <div class="flex space-x-2 mb-2">
@@ -335,8 +353,6 @@
             </div>
             
             <input type="text" id="profile-partner" placeholder="Partner Name (e.g. @Gemini)" class="hidden w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-pink-200 dark:border-pink-900/50">
-            <input type="text" id="profile-pic-url" placeholder="Profile Pic URL (Optional)" class="w-full bg-gray-100 dark:bg-slate-900 text-[10px] p-2.5 rounded-lg mb-3 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
-            
             <textarea id="profile-bio" placeholder="Write a short bio about yourself..." rows="2" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700 resize-none leading-snug"></textarea>
 
             <div class="mb-3">
@@ -346,10 +362,13 @@
                 </div>
             </div>
 
-            <button id="view-profile-btn" class="w-full bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 rounded-lg text-sm mb-2 shadow-sm border border-gray-300 dark:border-slate-600 transition hover:bg-gray-300 dark:hover:bg-slate-600"><i class="fa-regular fa-user mr-1"></i> View My Profile</button>
-            <button id="save-profile-btn" class="w-full bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500 mb-2">Save Changes</button>
-            <button id="admin-config-btn" class="hidden w-full bg-indigo-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-indigo-500 mb-2" onclick="window.location.href='config/'"><i class="fa-solid fa-sliders mr-1"></i>Admin Config</button>
-            <button id="install-pwa-btn" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:opacity-90"><i class="fa-solid fa-download mr-1"></i> Install Hangout</button>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="view-profile-btn" class="bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 rounded-lg text-sm shadow-sm border border-gray-300 dark:border-slate-600 transition hover:bg-gray-300 dark:hover:bg-slate-600"><i class="fa-regular fa-user mr-1"></i> My Profile</button>
+                <button id="save-profile-btn" class="bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500">Save Changes</button>
+                <button id="install-pwa-btn" class="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:opacity-90"><i class="fa-solid fa-download mr-1"></i> Install</button>
+                <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold p-2 rounded-lg text-sm transition"><i class="fa-solid fa-right-from-bracket mr-1"></i> Logout</button>
+            </div>
+            <button id="admin-config-btn" class="hidden w-full bg-indigo-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-indigo-500 mt-2" onclick="window.location.href='config/'"><i class="fa-solid fa-sliders mr-1"></i>Admin Config</button>
         </div>
     </div>
 
@@ -888,10 +907,10 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js"></script>
-    <script type="module" src="js/renderers.js?v=46"></script>
+    <script type="module" src="js/renderers.js?v=50"></script>
     <script type="module" src="js/helpers.js?v=55"></script>
     <script type="module" src="js/games.js?v=48"></script>
-    <script type="module" src="js/main.js?v=39"></script>
+    <script type="module" src="js/main.js?v=42"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

@@ -1605,14 +1605,17 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     const bio = document.getElementById('profile-bio').value.trim();
     if(!['In a relationship', 'Engaged', 'Married', 'Complicated'].includes(relationship)) partner = '';
 
-    let newPicUrl = document.getElementById('profile-pic-url').value.trim();
     const fileInput = document.getElementById('profile-pic-file');
     const file = fileInput.files[0];
+
+    // Cover photo (file upload → Cloudinary)
+    const coverFileEl = document.getElementById('profile-cover-file');
+    const coverFile = coverFileEl ? coverFileEl.files[0] : null;
     
     const btn = document.getElementById('save-profile-btn');
     btn.innerText = "Saving..."; btn.disabled = true;
 
-    let finalPic = newPicUrl;
+    let finalPic = ''; // new upload wins; otherwise keep existing pic
     try {
         if(file) {
             const base64Img = await window.compressImage(file);
@@ -1621,6 +1624,15 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     } catch(e) { console.error("Compression/Upload failed", e); }
     
     if(!finalPic) finalPic = cache.pic || window.currentUser.photoURL || window.generateAvatar(window.currentUser.uid);
+
+    let finalCover = ''; // new upload wins; otherwise keep existing cover
+    try {
+        if(coverFile) {
+            const coverB64 = await window.compressImage(coverFile);
+            finalCover = await window.uploadToCloudinary(coverB64, window.currentUser.uid);
+        }
+    } catch(e) { console.error("Cover upload failed", e); }
+    if(!finalCover) finalCover = cache.cover || '';
 
     // Collect gallery images (up to 4 slots)
     const galleryImages = [];
@@ -1633,13 +1645,14 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
 
     if(window.currentUser) {
         try {
-            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, gender, relationship, partner, bio, galleryImages });
+            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, cover: finalCover, gender, relationship, partner, bio, galleryImages });
             try { await updateProfile(window.currentUser, { displayName: finalName, photoURL: finalPic }); } catch (e) { }
             
             document.getElementById('profile-modal').classList.add('hidden');
             document.getElementById('nav-avatar').src = finalPic;
             fileInput.value = '';
-            document.getElementById('profile-pic-url').value = '';
+            const coverInputEl = document.getElementById('profile-cover-file');
+            if (coverInputEl) coverInputEl.value = '';
         } catch(error) {
             window.showAlert("Error saving profile. Please try again.");
         }
@@ -1776,6 +1789,9 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
     // login (and its IP is re-captured). Refresh keeps them, so a reload stays quiet.
     sessionStorage.removeItem('session_started');
     if (window._notifPruneTimer) { clearTimeout(window._notifPruneTimer); window._notifPruneTimer = null; }
+    // Close any open dialogs/views so a fresh login starts clean
+    const pm = document.getElementById('profile-modal'); if (pm) pm.classList.add('hidden');
+    if (window.activeProfileUid && window.closeProfile) window.closeProfile();
     await signOut(auth); 
     window.showAlert("Logged out successfully!");
 });
