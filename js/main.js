@@ -30,12 +30,15 @@ function startOwnPresence(user = auth.currentUser) {
     
     if (presenceInterval) clearInterval(presenceInterval);
     
+    // Heartbeat every 2 min (was 60s). Each heartbeat write triggers every other
+    // client's presence listeners; halving the rate halves that event flood while
+    // "online" still updates within 2 minutes — invisible to users.
     presenceInterval = setInterval(async () => {
         try {
             // Just write our own heartbeat — no get() download needed
             await set(sessionRef, serverTimestamp());
         } catch(e) {}
-    }, 60000);
+    }, 120000);
 
     ensurePresenceWatch(user);
 }
@@ -110,10 +113,10 @@ setInterval(() => {
 }, 5000);
 
 // Same-IP LB shield: keep the flagged-groups mirror fresh on every client even if
-// the admin just flagged a new group (small, public node — cheap periodic read).
+// the admin just flagged a new group (tiny ~1KB node — 10-min cadence keeps cost ~0).
 setInterval(() => {
     if (window.currentUser && window.refreshFlaggedGroups) window.refreshFlaggedGroups();
-}, 5 * 60 * 1000);
+}, 10 * 60 * 1000);
 
 // ==========================================
 // SEARCH & FILTERS
@@ -473,11 +476,19 @@ window._updateNavUserUI = () => {
     window.updateAdminButtons && window.updateAdminButtons();
 };
 
-// Granular Users Loading: 1 initial get() + granular child event updates
-// This prevents downloading the full ~100KB users database on every like/point update.
-get(ref(db, 'users')).then((snap) => {
-    window.globalUsersCache = snap.val() || {};
+// Granular Users Loading — download-saver refactor.
+// Instead of re-downloading the ENTIRE /users table on every page load (get + 3
+// whole-table child listeners each baseline-fetch the full tree), we now:
+//   1. Apply a shared localStorage cache (≤2 min old) instantly on load — no RTDB read.
+//   2. Fetch fresh /users only when the cache is stale/missing (one get).
+//   3. Keep a LIVE single-user listener for the signed-in user (avatar/role/points).
+//   4. Refresh on demand when the Members modal opens / a profile is viewed.
+// Whole-table child listeners are gone (they re-downloaded everything per event).
+let _lastUsersFreshCheck = 0;
+window.applyUsersData = (raw) => {
     const wasReady = window.usersReady;
+    window.globalUsersCache = raw || {};
+    window.writeUsersCache && window.writeUsersCache(window.globalUsersCache);
     window.usersReady = true;
     if (!wasReady && window._pendingPostRender) {
         window._pendingPostRender = false;
@@ -489,30 +500,66 @@ get(ref(db, 'users')).then((snap) => {
     if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
     window._updateNavUserUI();
     window.handleDeepLinks();
+};
 
-    // Granular updates: Only downloads the single modified user record (~200 bytes) on updates
-    const usersRef = ref(db, 'users');
-    onChildChanged(usersRef, (childSnap) => {
-        const uid = childSnap.key;
-        window.globalUsersCache[uid] = childSnap.val();
-        if (window.activeProfileUid === uid) window.renderProfileData(false);
-        if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
-        if (window.currentUser && window.currentUser.uid === uid) window._updateNavUserUI();
-    });
+window.ensureUsersFresh = async () => {
+    const now = Date.now();
+    if (now - _lastUsersFreshCheck < 30000) return;
+    _lastUsersFreshCheck = now;
+    const cached = window.usersCache ? window.usersCache.read() : null;
+    if (cached && window.usersCache.isFresh(cached)) return; // already fresh enough
+    try {
+        const snap = await get(ref(db, 'users'));
+        window.applyUsersData(snap.val() || {});
+    } catch (e) { /* keep last known */ }
+};
 
-    onChildAdded(usersRef, (childSnap) => {
-        const uid = childSnap.key;
-        if (!window.globalUsersCache[uid]) {
-            window.globalUsersCache[uid] = childSnap.val();
-            if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
-        }
-    });
+(async () => {
+    const cached = window.usersCache ? window.usersCache.read() : null;
+    const fresh = cached && window.usersCache.isFresh(cached);
+    if (fresh && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
+        window.applyUsersData(cached.users); // instant paint, zero downloads
+    } else {
+        const snap = await get(ref(db, 'users'));
+        window.applyUsersData(snap.val() || {});
+    }
+})();
 
-    onChildRemoved(usersRef, (childSnap) => {
-        delete window.globalUsersCache[childSnap.key];
-        if (!document.getElementById('members-modal').classList.contains('hidden')) window.renderMembers(false);
+// Live own-record listener: keeps the signed-in user's avatar/role/points/bio
+// current without watching (or re-downloading) other users' records.
+window._stopOwnUserListener && window._stopOwnUserListener();
+if (auth.currentUser) {
+    window._stopOwnUserListener = onValue(ref(db, `users/${auth.currentUser.uid}`), (snap) => {
+        const v = snap.val();
+        if (!v) return;
+        window.globalUsersCache[auth.currentUser.uid] = v;
+        if (window.writeUsersCache) window.writeUsersCache(window.globalUsersCache);
+        window._updateNavUserUI && window._updateNavUserUI();
+        if (window.activeProfileUid === auth.currentUser.uid && window.renderProfileData) window.renderProfileData(false);
     });
-});
+}
+
+// Wrap Members modal + profile opens with a cheap freshness prefetch so users
+// see current data there even if the shared cache is a couple minutes old.
+if (typeof window.renderMembers === 'function') {
+    const _rmBase = window.renderMembers;
+    window.renderMembers = (...a) => {
+        const p = window.ensureUsersFresh ? window.ensureUsersFresh() : Promise.resolve();
+        return p.finally(() => _rmBase(...a));
+    };
+}
+if (typeof window.openProfile === 'function') {
+    const _opBase = window.openProfile;
+    window.openProfile = (uid, ...rest) => {
+        const pre = uid ? get(ref(db, `users/${uid}`)).then((s) => {
+            if (s.exists()) {
+                window.globalUsersCache[uid] = s.val();
+                if (window.writeUsersCache) window.writeUsersCache(window.globalUsersCache);
+            }
+        }).catch(() => {}) : Promise.resolve();
+        return pre.finally(() => _opBase(uid, ...rest));
+    };
+}
 
 // Dedicated notifications listener — only for the logged-in user, limited to last 50.
 // Kept separate from /users so that notification changes don't re-download all user profiles.

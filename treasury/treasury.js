@@ -202,8 +202,17 @@ async function migrateLegacyIfNeeded() {
 // ── Treasurer delegation ──
 async function loadUsers() {
     try {
-        const s = await get(ref(db, 'users'));
-        state.users = s.val() || {};
+        // Shared cache-first loader: reuse the users snapshot already fetched by
+        // Posts/Chat within the last 2 min to avoid re-downloading the table.
+        const cached = window.usersCache ? window.usersCache.read() : null;
+        const fresh = cached && window.usersCache.isFresh(cached);
+        if (fresh && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
+            state.users = cached.users;
+        } else {
+            const s = await get(ref(db, 'users'));
+            state.users = s.val() || {};
+            if (window.writeUsersCache) window.writeUsersCache(state.users);
+        }
         renderSponsorChips();
         updateViewBanner();
     } catch (e) { /* non-fatal */ }

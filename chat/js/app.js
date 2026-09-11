@@ -321,6 +321,7 @@ function updateUnreadTitle() {
 }
 
 function renderConversations() {
+  syncPresenceListeners(); // keep online dots accurate for the current list + search matches
   const list = $('conversation-list');
   const term = $('conversation-search').value.trim().toLowerCase();
   const items = Object.entries(state.inbox).map(([id, item]) => ({ id, ...item })).filter((item) => {
@@ -990,6 +991,9 @@ async function markThreadRead(threadId = state.activeThreadId) {
 
 function markThreadSeen(threadId = state.activeThreadId) {
   if (!state.user || !threadId) return;
+  // global_announcements is a broadcast channel with no membership — the rules
+  // reject seen-receipt writes there (and per-user read receipts aren't meaningful).
+  if (threadId === 'global_announcements') return;
   set(ref(db, `chatReads/${state.user.uid}/${threadId}`), Date.now()).catch(() => {});
 }
 function watchSeen(threadId) {
@@ -2309,16 +2313,35 @@ function syncThreadSummaryWatchers() {
   });
   threadIds.forEach((threadId) => {
     if (state.stopThreadSummaries[threadId]) return;
-    state.stopThreadSummaries[threadId] = onValue(ref(db, `chatThreads/${threadId}`), (snapshot) => {
-      const thread = snapshot.val(); const current = state.inbox[threadId];
-      if (!thread || !current) return;
-      const next = { ...current, lastMessage: thread.lastMessage || '', lastTimestamp: thread.lastTimestamp || 0, lastSenderId: thread.lastSenderId || '', nicknames: thread.nicknames || {}, members: thread.members || {}, creatorId: thread.creatorId || current.creatorId || '', name: thread.name || current.name || '', pic: thread.pic || current.pic || '', lbRewardsEnabled: thread.lbRewardsEnabled === true };
-      if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '') && next.lbRewardsEnabled === current.lbRewardsEnabled) return;
-      state.inbox = { ...state.inbox, [threadId]: next };
-      if (state.activeThreadId === threadId) { state.activeInboxItem = next; updateChatHeader(); renderMessages(state.messages); }
-      saveInboxCache();
-      renderConversations();
-    }, (error) => reportRealtimeError('conversation summary', error));
+    // Watch only the specific children a conversation preview needs (each tiny) so
+    // a thread change re-delivers just the changed field, not the whole thread doc.
+    const stopFns = [];
+    const watch = (child, apply) => {
+      stopFns.push(onValue(ref(db, `chatThreads/${threadId}/${child}`), (snap) => {
+        const current = state.inbox[threadId];
+        if (!current) return;
+        // Only patch when the DB actually has a value — otherwise a missing child
+        // (e.g. the injected global_announcements placeholder, which has no thread
+        // doc) must NOT wipe the current/placeholder field back to empty.
+        if (!snap.exists()) return;
+        const next = { ...current, ...apply(snap.val()) };
+        if (next.lastMessage === current.lastMessage && next.lastTimestamp === current.lastTimestamp && next.lastSenderId === current.lastSenderId && JSON.stringify(next.nicknames) === JSON.stringify(current.nicknames || {}) && next.name === (current.name || '') && JSON.stringify(next.members) === JSON.stringify(current.members || '') && next.pic === (current.pic || '') && next.lbRewardsEnabled === current.lbRewardsEnabled) return;
+        state.inbox = { ...state.inbox, [threadId]: next };
+        if (state.activeThreadId === threadId) { state.activeInboxItem = next; updateChatHeader(); renderMessages(state.messages); }
+        saveInboxCache();
+        renderConversations();
+      }, (error) => reportRealtimeError('conversation summary', error)));
+    };
+    watch('lastMessage', (v) => ({ lastMessage: v || '' }));
+    watch('lastTimestamp', (v) => ({ lastTimestamp: v || 0 }));
+    watch('lastSenderId', (v) => ({ lastSenderId: v || '' }));
+    watch('nicknames', (v) => ({ nicknames: v || {} }));
+    watch('members', (v) => ({ members: v || {} }));
+    watch('creatorId', (v) => ({ creatorId: v || '' }));
+    watch('name', (v) => ({ name: v || '' }));
+    watch('pic', (v) => ({ pic: v || '' }));
+    watch('lbRewardsEnabled', (v) => ({ lbRewardsEnabled: v === true }));
+    state.stopThreadSummaries[threadId] = () => stopFns.forEach((s) => { try { s(); } catch (_) {} });
   });
 }
 
@@ -2373,6 +2396,7 @@ function handleInbox(snapshot) {
   state.inboxReady = true;
   if (firstLoad) loadAllStreaks(); 
   syncThreadSummaryWatchers(); 
+  syncPresenceListeners();
   renderConversations(); 
   updateUnreadTitle(); 
   markThreadRead();
@@ -2387,47 +2411,128 @@ function saveUsersCache() {
   }, 500);
 }
 
-get(ref(db, 'users')).then((snapshot) => {
-  const raw = snapshot.val() || {};
-  state.users = Object.fromEntries(Object.entries(raw).map(([uid, profile]) => [uid, { ...(profile || {}), uid }]));
-  saveUsersCache(); // persist full list for next page load
+// Users — shared-cache-first loader (bandwidth saver, same as Posts page).
+// Applies the shared localStorage snapshot instantly when fresh; otherwise does
+// ONE full-table get. A LIVE own-record listener keeps self-data current.
+function applyUsersMap(raw) {
+  state.users = Object.fromEntries(Object.entries(raw || {}).map(([uid, profile]) => [uid, { ...(profile || {}), uid }]));
+  saveUsersCache(); // chat's own boot cache
+  if (window.writeUsersCache) window.writeUsersCache(state.users);
   renderConversations();
   renderPeople();
   updateChatHeader();
+}
+(async () => {
+  const cached = window.usersCache ? window.usersCache.read() : null;
+  const fresh = cached && window.usersCache.isFresh(cached);
+  if (fresh && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
+    applyUsersMap(cached.users); // instant paint, zero downloads
+  } else {
+    const snapshot = await get(ref(db, 'users'));
+    applyUsersMap(snapshot.val() || {});
+  }
+  syncPresenceListeners();
+})().catch((error) => reportRealtimeError('member list', error));
 
-  const usersRef = ref(db, 'users');
-  onChildChanged(usersRef, (childSnap) => {
-    const uid = childSnap.key;
-    state.users[uid] = { ...(childSnap.val() || {}), uid };
-    saveUsersCache();
-    renderConversations();
-    renderPeople();
-    updateChatHeader();
+// ============================================================
+// PRESENCE — granular listeners (bandwidth saver).
+// Old: one whole-tree onValue(presence) re-downloaded EVERY user's presence on
+// ANY heartbeat — with N online users that was N full-tree downloads per minute
+// per open chat tab. Now:
+//   • Watch presence/{uid} only for the conversation partners we display.
+//   • While the People dialog is open, temporarily use a whole-tree listener.
+//   • All presence listening pauses when the tab is hidden.
+// ============================================================
+const _presenceHandles = {};      // uid -> unsubscribe
+let _presenceWhole = null;        // whole-tree listener while People dialog open
+let _syncingPresence = false;     // re-entrancy guard (see syncPresenceListeners)
+
+function presenceWatchedUids() {
+  const set = new Set();
+  Object.values(state.inbox).forEach((item) => {
+    const peers = getThreadPeers(item);
+    if (!item.isGroup && peers.length === 1) set.add(peers[0]);
   });
-  onChildAdded(usersRef, (childSnap) => {
-    const uid = childSnap.key;
-    if (!state.users[uid]) {
-      state.users[uid] = { ...(childSnap.val() || {}), uid };
-      saveUsersCache();
-      renderConversations();
-      renderPeople();
-    }
-  });
-  onChildRemoved(usersRef, (childSnap) => {
-    delete state.users[childSnap.key];
-    saveUsersCache();
-    renderConversations();
-    renderPeople();
-  });
-}).catch((error) => reportRealtimeError('member list', error));
-onValue(ref(db, 'presence'), (snapshot) => { state.online = snapshot.val() || {}; renderConversations(); renderPeople(); updateChatHeader(); }, (error) => reportRealtimeError('presence', error));
+  if (state.activePeerId) set.add(state.activePeerId);
+  // member-search results also show an online dot
+  const term = $('conversation-search')?.value.trim().toLowerCase() || '';
+  if (term && state.user) {
+    Object.values(state.users)
+      .filter((p) => p.uid && p.uid !== state.user.uid && !p.isBanned && `${p.name || ''}`.toLowerCase().includes(term))
+      .slice(0, 10)
+      .forEach((p) => set.add(p.uid));
+  }
+  return set;
+}
+
+function stopGranularPresence() {
+  Object.keys(_presenceHandles).forEach((uid) => { try { _presenceHandles[uid](); } catch (_) {} delete _presenceHandles[uid]; });
+}
+
+function syncPresenceListeners() {
+  // Re-entrancy guard: a presence listener's INITIAL event can fire synchronously
+  // inside onValue() itself. That callback re-renders -> renderConversations() ->
+  // syncPresenceListeners(). Without this guard (plus the reserved-slot pattern
+  // below) it subscribed repeatedly and overflowed the stack on tab switches.
+  if (_syncingPresence || _presenceWhole || document.hidden) return;
+  _syncingPresence = true;
+  try {
+    const want = presenceWatchedUids();
+    Object.keys(_presenceHandles).forEach((uid) => {
+      if (!want.has(uid)) { try { _presenceHandles[uid](); } catch (_) {} delete _presenceHandles[uid]; delete state.online[uid]; }
+    });
+    want.forEach((uid) => {
+      if (_presenceHandles[uid]) return;
+      // Reserve the slot BEFORE onValue() so a synchronously-delivered initial
+      // event can never re-enter and subscribe the same uid again.
+      _presenceHandles[uid] = () => {};
+      const stop = onValue(ref(db, `presence/${uid}`), (snap) => {
+        const v = snap.val();
+        const prev = state.online[uid];
+        const changed = JSON.stringify(v) !== JSON.stringify(prev);
+        state.online[uid] = v;
+        if (!changed) return; // unchanged (e.g. re-sync after tab focus) — skip re-render churn
+        renderConversations();
+        updateChatHeader();
+      }, (e) => reportRealtimeError('presence', e));
+      _presenceHandles[uid] = stop;
+    });
+  } finally {
+    _syncingPresence = false;
+  }
+}
+
+function startWholePresence() {
+  if (_presenceWhole) return;
+  stopGranularPresence();
+  _presenceWhole = onValue(ref(db, 'presence'), (snapshot) => {
+    state.online = snapshot.val() || {};
+    renderConversations(); renderPeople(); updateChatHeader();
+  }, (e) => reportRealtimeError('presence', e));
+}
+
+function stopWholePresence() {
+  if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; }
+  syncPresenceListeners();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopGranularPresence();
+    if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; }
+    if (state.stopTyping) { try { state.stopTyping(); } catch (_) {} state.stopTyping = null; }
+  } else {
+    if (state.activeThreadId) watchTyping(state.activeThreadId);
+    try { if ($('people-dialog').open) startWholePresence(); else syncPresenceListeners(); } catch (_) {}
+  }
+});
 onValue(ref(db, '.info/connected'), (snapshot) => { state.connected = snapshot.val() === true; if (state.connected) startOwnPresence(); });
 let checkedInvite = false;
 let checkedDmParam = false;
 let checkedThreadParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
-  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); state.inbox = {}; state.clears = {}; state.inboxReady = false;
+  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false;
   // Restore cached inbox immediately so the first render shows correct GC names & nicknames (no flicker)
   if (user) {
     try {
@@ -2478,6 +2583,16 @@ onAuthStateChanged(auth, async (user) => {
   }
   if (user) {
     startOwnPresence();
+    // Live own-record listener: keeps this account's avatar/name/points current
+    // without watching other users' records (bandwidth saver).
+    window._stopChatOwnUser = onValue(ref(db, `users/${user.uid}`), (snap) => {
+      const v = snap.val(); if (!v) return;
+      state.users[user.uid] = { ...v, uid: user.uid };
+      saveUsersCache();
+      renderConversations();
+      renderPeople();
+      updateChatHeader();
+    });
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
     // Mirror Hangout Posts notification badge on the back button (limited to latest 50)
@@ -2524,7 +2639,7 @@ onAuthStateChanged(auth, async (user) => {
   syncAuthUi(); updateUnreadTitle();
 });
 
-$('new-chat-button').addEventListener('click', () => state.user ? $('people-dialog').showModal() : showAuth()); $('empty-new-chat-button').addEventListener('click', () => state.user ? $('people-dialog').showModal() : showAuth()); $('show-auth-button').addEventListener('click', showAuth);
+$('new-chat-button').addEventListener('click', () => { if (state.user) { startWholePresence(); $('people-dialog').showModal(); } else showAuth(); }); $('empty-new-chat-button').addEventListener('click', () => { if (state.user) { startWholePresence(); $('people-dialog').showModal(); } else showAuth(); }); $('people-dialog').addEventListener('close', stopWholePresence); $('show-auth-button').addEventListener('click', showAuth);
 $('theme-toggle').addEventListener('click', () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'));
 $('conversation-search').addEventListener('input', renderConversations); $('people-search').addEventListener('input', renderPeople); $('message-form').addEventListener('submit', sendMessage);
 $('message-input').addEventListener('input', (event) => { 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#1e293b">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Hangout">
     <title>Hangout Posts — Latest RPW Website &amp; App</title>
@@ -30,7 +31,7 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <!-- Prefetch chat page resources for faster navigation -->
     <link rel="prefetch" href="chat/index.html">
-    <link rel="prefetch" href="chat/js/app.js?v=55">
+    <link rel="prefetch" href="chat/js/app.js?v=58">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: {} } }
@@ -886,10 +887,11 @@
 
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
+    <script src="js/users-cache.js"></script>
     <script type="module" src="js/renderers.js?v=46"></script>
     <script type="module" src="js/helpers.js?v=55"></script>
     <script type="module" src="js/games.js?v=48"></script>
-    <script type="module" src="js/main.js?v=38"></script>
+    <script type="module" src="js/main.js?v=39"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
