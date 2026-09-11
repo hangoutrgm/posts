@@ -1989,7 +1989,7 @@ window.endLastCommentGame = async (postId) => {
     
     try {
         const localPost = (window.allPosts || []).find(p => p.id === postId);
-        if (localPost && localPost.gameStatus !== 'active') return;
+        if (localPost && localPost.gameStatus === 'ended') return;
         
         // Phase 1 — ATOMIC lock: only ONE caller may move active → evaluating.
         // If the timer and the host's "End Game" button race, the loser just exits.
@@ -1997,14 +1997,22 @@ window.endLastCommentGame = async (postId) => {
             const tSnap = await transaction.get(postRef);
             if (!tSnap.exists()) return false;
             const p = tSnap.data();
-            if (p.gameStatus !== 'active') return false;
+            if (p.gameStatus === 'evaluating') {
+                // Recovery: another evaluator locked the game but never finished
+                // (e.g. its tab closed mid-check). After a 10s grace period any
+                // client may take over so the game can never stay stuck.
+                if (!(p.gameEndTime && Date.now() >= p.gameEndTime + 10000)) return false;
+            } else if (p.gameStatus !== 'active') {
+                return false;
+            }
             transaction.update(postRef, { gameStatus: 'evaluating', locked: true });
             return true;
         });
         if (!lockClaimed) return; // Already being evaluated / already ended by someone else
 
-        // Wait 1.5 seconds for any last-millisecond comments to settle
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Wait 5 seconds so all in-flight comments (writes + Firestore deploy to
+        // the comment section) have landed before reading the final winner.
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Single read to evaluate the final winner
         const snap = await getDoc(postRef);
@@ -2021,6 +2029,18 @@ window.endLastCommentGame = async (postId) => {
                     if (c.uid !== post.authorId) { // Owner cannot be the winner
                         lastCommentTime = c.timestamp;
                         lastCommenterId = c.uid;
+                    }
+                }
+                // Replies count as comments too — the true "last commenter" is
+                // often someone who REPLIED, so replies must be scanned as well
+                // (they were previously ignored, announcing the wrong winner).
+                if (c.replies) {
+                    for (const rKey in c.replies) {
+                        const r = c.replies[rKey];
+                        if (r.timestamp > lastCommentTime && !r.isDeleted && r.uid !== post.authorId) {
+                            lastCommentTime = r.timestamp;
+                            lastCommenterId = r.uid;
+                        }
                     }
                 }
             }
@@ -2091,11 +2111,19 @@ window.checkGameTimers = (postsData) => {
                 }
             }
         }
+        // Stuck-evaluating recovery: an evaluator locked a last_comment game but
+        // never finalized it (its tab closed mid-check). After a 10s grace
+        // period any client may take over and finish the evaluation.
+        if (p.isGame && p.gameType === 'last_comment' && p.gameStatus === 'evaluating' && p.gameEndTime && now >= p.gameEndTime + 10000) {
+            window.endLastCommentGame(key);
+        }
     }
 };
 
-// UI Timer updater
-setInterval(() => {
+// UI Timer updater — ticks every second, and is ALSO called right after every
+// feed render (renderPostList) so freshly re-rendered timers show the true
+// remaining time instantly instead of flashing "00:00" until the next tick.
+window.updateGameTimers = () => {
     const timers = document.querySelectorAll('.game-timer');
     const now = Date.now();
     timers.forEach(el => {
@@ -2111,7 +2139,8 @@ setInterval(() => {
             el.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
     });
-}, 1000);
+};
+setInterval(window.updateGameTimers, 1000);
 
 window.checkChallenge = async (postId) => {
     if (!window.currentUser) return;

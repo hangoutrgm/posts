@@ -381,6 +381,10 @@ window.renderPostList = (container, postsToRender, prefix, filterContext) => {
         }
     });
     
+    // Immediately sync any game timers that were just (re)rendered so they show
+    // the true remaining time instead of flashing "00:00" until the next tick.
+    if (window.updateGameTimers) window.updateGameTimers();
+
     return prevNode;
 };
 
@@ -1102,7 +1106,13 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     });
 
     let commentInputBox = '';
-    if (canComment) {
+    // Last Comment game: while the winner is being evaluated the comment box is
+    // replaced by a "checking" state for everyone (the game is already locked).
+    const isLcEvaluating = post.isGame && post.gameType === 'last_comment' && post.gameStatus === 'evaluating';
+    const isLcEnded = post.isGame && post.gameType === 'last_comment' && post.gameStatus === 'ended';
+    if (isLcEvaluating) {
+        commentInputBox = `<div class="mt-3 text-center text-[11px] text-purple-600 dark:text-purple-300 font-semibold bg-purple-50 dark:bg-slate-900/50 py-2 rounded-lg border border-purple-100 dark:border-purple-900/50"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Checking the last commenter…</div>`;
+    } else if (canComment) {
         commentInputBox = `
             <div class="flex mt-3 items-center space-x-1.5 bg-gray-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-gray-200 dark:border-slate-700">
                 <label class="cursor-pointer text-gray-400 hover:text-blue-500 transition p-1 shrink-0" title="Upload Image">
@@ -1116,6 +1126,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 <button id="comment-submit-btn-${prefix}-${post.id}" onclick="window.submitComment('${post.id}', '${post.authorId}', '${prefix}')" class="bg-blue-600 hover:bg-blue-500 text-white rounded px-3 py-1.5 text-xs font-bold shrink-0 shadow-sm transition">Send</button>
             </div>
         `;
+    } else if (isLcEnded) {
+        commentInputBox = `<div class="mt-3 text-center text-[11px] text-gray-500 font-semibold bg-gray-50 dark:bg-slate-900/50 py-2 rounded-lg border border-gray-100 dark:border-slate-800"><i class="fa-solid fa-flag-checkered text-gray-400 mr-1"></i> Game ended — comments closed</div>`;
     } else {
         commentInputBox = `<div class="mt-3 text-center text-[11px] text-gray-500 font-semibold bg-gray-50 dark:bg-slate-900/50 py-2 rounded-lg border border-gray-100 dark:border-slate-800"><i class="fa-solid fa-lock text-orange-500 mr-1"></i> Comments locked by author</div>`;
     }
@@ -1252,6 +1264,12 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${prizeStr}
                         ${timerHtml}
                         ${endGameBtn}
+                    </div>`;
+            } else if (post.gameStatus === 'evaluating') {
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-purple-50 dark:bg-slate-800 rounded-xl border-2 border-purple-200 dark:border-purple-900/50 flex flex-col items-center">
+                        ${prizeStr}
+                        <div class="inline-flex items-center gap-2 bg-purple-500/15 text-purple-800 dark:text-purple-300 border border-purple-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-spinner fa-spin"></i> <span>Checking the last commenter…</span></div>
                     </div>`;
             } else {
                 let outcomeHtml = '';
