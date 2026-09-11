@@ -110,14 +110,12 @@
             </div>
 
             <div id="create-post-box" class="hidden bg-white dark:bg-slate-800 rounded-xl p-3 mb-4 shadow-sm border border-gray-200 dark:border-slate-700">
-                <textarea id="post-text" class="w-full bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" rows="2" placeholder="Share something or @mention someone..."></textarea>
-                
-                <div class="flex items-center space-x-2 mt-2">
-                    <label class="cursor-pointer text-gray-500 hover:text-blue-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600">
+                <div class="flex items-center space-x-2">
+                    <label class="cursor-pointer text-gray-500 hover:text-blue-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600" title="Attach photo or video">
                         <i class="fa-solid fa-image text-lg"></i>
                         <input type="file" id="post-image-file" accept="image/*,video/*" multiple class="hidden">
                     </label>
-                    <input type="text" id="post-image-url" class="flex-1 bg-gray-50 dark:bg-slate-900 text-[11px] text-gray-700 dark:text-gray-300 rounded-lg p-2 focus:outline-none border border-gray-100 dark:border-slate-700 focus:border-blue-500" placeholder="Or paste image/video URL...">
+                    <textarea id="post-text" class="flex-1 min-w-0 bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" rows="2" placeholder="Share something or @mention someone..."></textarea>
                 </div>
                 <div id="file-name" class="text-[9px] text-blue-500 truncate mt-1 font-bold px-1"></div>
                 <div id="media-preview-container" class="hidden mt-2"></div>
@@ -910,7 +908,7 @@
     <script type="module" src="js/renderers.js?v=50"></script>
     <script type="module" src="js/helpers.js?v=55"></script>
     <script type="module" src="js/games.js?v=48"></script>
-    <script type="module" src="js/main.js?v=42"></script>
+    <script type="module" src="js/main.js?v=43"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

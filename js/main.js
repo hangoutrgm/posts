@@ -1065,9 +1065,7 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     const text = document.getElementById('post-text').value.trim();
     const fileInput = document.getElementById('post-image-file');
     const files = Array.from(fileInput.files || []).slice(0, 4);
-    let imgUrl = document.getElementById('post-image-url').value.trim();
-    
-    if (!text && !imgUrl && !files.length) return;
+    if (!text && !files.length) return;
     
     // Cooldown gate (settings.postCooldownSec)
     if (!(await window.checkActionCooldown('post'))) return;
@@ -1096,7 +1094,7 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     btn.disabled = true;
 
     try {
-        let finalImage = imgUrl; 
+        let finalImage = ''; 
         let collageImages = [];
         if (files.length === 1) {
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -1137,7 +1135,6 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         window.logActivity("posted a new update");
         
         document.getElementById('post-text').value = '';
-        document.getElementById('post-image-url').value = '';
         fileInput.value = '';
         const previewEl = document.getElementById('media-preview-container');
         if (previewEl) { previewEl.innerHTML = ''; previewEl.classList.add('hidden'); }
