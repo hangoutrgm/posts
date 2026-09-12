@@ -49,6 +49,9 @@ function money(n) {
 }
 // Round to 2 decimals for storage/display sums so float artifacts never leak into the UI
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// Small stat-card caption: "5 people · 12 rewards to send"
+const peopleCount = (people, rewards, suffix) =>
+    `${people} ${people === 1 ? 'person' : 'people'} · ${rewards} reward${rewards === 1 ? '' : 's'} ${suffix}`;
 // Privacy: show only the last 3 digits of a GCash number unless revealed
 function maskGcash(num) {
     const s = String(num || '').trim();
@@ -508,24 +511,25 @@ function renderRewards() {
     filtered = filtered.filter(r => matchesSearch(r.name, r.gcash, r.note, r.amount, STATUS_LABEL[r.status] || r.status));
 
     const isOwnerView = state.viewingUid === state.myUid;
-    let toSend = 0, onHold = 0, sent = 0, total = 0, sentRewards = 0;
-    const sentUsers = new Set();
+    let toSend = 0, onHold = 0, sent = 0, total = 0;
+    let toSendRewards = 0, onHoldRewards = 0, sentRewards = 0;
+    const toSendPeople = new Set(), onHoldPeople = new Set(), sentUsers = new Set();
     rows.forEach(id => {
         const r = state.rewards[id];
         const amt = Number(r.amount || 0);
+        const sn = String(r.name || '').trim();
         total += amt;
-        if (r.status === 'to_send') toSend += amt;
-        else if (r.status === 'on_hold') onHold += amt;
-        else if (r.status === 'sent') { sent += amt; sentRewards++; const sn = String(r.name || '').trim(); if (sn) sentUsers.add(sn); }
+        if (r.status === 'to_send') { toSend += amt; toSendRewards++; if (sn) toSendPeople.add(sn); }
+        else if (r.status === 'on_hold') { onHold += amt; onHoldRewards++; if (sn) onHoldPeople.add(sn); }
+        else if (r.status === 'sent') { sent += amt; sentRewards++; if (sn) sentUsers.add(sn); }
     });
     $('stat-to-send').textContent = money(toSend);
     $('stat-on-hold').textContent = money(onHold);
     $('stat-sent').textContent = money(sent);
     $('stat-total').textContent = money(total);
-    const spEl = $('stat-sent-people'); if (spEl) {
-        const peopleWord = sentUsers.size === 1 ? 'person' : 'people';
-        spEl.textContent = `${sentUsers.size} ${peopleWord} · ${sentRewards} reward${sentRewards === 1 ? '' : 's'} sent`;
-    }
+    const tsEl = $('stat-to-send-people'); if (tsEl) tsEl.textContent = peopleCount(toSendPeople.size, toSendRewards, 'to send');
+    const ohEl = $('stat-on-hold-people'); if (ohEl) ohEl.textContent = peopleCount(onHoldPeople.size, onHoldRewards, 'on hold');
+    const spEl = $('stat-sent-people'); if (spEl) spEl.textContent = peopleCount(sentUsers.size, sentRewards, 'sent');
 
     $('rewards-empty').classList.toggle('hidden', filtered.length > 0);
     let html = '';
