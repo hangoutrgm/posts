@@ -47,6 +47,8 @@ const STATUS_BADGE = {
 function money(n) {
     return '₱' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Round to 2 decimals for storage/display sums so float artifacts never leak into the UI
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // Privacy: show only the last 3 digits of a GCash number unless revealed
 function maskGcash(num) {
     const s = String(num || '').trim();
@@ -327,6 +329,15 @@ function initTreasury() {
     $('modal-close').addEventListener('click', closeModal);
     $('modal-cancel').addEventListener('click', closeModal);
     $('modal-form').addEventListener('submit', (e) => e.preventDefault());
+
+    // Money inputs: keep at most 2 decimal places as the admin types.
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        if (el && el.tagName === 'INPUT' && el.type === 'number' && el.step === '0.01' && el.value !== '') {
+            const cleaned = el.value.replace(/(\.\d{2})\d+$/, '$1');
+            if (cleaned !== el.value) el.value = cleaned;
+        }
+    });
 }
 
 function switchTab(name) {
@@ -354,7 +365,7 @@ function closeModal() {
 }
 const field = (label, id, type = 'text', placeholder = '', value = '') =>
     `<div><label class="f-label">${label}</label>` +
-    `<input id="${id}" type="${type}" value="${escapeHtml(value)}" placeholder="${placeholder}" class="f-input"></div>`;
+    `<input id="${id}" type="${type}"${type === 'number' ? ' step="0.01" min="0"' : ''} value="${escapeHtml(value)}" placeholder="${placeholder}" class="f-input"></div>`;
 const textarea = (label, id, placeholder = '', value = '') =>
     `<div><label class="f-label">${label}</label>` +
     `<textarea id="${id}" rows="2" placeholder="${placeholder}" class="f-input">${escapeHtml(value)}</textarea></div>`;
@@ -457,7 +468,7 @@ function openRewardForm(id = null) {
         rec ? 'Save Changes' : 'Add Reward', async () => {
             const name = $('rw-name').value.trim();
             const gcash = $('rw-gcash').value.trim();
-            const amount = parseFloat($('rw-amount').value);
+            const amount = round2(parseFloat($('rw-amount').value));
             const status = $('rw-status').value;
             if (!name || isNaN(amount) || amount <= 0) return toast('Enter a name and valid amount.');
             try {
@@ -496,19 +507,25 @@ function renderRewards() {
     if (state.rewardFilter !== 'all') filtered = filtered.filter(r => r.status === state.rewardFilter);
     filtered = filtered.filter(r => matchesSearch(r.name, r.gcash, r.note, r.amount, STATUS_LABEL[r.status] || r.status));
 
-    let toSend = 0, onHold = 0, sent = 0, total = 0;
+    const isOwnerView = state.viewingUid === state.myUid;
+    let toSend = 0, onHold = 0, sent = 0, total = 0, sentRewards = 0;
+    const sentUsers = new Set();
     rows.forEach(id => {
         const r = state.rewards[id];
         const amt = Number(r.amount || 0);
         total += amt;
         if (r.status === 'to_send') toSend += amt;
         else if (r.status === 'on_hold') onHold += amt;
-        else if (r.status === 'sent') sent += amt;
+        else if (r.status === 'sent') { sent += amt; sentRewards++; const sn = String(r.name || '').trim(); if (sn) sentUsers.add(sn); }
     });
-    $('stat-to-send').textContent = toSend;
-    $('stat-on-hold').textContent = onHold;
-    $('stat-sent').textContent = sent;
+    $('stat-to-send').textContent = money(toSend);
+    $('stat-on-hold').textContent = money(onHold);
+    $('stat-sent').textContent = money(sent);
     $('stat-total').textContent = money(total);
+    const spEl = $('stat-sent-people'); if (spEl) {
+        const peopleWord = sentUsers.size === 1 ? 'person' : 'people';
+        spEl.textContent = `${sentUsers.size} ${peopleWord} · ${sentRewards} reward${sentRewards === 1 ? '' : 's'} sent`;
+    }
 
     $('rewards-empty').classList.toggle('hidden', filtered.length > 0);
     let html = '';
@@ -520,10 +537,12 @@ function renderRewards() {
             <td><span class="badge ${STATUS_BADGE[r.status] || STATUS_BADGE.pending}"><span class="badge-dot"></span>${STATUS_LABEL[r.status] || r.status}</span></td>
             <td class="hidden md:table-cell text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">${fmtDate(r.createdAt)}</td>
             <td class="text-right"><div class="flex items-center justify-end gap-1.5">
-                <button onclick="window.editReward('${r.id}')" title="Edit" class="act-btn act-edit"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                ${r.status !== 'sent' ? `<button onclick="window.setRewardStatus('${r.id}','sent')" title="Mark as Sent" class="act-btn act-ok"><i class="fa-solid fa-check text-[10px]"></i></button>` : ''}
-                <button onclick="window.setRewardStatus('${r.id}','on_hold')" title="On Hold" class="act-btn act-hold"><i class="fa-solid fa-pause text-[10px]"></i></button>
-                <button onclick="window.deleteReward('${r.id}')" title="Delete" class="act-btn act-del"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                ${(r.status === 'sent' && !isOwnerView)
+                    ? `<span class="text-[10px] font-bold text-emerald-500/70" title="Only the owner can change sent items"><i class="fa-solid fa-lock"></i></span>`
+                    : `<button onclick="window.editReward('${r.id}')" title="Edit" class="act-btn act-edit"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                       ${r.status !== 'sent' ? `<button onclick="window.setRewardStatus('${r.id}','sent')" title="Mark as Sent" class="act-btn act-ok"><i class="fa-solid fa-check text-[10px]"></i></button>` : ''}
+                       <button onclick="window.setRewardStatus('${r.id}','on_hold')" title="On Hold" class="act-btn act-hold"><i class="fa-solid fa-pause text-[10px]"></i></button>
+                       <button onclick="window.deleteReward('${r.id}')" title="Delete" class="act-btn act-del"><i class="fa-solid fa-trash-can text-[10px]"></i></button>`}
             </div></td>
         </tr>`;
     });
@@ -562,7 +581,7 @@ function openKeepForm(type, id = null) {
         textarea('Remarks', 'kp-remarks', 'e.g. entrusted for monthly savings', rec?.remarks || ''),
         rec ? 'Save Changes' : (isDeposit ? 'Add Deposit' : 'Add Withdraw'), async () => {
             const name = $('kp-name').value.trim();
-            const amount = parseFloat($('kp-amount').value);
+            const amount = round2(parseFloat($('kp-amount').value));
             if (!name || isNaN(amount) || amount <= 0) return toast('Enter a name and valid amount.');
             try {
                 if (rec) {
@@ -632,8 +651,8 @@ function openLoanForm(id = null) {
         field('Date', 'ln-date', 'date', '', rec?.date || today()),
         rec ? 'Save Changes' : 'Add Loan', async () => {
             const name = $('ln-name').value.trim();
-            const principal = parseFloat($('ln-principal').value);
-            const interest = parseFloat($('ln-interest').value) || 0;
+            const principal = round2(parseFloat($('ln-principal').value));
+            const interest = round2(parseFloat($('ln-interest').value) || 0);
             if (!name || isNaN(principal) || principal <= 0) return toast('Enter a name and valid lent amount.');
             try {
                 if (rec) {
@@ -666,9 +685,9 @@ window.openLoanRefundForm = (id) => {
         field('Date', 'ln-pay-date', 'date', '', today()) +
         textarea('Remarks', 'ln-pay-remarks', 'optional note', r.paidNote || ''),
         'Save Refund', async () => {
-            const amt = parseFloat($('ln-pay-amount').value);
+            const amt = round2(parseFloat($('ln-pay-amount').value));
             if (isNaN(amt) || amt <= 0) return toast('Enter a valid amount.');
-            const newPaid = Math.max(0, Number(r.paid || 0) - amt);
+            const newPaid = round2(Math.max(0, Number(r.paid || 0) - amt));
             const status = (loanBalance({ ...r, paid: newPaid }) <= 0.009) ? 'repaid' : 'active';
             await update(ref(db, tPath(`lend/${id}`)), { paid: newPaid, status, paidDate: $('ln-pay-date').value || today(), paidNote: $('ln-pay-remarks').value.trim() || '' });
             closeModal(); toast('Refund recorded — loan reopened.');
@@ -738,9 +757,9 @@ window.openLoanPayForm = (id) => {
         field('Date', 'ln-pay-date', 'date', '', today()) +
         textarea('Remarks', 'ln-pay-remarks', 'optional note', r.paidNote || ''),
         'Save Payment', async () => {
-            const amt = parseFloat($('ln-pay-amount').value);
+            const amt = round2(parseFloat($('ln-pay-amount').value));
             if (isNaN(amt) || amt <= 0) return toast('Enter a valid amount.');
-            const newPaid = Math.min(collect, (Number(r.paid || 0) + amt));
+            const newPaid = round2(Math.min(collect, (Number(r.paid || 0) + amt)));
             const status = (collect - newPaid) <= 0.009 ? 'repaid' : 'active';
             await update(ref(db, tPath(`lend/${id}`)), { paid: newPaid, status, paidDate: $('ln-pay-date').value || today(), paidNote: $('ln-pay-remarks').value.trim() || '' });
             closeModal(); toast(status === 'repaid' ? 'Loan fully paid — marked as paid.' : 'Payment recorded.');
@@ -759,7 +778,7 @@ function openBuySellForm(type, id = null) {
         textarea('Remarks', 'bs-remarks', 'optional note', rec?.remarks || ''),
         rec ? 'Save Changes' : (isBuy ? 'Add Purchase' : 'Add Sale'), async () => {
             const name = $('bs-name').value.trim();
-            const amount = parseFloat($('bs-amount').value);
+            const amount = round2(parseFloat($('bs-amount').value));
             if (!name || isNaN(amount) || amount <= 0) return toast('Enter a name and valid amount.');
             try {
                 if (rec) {
@@ -794,7 +813,7 @@ function openSavingsForm(id = null) {
         textarea('Remarks', 'sv-remarks', 'optional note', rec?.remarks || ''),
         rec ? 'Save Changes' : 'Add Savings', async () => {
             const name = $('sv-name').value.trim();
-            const amount = parseFloat($('sv-amount').value);
+            const amount = round2(parseFloat($('sv-amount').value));
             if (!name || isNaN(amount) || amount <= 0) return toast('Enter a name and valid amount.');
             try {
                 if (rec) {
@@ -832,7 +851,7 @@ function openSavingsExpenseForm(id = null) {
         textarea('Remarks', 'sx-remarks', 'optional note', rec?.remarks || ''),
         rec ? 'Save Changes' : 'Add Expense', async () => {
             const name = $('sx-name').value.trim();
-            const amount = parseFloat($('sx-amount').value);
+            const amount = round2(parseFloat($('sx-amount').value));
             if (!name || isNaN(amount) || amount <= 0) return toast('Enter a name and valid amount.');
             try {
                 if (rec) {
