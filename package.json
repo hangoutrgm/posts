@@ -1,0 +1,25 @@
+{
+  "name": "posts_dev",
+  "version": "1.0.0",
+  "description": "",
+  "main": "sw.js",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/tailwind.css -o ./css/tailwind.min.css --minify",
+    "watch:css": "tailwindcss -i ./src/tailwind.css -o ./css/tailwind.min.css --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quevenrecorte/posts_dev.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/quevenrecorte/posts_dev/issues"
+  },
+  "homepage": "https://github.com/quevenrecorte/posts_dev#readme",
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}
