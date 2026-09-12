@@ -959,10 +959,45 @@ window.toggleLock = (postId, currentStatus) => {
     }
 };
 
+// Targeted post-action repaint: after a follow/mod/ban action, repaint any
+// visible surface (Members modal, open profile) using the local cache so the
+// button change is visible instantly — no page refresh or full-table reload.
+window.repaintUsersUI = (uids = []) => {
+    const affected = new Set(uids.filter(Boolean));
+    const modalOpen = document.getElementById('members-modal') && !document.getElementById('members-modal').classList.contains('hidden');
+    if (modalOpen && typeof window.renderMembers === 'function') window.renderMembers(false);
+    if (typeof window.renderProfileData === 'function' && window.activeProfileUid &&
+        (affected.has(window.activeProfileUid) || affected.has(window.currentUser?.uid))) {
+        window.renderProfileData(false);
+    }
+    if (affected.has(window.currentUser?.uid) && window._updateNavUserUI) window._updateNavUserUI();
+};
+
+// Target fetch: pull just the affected user record(s) from the DB, patch the
+// shared cache, and repaint — gives fast, accurate feedback after the write.
+window.refreshUsersUI = async (...uids) => {
+    const unique = [...new Set(uids.filter(Boolean))];
+    if (!unique.length) return;
+    try {
+        await Promise.all(unique.map(async (uid) => {
+            const snap = await get(ref(db, `users/${uid}`));
+            if (snap.exists()) window.globalUsersCache[uid] = snap.val();
+        }));
+        if (window.writeUsersCache) window.writeUsersCache(window.globalUsersCache);
+    } catch (e) { /* keep last known */ }
+    window.repaintUsersUI && window.repaintUsersUI(unique);
+};
+
 window.toggleMod = (targetUid) => {
     if(!window.currentUser || window.getRole(window.currentUser.uid).level !== 3) return window.showAlert("Only Admins can do this.");
     const isCurrentlyMod = window.globalUsersCache[targetUid]?.isMod === true;
     update(ref(db, `users/${targetUid}`), { isMod: !isCurrentlyMod });
+    // Instant feedback: flip the local record + repaint, then verify from the DB.
+    if (window.globalUsersCache[targetUid]) {
+        window.globalUsersCache[targetUid].isMod = !isCurrentlyMod;
+        window.repaintUsersUI && window.repaintUsersUI([targetUid]);
+    }
+    window.refreshUsersUI && window.refreshUsersUI(targetUid);
 };
 
 window.toggleBan = (targetUid) => {
@@ -970,6 +1005,12 @@ window.toggleBan = (targetUid) => {
     const isBanned = window.globalUsersCache[targetUid]?.isBanned === true;
     window.showConfirm(isBanned ? "Unban this user? They will be able to post and interact again." : "Ban this user? They will be locked out from posting, commenting, and reacting.", () => {
         update(ref(db, `users/${targetUid}`), { isBanned: !isBanned });
+        // Instant feedback: flip the local record + repaint, then verify from the DB.
+        if (window.globalUsersCache[targetUid]) {
+            window.globalUsersCache[targetUid].isBanned = !isBanned;
+            window.repaintUsersUI && window.repaintUsersUI([targetUid]);
+        }
+        window.refreshUsersUI && window.refreshUsersUI(targetUid);
     });
 };
 
@@ -983,6 +1024,14 @@ window.toggleFollow = (targetUid) => {
         remove(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`));
         remove(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`));
         update(ref(db, `users/${targetUid}`), { points: increment(-starsPerFollow) });
+        // Instant feedback: patch local copy before the server round-trips back.
+        const me = window.globalUsersCache[window.currentUser.uid];
+        if (me && me.following) delete me.following[targetUid];
+        const tgt = window.globalUsersCache[targetUid];
+        if (tgt) {
+            if (tgt.followers) delete tgt.followers[window.currentUser.uid];
+            tgt.points = Math.max(0, (Number(tgt.points) || 0) - starsPerFollow);
+        }
     } else {
         set(ref(db, `users/${window.currentUser.uid}/following/${targetUid}`), true);
         set(ref(db, `users/${targetUid}/followers/${window.currentUser.uid}`), true);
@@ -993,7 +1042,15 @@ window.toggleFollow = (targetUid) => {
                 type: 'follow', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false 
             });
         }
+        // Instant feedback: patch local copy before the server round-trips back.
+        const me = window.globalUsersCache[window.currentUser.uid];
+        if (me) { me.following = me.following || {}; me.following[targetUid] = true; }
+        const tgt = window.globalUsersCache[targetUid];
+        if (tgt) { tgt.followers = tgt.followers || {}; tgt.followers[window.currentUser.uid] = true; tgt.points = (Number(tgt.points) || 0) + starsPerFollow; }
     }
+    // Repaint now (instant), then reconcile from the DB (accurate).
+    window.repaintUsersUI && window.repaintUsersUI([window.currentUser.uid, targetUid]);
+    window.refreshUsersUI && window.refreshUsersUI(window.currentUser.uid, targetUid);
 };
 
 window.markNotifRead = (notifId) => {
