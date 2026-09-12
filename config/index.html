@@ -368,6 +368,41 @@
                     </div>
                 </div>
 
+                <!-- Migrate User Points (Stars & LB) -->
+                <div class="bg-white dark:bg-slate-800/90 border border-violet-200 dark:border-violet-900/50 p-4 rounded-xl shadow-sm flex flex-col relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-5 dark:opacity-10 text-violet-500 pointer-events-none">
+                        <i class="fa-solid fa-arrows-turn-right text-7xl"></i>
+                    </div>
+                    <div class="flex items-center mb-1 relative z-10">
+                        <div class="w-7 h-7 rounded-md bg-violet-500/10 text-violet-500 dark:text-violet-400 flex items-center justify-center mr-2">
+                            <i class="fa-solid fa-arrow-right-arrow-left text-sm"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-white">Migrate User Points</h3>
+                    </div>
+                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mb-3 relative z-10">Move a user's Stars <span class="text-amber-500">★</span> and Leaderboard <span class="text-blue-500">🏆</span> points into another account. Points are <strong class="text-slate-700 dark:text-slate-200">added</strong> to the receiving account (never replaced) — the source account is left as-is. Search by name, or paste a UID to select exactly.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">From (Source User)</label>
+                            <input type="text" id="migrate-from-user" list="migrate-users-datalist" autocomplete="off" placeholder="Search name or paste UID..." class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-violet-500 dark:focus:border-violet-500 focus:ring-1 focus:ring-violet-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">To (Target User)</label>
+                            <input type="text" id="migrate-to-user" list="migrate-users-datalist" autocomplete="off" placeholder="Search name or paste UID..." class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-violet-500 dark:focus:border-violet-500 focus:ring-1 focus:ring-violet-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                        </div>
+                    </div>
+                    <datalist id="migrate-users-datalist"></datalist>
+
+                    <div id="migrate-preview" class="mt-3 relative z-10"></div>
+
+                    <div class="flex items-center gap-2 mt-3 relative z-10">
+                        <button id="btn-migrate-points" disabled class="bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2 px-4 rounded-lg transition shadow-md shadow-violet-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm">
+                            <i class="fa-solid fa-arrow-right-arrow-left mr-2"></i> Migrate Points
+                        </button>
+                        <span id="migrate-status" class="text-[10px] text-slate-400 dark:text-slate-500"></span>
+                    </div>
+                </div>
+
                 <!-- Danger Zone -->
                 <div class="bg-white dark:bg-slate-800/90 border border-rose-200 dark:border-rose-900/50 p-4 rounded-xl shadow-sm flex flex-col relative overflow-hidden">
                     <div class="absolute -right-4 -bottom-4 opacity-5 dark:opacity-10 text-rose-500 pointer-events-none">
@@ -447,6 +482,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=24"></script>
+    <script type="module" src="admin.js?v=25"></script>
 </body>
 </html>

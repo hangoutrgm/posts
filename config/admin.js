@@ -1,7 +1,7 @@
 // admin.js
 import { app, auth, db, fsdb, fsdb2 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, onValue, set, update, push, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, onValue, set, update, push, get, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import "../js/globals.js?v=2";
 import "../js/helpers.js";
@@ -132,6 +132,7 @@ function initAdminDashboard() {
             document.getElementById('metric-users').innerText = Object.keys(globalUsers).length;
             renderUsersList();
             renderActivityList();
+            populateMigrateDatalist();
         }
         renderMultiAccounts();
     });
@@ -570,6 +571,64 @@ function initAdminDashboard() {
         }
     });
 
+    // ★ Migrate User Points (Stars ★ & LB 🏆 from one account into another)
+    // Only ADDITIVE — the receiving user's points are incremented, never replaced.
+    const migrateFromInput = document.getElementById('migrate-from-user');
+    const migrateToInput = document.getElementById('migrate-to-user');
+    const migrateBtn = document.getElementById('btn-migrate-points');
+
+    migrateFromInput.addEventListener('input', refreshMigratePreview);
+    migrateToInput.addEventListener('input', refreshMigratePreview);
+
+    migrateBtn.addEventListener('click', async () => {
+        if (!migrateFromUser || !migrateToUser || migrateFromUser.ambiguous || migrateToUser.ambiguous || migrateFromUser.uid === migrateToUser.uid) return;
+        const pts = Number(migrateFromUser.points) || 0;
+        const lb = Number(migrateFromUser.lbPoints) || 0;
+        if (pts <= 0 && lb <= 0) return;
+
+        const toPts = (Number(migrateToUser.points) || 0) + pts;
+        const toLb = (Number(migrateToUser.lbPoints) || 0) + lb;
+        if (!confirm(
+            `Add ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from "${migrateFromUser.name}" to "${migrateToUser.name}"?\n\n` +
+            `"${migrateToUser.name}" will have ${fmtNum(toPts)} ★ and ${fmtNum(toLb)} 🏆 after this. ` +
+            `The source account is left as-is.`
+        )) return;
+
+        const original = migrateBtn.innerHTML;
+        migrateBtn.disabled = true;
+        migrateBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Migrating...';
+        const statusEl = document.getElementById('migrate-status');
+        if (statusEl) statusEl.textContent = '';
+
+        try {
+            const updates = {};
+            if (pts > 0) updates[`users/${migrateToUser.uid}/points`] = increment(pts);
+            if (lb > 0) updates[`users/${migrateToUser.uid}/lbPoints`] = increment(lb);
+            await update(ref(db), updates);
+
+            // Log activity (admin names + amounts resolve nicely in the Activity Log)
+            await push(ref(db, 'activity_log'), {
+                user: 'Admin',
+                userId: ADMIN_UID,
+                action: `migrated ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from ${migrateFromUser.name} to ${migrateToUser.name}`,
+                timestamp: Date.now()
+            });
+
+            alert(`Done! Added ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from ${migrateFromUser.name} to ${migrateToUser.name}.`);
+            migrateFromInput.value = '';
+            migrateToInput.value = '';
+            refreshMigratePreview();
+        } catch (err) {
+            console.error(err);
+            alert('Error migrating points: ' + err.message);
+        } finally {
+            migrateBtn.disabled = false;
+            migrateBtn.innerHTML = original;
+        }
+    });
+
+    refreshMigratePreview();
+
     // 6. Handle Search
     document.getElementById('admin-user-search').addEventListener('input', renderUsersList);
 
@@ -963,3 +1022,102 @@ function toggleInactive(uid) {
         .catch(err => alert('Error updating status: ' + err.message));
 }
 window.toggleInactive = toggleInactive;
+
+// ============================================================
+// MIGRATE USER POINTS — Stars ★ & Leaderboard 🏆 from one
+// account into another. ADDITIVE ONLY: the receiving user's
+// `points` and `lbPoints` are incremented, never replaced.
+// The source account is left untouched (admin judgement call
+// before/after) and the action is logged to /activity_log.
+// ============================================================
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+const fmtNum = (n) => (Number(n) || 0).toLocaleString();
+
+// Selected users for the migration card (resolved from the search inputs).
+let migrateFromUser = null;
+let migrateToUser = null;
+
+// Resolve what the admin typed into a user record: a pasted full UID wins,
+// otherwise the exact display name (datalist picks resolve cleanly).
+function resolveMigrateUser(raw) {
+    raw = (raw || '').trim();
+    if (!raw) return null;
+    if (globalUsers[raw]) return { uid: raw, ...globalUsers[raw] };
+    const hits = Object.entries(globalUsers).filter(([, u]) => (u.name || '') === raw);
+    if (hits.length === 1) return { uid: hits[0][0], ...hits[0][1] };
+    if (hits.length > 1) return { ambiguous: true, count: hits.length };
+    return null;
+}
+
+// Fill the shared <datalist> behind both search inputs (sorted by stars desc).
+function populateMigrateDatalist() {
+    const dl = document.getElementById('migrate-users-datalist');
+    if (!dl) return;
+    const users = Object.entries(globalUsers)
+        .filter(([, u]) => u && (u.name || '').trim())
+        .sort((a, b) => (b[1].points || 0) - (a[1].points || 0));
+    dl.innerHTML = users.map(([, u]) => `<option value="${escHtml(u.name)}"></option>`).join('');
+    refreshMigratePreview();
+}
+
+// Re-render the before/after preview + enable/disable the Migrate button.
+function refreshMigratePreview() {
+    const fromInput = document.getElementById('migrate-from-user');
+    const toInput = document.getElementById('migrate-to-user');
+    const preview = document.getElementById('migrate-preview');
+    const btn = document.getElementById('btn-migrate-points');
+    const status = document.getElementById('migrate-status');
+    if (!fromInput || !toInput || !preview || !btn) return;
+
+    migrateFromUser = fromInput.value.trim() ? resolveMigrateUser(fromInput.value) : null;
+    migrateToUser = toInput.value.trim() ? resolveMigrateUser(toInput.value) : null;
+    btn.disabled = true;
+
+    const warn = (text) => {
+        preview.innerHTML = `<div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-[11px] font-semibold text-amber-700 dark:text-amber-400"><i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i><span>${escHtml(text)}</span></div>`;
+        if (status) status.textContent = '';
+    };
+
+    if (!fromInput.value.trim() && !toInput.value.trim()) {
+        preview.innerHTML = `<p class="text-[11px] text-slate-400 dark:text-slate-500 px-1">Pick the source and target users above to preview the transfer.</p>`;
+        if (status) status.textContent = '';
+        return;
+    }
+    if (migrateFromUser && migrateFromUser.ambiguous) return warn(`Multiple users are named "${fromInput.value.trim()}" — type a more specific name or paste the UID.`);
+    if (migrateToUser && migrateToUser.ambiguous) return warn(`Multiple users are named "${toInput.value.trim()}" — type a more specific name or paste the UID.`);
+    if (fromInput.value.trim() && !migrateFromUser) return warn(`Source user "${fromInput.value.trim()}" was not found.`);
+    if (toInput.value.trim() && !migrateToUser) return warn(`Target user "${toInput.value.trim()}" was not found.`);
+    if (!migrateFromUser || !migrateToUser) return;
+
+    if (migrateFromUser.uid === migrateToUser.uid) return warn('Source and target are the same user.');
+
+    const pts = Number(migrateFromUser.points) || 0;
+    const lb = Number(migrateFromUser.lbPoints) || 0;
+    const toPts = Number(migrateToUser.points) || 0;
+    const toLb = Number(migrateToUser.lbPoints) || 0;
+    if (pts <= 0 && lb <= 0) return warn(`${migrateFromUser.name} has no Stars or LB points to migrate.`);
+
+    const row = (tag, name, shortUid, ptsChip, lbChip) => `
+        <div class="flex items-center justify-between gap-2 text-[11px]">
+            <span class="w-10 shrink-0 font-bold uppercase tracking-wider text-[9px] text-slate-500 dark:text-slate-400">${tag}</span>
+            <span class="flex-1 min-w-0 font-bold text-slate-800 dark:text-slate-100 truncate">${escHtml(name)} <span class="text-[9px] font-mono text-slate-400">${escHtml(shortUid)}…</span></span>
+            ${ptsChip}
+            ${lbChip}
+        </div>`;
+
+    const chip = (value, cls) => `<span class="shrink-0 text-[10px] font-semibold ${cls}">${value}</span>`;
+
+    preview.innerHTML = `
+        <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3 space-y-1.5">
+            ${row('From', migrateFromUser.name, migrateFromUser.uid.substring(0, 6), chip(`★ ${fmtNum(pts)}`, 'text-amber-500'), chip(`🏆 ${fmtNum(lb)}`, 'text-blue-500'))}
+            ${row('To', migrateToUser.name, migrateToUser.uid.substring(0, 6), chip(`★ ${fmtNum(toPts)}`, 'text-amber-500'), chip(`🏆 ${fmtNum(toLb)}`, 'text-blue-500'))}
+            <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[11px]">
+                <span class="w-10 shrink-0 font-bold uppercase tracking-wider text-[9px] text-emerald-600 dark:text-emerald-400">After</span>
+                <span class="flex-1 min-w-0 font-bold text-slate-800 dark:text-slate-100 truncate">${escHtml(migrateToUser.name)}</span>
+                <span class="shrink-0 text-[10px] font-bold text-amber-500">★ ${fmtNum(toPts + pts)}</span>
+                <span class="shrink-0 text-[10px] font-bold text-blue-500">🏆 ${fmtNum(toLb + lb)}</span>
+            </div>
+        </div>`;
+    if (status) status.textContent = `${fmtNum(pts)} ★ + ${fmtNum(lb)} 🏆 will be added to ${migrateToUser.name}. Source stays as-is.`;
+    btn.disabled = false;
+}
