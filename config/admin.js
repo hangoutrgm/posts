@@ -295,6 +295,7 @@ function initAdminDashboard() {
             chatVoiceLimit: parseInt(document.getElementById('set-chatVoiceLimit').value) || 10,
             chatVideoSizeLimitMB: parseInt(document.getElementById('set-chatVideoSizeLimitMB').value) || 20,
             hideHostGameAnswers: currentHostAnswersState === true,
+            zeroLbForFlaggedPair: currentZeroLbState === true,
             gameLbRewards: collectGameLbRewards(),
             gameLimits: collectGameLimits(),
         };
