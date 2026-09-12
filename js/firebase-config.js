@@ -25,6 +25,16 @@ const firebaseConfig2 = {
     appId: "1:26550011259:web:47b2c083e8f8298c8629de"
 };
 
+// Tertiary Firebase Project (rpw3-67a05) - for splitting community posts load
+const firebaseConfig3 = {
+    apiKey: "AIzaSyC1LxLyC1_s9hOqAMiTHyjuecg_Psw0C6c",
+    authDomain: "rpw3-67a05.firebaseapp.com",
+    projectId: "rpw3-67a05",
+    storageBucket: "rpw3-67a05.firebasestorage.app",
+    messagingSenderId: "594743398766",
+    appId: "1:594743398766:web:2105dcf7493dc1eb33f17f"
+};
+
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getDatabase(app);
@@ -44,21 +54,41 @@ export const fsdb2 = initializeFirestore(app2, {
     })
 });
 
-// Map to track which Firestore database holds a specific post (1 or 2)
+// Tertiary Firebase App and Firestore instance (fsdb3)
+export const app3 = initializeApp(firebaseConfig3, "rpw3-67a05");
+export const fsdb3 = initializeFirestore(app3, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
+});
+
+// Map to track which Firestore database holds a specific post (1, 2, or 3)
 window._postDbMap = window._postDbMap || new Map();
 
 /**
- * Returns the Firestore instance for a given source ID (1 or 2).
+ * Returns the Firestore instance for a given source ID (1, 2, or 3).
  */
 export function getFirestoreBySource(source) {
-    return (source === 2 || source === '2') ? fsdb2 : fsdb;
+    if (source === 3 || source === '3') return fsdb3;
+    if (source === 2 || source === '2') return fsdb2;
+    return fsdb;
+}
+
+/**
+ * Returns the numeric source ID (1, 2, or 3) for a given Firestore instance.
+ */
+export function getSourceByFirestore(fs) {
+    if (fs === fsdb3) return 3;
+    if (fs === fsdb2) return 2;
+    return 1;
 }
 
 /**
  * Resolves the appropriate Firestore instance for a postId based on cache, memory, or explicit source.
  */
 export function getFirestoreForPost(postId, explicitSource) {
-    if (explicitSource === 1 || explicitSource === 2 || explicitSource === '1' || explicitSource === '2') {
+    if (explicitSource === 1 || explicitSource === 2 || explicitSource === 3 ||
+        explicitSource === '1' || explicitSource === '2' || explicitSource === '3') {
         return getFirestoreBySource(explicitSource);
     }
     if (window._postDbMap && window._postDbMap.has(postId)) {
@@ -87,23 +117,24 @@ export function getPostDocRef(postId, explicitSource) {
 }
 
 /**
- * Round-robin selector for new posts: alternates between 1 and 2 in localStorage.
+ * Round-robin selector for new posts: alternates between 1, 2, and 3 in localStorage.
  */
 export function getRoundRobinFsdb() {
-    const lastTarget = localStorage.getItem('hangout_fs_target') || '2';
-    const nextTarget = (lastTarget === '1') ? '2' : '1';
-    localStorage.setItem('hangout_fs_target', nextTarget);
-    const dbSource = parseInt(nextTarget, 10);
+    const lastTarget = parseInt(localStorage.getItem('hangout_fs_target') || '3', 10);
+    const nextTarget = (isNaN(lastTarget) ? 0 : lastTarget % 3) + 1;
+    localStorage.setItem('hangout_fs_target', String(nextTarget));
     return {
-        fsdb: dbSource === 2 ? fsdb2 : fsdb,
-        dbSource: dbSource
+        fsdb: getFirestoreBySource(nextTarget),
+        dbSource: nextTarget
     };
 }
 
 // Attach utilities to window for global access
 window.fsdb = fsdb;
 window.fsdb2 = fsdb2;
+window.fsdb3 = fsdb3;
 window.getFirestoreBySource = getFirestoreBySource;
+window.getSourceByFirestore = getSourceByFirestore;
 window.getFirestoreForPost = getFirestoreForPost;
 window.getPostDocRef = getPostDocRef;
 window.getRoundRobinFsdb = getRoundRobinFsdb;

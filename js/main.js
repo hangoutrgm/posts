@@ -1,5 +1,5 @@
 // main.js
-import { app, auth, db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { app, auth, db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -631,19 +631,36 @@ window._applyPinnedIds = (ids, pinType) => {
         const postRef = getPostDocRef(id);
         const unsub = onSnapshot(postRef, (snap) => {
             if (!snap.exists()) {
-                // If not found in primary and not yet checked secondary, fallback check
+                // If not found in primary and not yet checked secondary/tertiary, fallback check
                 if (snap.ref.firestore === fsdb) {
                     const postRef2 = doc(fsdb2, 'community_posts', id);
                     onSnapshot(postRef2, (snap2) => {
-                        if (!snap2.exists()) return;
-                        const post2 = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
-                        window._postDbMap.set(id, 2);
-                        window._updatePinnedPostInState(post2, pinType);
+                        if (snap2.exists()) {
+                            const post2 = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
+                            window._postDbMap.set(id, 2);
+                            window._updatePinnedPostInState(post2, pinType);
+                        } else {
+                            const postRef3 = doc(fsdb3, 'community_posts', id);
+                            onSnapshot(postRef3, (snap3) => {
+                                if (!snap3.exists()) return;
+                                const post3 = { id: snap3.id, ...snap3.data(), _dbSource: 3 };
+                                window._postDbMap.set(id, 3);
+                                window._updatePinnedPostInState(post3, pinType);
+                            });
+                        }
+                    });
+                } else if (snap.ref.firestore === fsdb2) {
+                    const postRef3 = doc(fsdb3, 'community_posts', id);
+                    onSnapshot(postRef3, (snap3) => {
+                        if (!snap3.exists()) return;
+                        const post3 = { id: snap3.id, ...snap3.data(), _dbSource: 3 };
+                        window._postDbMap.set(id, 3);
+                        window._updatePinnedPostInState(post3, pinType);
                     });
                 }
                 return;
             }
-            const dbSource = snap.ref.firestore === fsdb2 ? 2 : 1;
+            const dbSource = getSourceByFirestore(snap.ref.firestore);
             const post = { id: snap.id, ...snap.data(), _dbSource: dbSource };
             window._postDbMap.set(id, dbSource);
             window._updatePinnedPostInState(post, pinType);
@@ -721,20 +738,26 @@ window._buildBaseQuery = () => window._buildBaseQueryForDb(fsdb);
 window.listenPosts = () => {
     if (window.postsUnsubscribe1) { window.postsUnsubscribe1(); window.postsUnsubscribe1 = null; }
     if (window.postsUnsubscribe2) { window.postsUnsubscribe2(); window.postsUnsubscribe2 = null; }
+    if (window.postsUnsubscribe3) { window.postsUnsubscribe3(); window.postsUnsubscribe3 = null; }
     if (typeof window.postsUnsubscribe === 'function') { window.postsUnsubscribe(); window.postsUnsubscribe = null; }
 
     window._lastPostDoc1 = null;
     window._lastPostDoc2 = null;
+    window._lastPostDoc3 = null;
     window._liveLastDoc1 = null;
     window._liveLastDoc2 = null;
+    window._liveLastDoc3 = null;
     window._historyPosts1 = [];
     window._historyPosts2 = [];
+    window._historyPosts3 = [];
     window._historyPosts = [];
 
     let livePosts1 = [];
     let livePosts2 = [];
+    let livePosts3 = [];
     let initialSnap1 = false;
     let initialSnap2 = false;
+    let initialSnap3 = false;
     let initialGraceElapsed = false;
     setTimeout(() => {
         initialGraceElapsed = true;
@@ -742,24 +765,24 @@ window.listenPosts = () => {
     }, 400);
 
     const safeMergeAndRender = () => {
-        if ((initialSnap1 && initialSnap2) || initialGraceElapsed) {
+        if ((initialSnap1 && initialSnap2 && initialSnap3) || initialGraceElapsed) {
             mergeAndRender();
         }
     };
 
     const mergeAndRender = () => {
         const rawDocs = {};
-        [...livePosts1, ...livePosts2].forEach(p => { if (p && p.id) rawDocs[p.id] = p; });
+        [...livePosts1, ...livePosts2, ...livePosts3].forEach(p => { if (p && p.id) rawDocs[p.id] = p; });
         if (window.checkGameTimers) window.checkGameTimers(rawDocs);
 
-        const allLive = [...livePosts1, ...livePosts2];
+        const allLive = [...livePosts1, ...livePosts2, ...livePosts3];
         allLive.sort((a, b) => {
             const tA = (a.timestamp && a.timestamp.toMillis) ? a.timestamp.toMillis() : (typeof a.timestamp === 'number' ? a.timestamp : 0);
             const tB = (b.timestamp && b.timestamp.toMillis) ? b.timestamp.toMillis() : (typeof b.timestamp === 'number' ? b.timestamp : 0);
             return tB - tA;
         });
 
-        const allHistory = [...(window._historyPosts1 || []), ...(window._historyPosts2 || [])];
+        const allHistory = [...(window._historyPosts1 || []), ...(window._historyPosts2 || []), ...(window._historyPosts3 || [])];
         allHistory.sort((a, b) => {
             const tA = (a.timestamp && a.timestamp.toMillis) ? a.timestamp.toMillis() : (typeof a.timestamp === 'number' ? a.timestamp : 0);
             const tB = (b.timestamp && b.timestamp.toMillis) ? b.timestamp.toMillis() : (typeof b.timestamp === 'number' ? b.timestamp : 0);
@@ -791,6 +814,7 @@ window.listenPosts = () => {
 
     const q1 = query(window._buildBaseQueryForDb(fsdb), limit(15));
     const q2 = query(window._buildBaseQueryForDb(fsdb2), limit(15));
+    const q3 = query(window._buildBaseQueryForDb(fsdb3), limit(15));
 
     window.postsUnsubscribe1 = onSnapshot(q1, { includeMetadataChanges: false }, (snapshot) => {
         livePosts1 = [];
@@ -803,7 +827,7 @@ window.listenPosts = () => {
             window._liveLastDoc1 = snapshot.docs[snapshot.docs.length - 1];
         }
         window.hasMorePosts1 = (snapshot.size >= 15);
-        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2;
+        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3;
         initialSnap1 = true;
         safeMergeAndRender();
     }, (err) => {
@@ -823,7 +847,7 @@ window.listenPosts = () => {
             window._liveLastDoc2 = snapshot.docs[snapshot.docs.length - 1];
         }
         window.hasMorePosts2 = (snapshot.size >= 15);
-        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2;
+        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3;
         initialSnap2 = true;
         safeMergeAndRender();
     }, (err) => {
@@ -832,13 +856,34 @@ window.listenPosts = () => {
         safeMergeAndRender();
     });
 
+    window.postsUnsubscribe3 = onSnapshot(q3, { includeMetadataChanges: false }, (snapshot) => {
+        livePosts3 = [];
+        snapshot.forEach(child => {
+            const p = { id: child.id, ...child.data(), _dbSource: 3 };
+            window._postDbMap.set(child.id, 3);
+            livePosts3.push(p);
+        });
+        if (snapshot.docs.length > 0) {
+            window._liveLastDoc3 = snapshot.docs[snapshot.docs.length - 1];
+        }
+        window.hasMorePosts3 = (snapshot.size >= 15);
+        window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3;
+        initialSnap3 = true;
+        safeMergeAndRender();
+    }, (err) => {
+        console.warn("FS3 snapshot warning:", err);
+        initialSnap3 = true;
+        safeMergeAndRender();
+    });
+
     window.postsUnsubscribe = () => {
         if (window.postsUnsubscribe1) window.postsUnsubscribe1();
         if (window.postsUnsubscribe2) window.postsUnsubscribe2();
+        if (window.postsUnsubscribe3) window.postsUnsubscribe3();
     };
 };
 
-// loadMorePosts: fetches the next page of older posts from both Firestore instances using cursor pagination
+// loadMorePosts: fetches the next page of older posts from all Firestore instances using cursor pagination
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     window.isLoadingHistory = true;
@@ -890,9 +935,32 @@ window.loadMorePosts = async () => {
             }
         }
 
-        window.hasMorePosts = (window.hasMorePosts1 || window.hasMorePosts2);
+        const cursor3 = window._lastPostDoc3 || window._liveLastDoc3;
+        if (window.hasMorePosts3 !== false && cursor3) {
+            try {
+                const pageQuery3 = query(window._buildBaseQueryForDb(fsdb3), startAfter(cursor3), limit(15));
+                const pageSnap3 = await window._getDocsFS(pageQuery3);
+                if (!pageSnap3.empty) {
+                    window._lastPostDoc3 = pageSnap3.docs[pageSnap3.docs.length - 1];
+                    const existingIds = new Set((window._historyPosts3 || []).map(p => p.id));
+                    pageSnap3.forEach(docSnap => {
+                        if (!existingIds.has(docSnap.id)) {
+                            const p = { id: docSnap.id, ...docSnap.data(), _dbSource: 3 };
+                            window._postDbMap.set(docSnap.id, 3);
+                            window._historyPosts3.push(p);
+                        }
+                    });
+                }
+                window.hasMorePosts3 = (pageSnap3.size >= 15);
+            } catch (e) {
+                console.warn("Error fetching page from fsdb 3:", e);
+                window.hasMorePosts3 = false;
+            }
+        }
 
-        const allHistory = [...(window._historyPosts1 || []), ...(window._historyPosts2 || [])];
+        window.hasMorePosts = (window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3);
+
+        const allHistory = [...(window._historyPosts1 || []), ...(window._historyPosts2 || []), ...(window._historyPosts3 || [])];
         allHistory.sort((a, b) => {
             const tA = (a.timestamp && a.timestamp.toMillis) ? a.timestamp.toMillis() : (typeof a.timestamp === 'number' ? a.timestamp : 0);
             const tB = (b.timestamp && b.timestamp.toMillis) ? b.timestamp.toMillis() : (typeof b.timestamp === 'number' ? b.timestamp : 0);

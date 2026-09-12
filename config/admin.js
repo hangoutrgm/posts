@@ -1,5 +1,5 @@
 // admin.js
-import { app, auth, db, fsdb, fsdb2 } from "../js/firebase-config.js";
+import { app, auth, db, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -147,13 +147,15 @@ function initAdminDashboard() {
     // 3. Get Posts count from Firestore
     async function fetchPostsCount() {
         try {
-            const [snap1, snap2] = await Promise.allSettled([
+            const [snap1, snap2, snap3] = await Promise.allSettled([
                 getCountFromServer(collection(fsdb, 'community_posts')),
-                getCountFromServer(collection(fsdb2, 'community_posts'))
+                getCountFromServer(collection(fsdb2, 'community_posts')),
+                getCountFromServer(collection(fsdb3, 'community_posts'))
             ]);
             const count1 = snap1.status === 'fulfilled' ? (snap1.value.data().count || 0) : 0;
             const count2 = snap2.status === 'fulfilled' ? (snap2.value.data().count || 0) : 0;
-            allPostsCount = count1 + count2;
+            const count3 = snap3.status === 'fulfilled' ? (snap3.value.data().count || 0) : 0;
+            allPostsCount = count1 + count2 + count3;
             document.getElementById('metric-posts').innerText = allPostsCount;
         } catch (e) {
             console.error("Error fetching post count", e);
@@ -755,7 +757,7 @@ function initAdminDashboard() {
             if (statusGames) statusGames.textContent = '';
             try {
                 const candidates = [];
-                for (const fsInst of [fsdb, fsdb2]) {
+                for (const fsInst of [fsdb, fsdb2, fsdb3]) {
                     try {
                         const snap = await getDocs(fsQuery(collection(fsInst, 'community_posts'), orderBy('timestamp', 'asc'), limit(2000)));
                         snap.forEach(d => {

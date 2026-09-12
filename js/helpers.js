@@ -1,4 +1,4 @@
-import { db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -389,11 +389,18 @@ window.repostPost = function(postId) {
     window.showConfirm("Are you sure you want to repost this to your profile and bump it in the feed?", async () => {
         if (!(await window.checkActionCooldown('post'))) return;
         try {
-            const postDocRef = getPostDocRef(postId);
+            let postDocRef = getPostDocRef(postId);
             let snap = await getDoc(postDocRef);
             if (!snap.exists()) {
-                const fallbackRef = doc(postDocRef.firestore === fsdb ? fsdb2 : fsdb, 'community_posts', postId);
-                snap = await getDoc(fallbackRef);
+                const candidates = [fsdb, fsdb2, fsdb3].filter(f => f !== postDocRef.firestore);
+                for (const candidate of candidates) {
+                    const fallbackRef = doc(candidate, 'community_posts', postId);
+                    snap = await getDoc(fallbackRef);
+                    if (snap.exists()) {
+                        postDocRef = fallbackRef;
+                        break;
+                    }
+                }
             }
             if (!snap.exists()) return window.showAlert("Post not found.");
             
@@ -821,7 +828,7 @@ window.refreshSinglePost = async (postId) => {
 
             if (!snap.exists()) return;
 
-            const dbSource = snap.ref.firestore === fsdb2 ? 2 : 1;
+            const dbSource = getSourceByFirestore(snap.ref.firestore);
             const updatedPost = { id: postId, ...snap.data(), _dbSource: dbSource };
             window._postDbMap.set(postId, dbSource);
 

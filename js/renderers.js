@@ -1,4 +1,4 @@
-import { db, fsdb, fsdb2, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -166,7 +166,7 @@ window.goToPost = (postId) => {
     const targetRef = getPostDocRef(postId);
     window.isolatedPostUnsubscribe = onSnapshot(targetRef, (snapshot) => {
         if (snapshot.exists()) {
-            const dbSource = snapshot.ref.firestore === fsdb2 ? 2 : 1;
+            const dbSource = getSourceByFirestore(snapshot.ref.firestore);
             const post = { id: snapshot.id, ...snapshot.data(), _dbSource: dbSource };
             window._postDbMap.set(postId, dbSource);
             window.isolatedPostData = post;
@@ -190,6 +190,44 @@ window.goToPost = (postId) => {
                 if (snap2.exists()) {
                     const post = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
                     window._postDbMap.set(postId, 2);
+                    window.isolatedPostData = post;
+                    const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                    if (existingIndex >= 0) window.allPosts[existingIndex] = post;
+                    else window.allPosts.push(post);
+                    if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                        if (!window.usersReady) window._pendingPostRender = true;
+                        else window.renderFeed(false);
+                    }
+                } else {
+                    if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+                    window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb3, 'community_posts', postId), (snap3) => {
+                        if (snap3.exists()) {
+                            const post = { id: snap3.id, ...snap3.data(), _dbSource: 3 };
+                            window._postDbMap.set(postId, 3);
+                            window.isolatedPostData = post;
+                            const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                            if (existingIndex >= 0) window.allPosts[existingIndex] = post;
+                            else window.allPosts.push(post);
+                            if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                                if (!window.usersReady) window._pendingPostRender = true;
+                                else window.renderFeed(false);
+                            }
+                        } else {
+                            const feed = document.getElementById('feed');
+                            if (feed) {
+                                feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                                <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+                            }
+                        }
+                    });
+                }
+            });
+        } else if (snapshot.ref.firestore === fsdb2) {
+            if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+            window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb3, 'community_posts', postId), (snap3) => {
+                if (snap3.exists()) {
+                    const post = { id: snap3.id, ...snap3.data(), _dbSource: 3 };
+                    window._postDbMap.set(postId, 3);
                     window.isolatedPostData = post;
                     const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
                     if (existingIndex >= 0) window.allPosts[existingIndex] = post;
@@ -417,7 +455,7 @@ window.renderFeed = (resetLimit = true) => {
                 const targetRef = getPostDocRef(window.isolatedPostId);
                 window.isolatedPostUnsubscribe = onSnapshot(targetRef, (snapshot) => {
                     if (snapshot.exists()) {
-                        const dbSource = snapshot.ref.firestore === fsdb2 ? 2 : 1;
+                        const dbSource = getSourceByFirestore(snapshot.ref.firestore);
                         const post = { id: snapshot.id, ...snapshot.data(), _dbSource: dbSource };
                         window._postDbMap.set(window.isolatedPostId, dbSource);
                         window.isolatedPostData = post;
@@ -441,6 +479,41 @@ window.renderFeed = (resetLimit = true) => {
                             if (snap2.exists()) {
                                 const post = { id: snap2.id, ...snap2.data(), _dbSource: 2 };
                                 window._postDbMap.set(window.isolatedPostId, 2);
+                                window.isolatedPostData = post;
+                                const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                                if (existingIndex >= 0) window.allPosts[existingIndex] = post;
+                                else window.allPosts.push(post);
+                                if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                                    if (!window.usersReady) window._pendingPostRender = true;
+                                    else window.renderFeed(false);
+                                }
+                            } else {
+                                if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+                                window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb3, 'community_posts', window.isolatedPostId), (snap3) => {
+                                    if (snap3.exists()) {
+                                        const post = { id: snap3.id, ...snap3.data(), _dbSource: 3 };
+                                        window._postDbMap.set(window.isolatedPostId, 3);
+                                        window.isolatedPostData = post;
+                                        const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
+                                        if (existingIndex >= 0) window.allPosts[existingIndex] = post;
+                                        else window.allPosts.push(post);
+                                        if (!window.isUserTyping && !window._bingoGlobalSpinning) {
+                                            if (!window.usersReady) window._pendingPostRender = true;
+                                            else window.renderFeed(false);
+                                        }
+                                    } else {
+                                        feed.innerHTML = `<p class="text-center text-gray-500 py-10">Post not found or deleted.</p>
+                                        <button onclick="window.clearIsolatedPost()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-full mx-auto block mt-2 shadow-sm transition">Back to Feed</button>`;
+                                    }
+                                });
+                            }
+                        });
+                    } else if (snapshot.ref.firestore === fsdb2) {
+                        if (window.isolatedPostUnsubscribe) window.isolatedPostUnsubscribe();
+                        window.isolatedPostUnsubscribe = onSnapshot(doc(fsdb3, 'community_posts', window.isolatedPostId), (snap3) => {
+                            if (snap3.exists()) {
+                                const post = { id: snap3.id, ...snap3.data(), _dbSource: 3 };
+                                window._postDbMap.set(window.isolatedPostId, 3);
                                 window.isolatedPostData = post;
                                 const existingIndex = window.allPosts.findIndex(p => p.id === post.id);
                                 if (existingIndex >= 0) window.allPosts[existingIndex] = post;
