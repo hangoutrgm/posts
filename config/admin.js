@@ -588,10 +588,19 @@ function initAdminDashboard() {
 
         const toPts = (Number(migrateToUser.points) || 0) + pts;
         const toLb = (Number(migrateToUser.lbPoints) || 0) + lb;
+        const weeks = Array.isArray(migratePeriodData.weeks) ? migratePeriodData.weeks : [];
+        const months = Array.isArray(migratePeriodData.months) ? migratePeriodData.months : [];
+        const wkTotal = weeks.reduce((s, x) => s + x.pts, 0);
+        const moTotal = months.reduce((s, x) => s + x.pts, 0);
+        const periodBlurb = (weeks.length || months.length)
+            ? `\nIt will also merge ${weeks.length} week${weeks.length === 1 ? '' : 's'} (${fmtNum(wkTotal)} 🏆) and ${months.length} month${months.length === 1 ? '' : 's'} (${fmtNum(moTotal)} 🏆) of weekly/monthly history into the matching periods.`
+            : '';
+
         if (!confirm(
             `Add ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from "${migrateFromUser.name}" to "${migrateToUser.name}"?\n\n` +
-            `"${migrateToUser.name}" will have ${fmtNum(toPts)} ★ and ${fmtNum(toLb)} 🏆 after this. ` +
-            `The source account is left as-is.`
+            `"${migrateToUser.name}" will have ${fmtNum(toPts)} ★ and ${fmtNum(toLb)} 🏆 after this.` +
+            periodBlurb +
+            `\nThe source account is left as-is.`
         )) return;
 
         const original = migrateBtn.innerHTML;
@@ -604,17 +613,21 @@ function initAdminDashboard() {
             const updates = {};
             if (pts > 0) updates[`users/${migrateToUser.uid}/points`] = increment(pts);
             if (lb > 0) updates[`users/${migrateToUser.uid}/lbPoints`] = increment(lb);
+            // Merge weekly + monthly history: target gets the same amounts in the same buckets.
+            weeks.forEach(({ period, pts: p }) => { updates[`lbWeekly/${period}/${migrateToUser.uid}`] = increment(p); });
+            months.forEach(({ period, pts: p }) => { updates[`lbMonthly/${period}/${migrateToUser.uid}`] = increment(p); });
             await update(ref(db), updates);
 
             // Log activity (admin names + amounts resolve nicely in the Activity Log)
             await push(ref(db, 'activity_log'), {
                 user: 'Admin',
                 userId: ADMIN_UID,
-                action: `migrated ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from ${migrateFromUser.name} to ${migrateToUser.name}`,
+                action: `migrated ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 (overall) + ${weeks.length} weekly buckets (${fmtNum(wkTotal)} 🏆) + ${months.length} monthly buckets (${fmtNum(moTotal)} 🏆) from ${migrateFromUser.name} to ${migrateToUser.name}`,
                 timestamp: Date.now()
             });
 
-            alert(`Done! Added ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from ${migrateFromUser.name} to ${migrateToUser.name}.`);
+            const periodMsg = (weeks.length || months.length) ? ` Plus ${weeks.length} weekly & ${months.length} monthly history buckets were merged.` : '';
+            alert(`Done! Added ${fmtNum(pts)} ★ and ${fmtNum(lb)} 🏆 from ${migrateFromUser.name} to ${migrateToUser.name}.${periodMsg}`);
             migrateFromInput.value = '';
             migrateToInput.value = '';
             refreshMigratePreview();
@@ -1060,6 +1073,36 @@ function populateMigrateDatalist() {
     refreshMigratePreview();
 }
 
+// Weekly/monthly LB cache for the currently-selected source user.
+// weeks/months are [{ period, pts }]; failed=true means the read errored.
+let migratePeriodData = { fromUid: null, weeks: [], months: [], loading: false, failed: false };
+
+// Load the source user's entries from /lbWeekly & /lbMonthly so they can be
+// merged into the target's matching buckets. Cached per source UID (a rare
+// admin action, so a full read of the two parent nodes is acceptable).
+async function loadMigratePeriodData() {
+    const fromUid = migrateFromUser && !migrateFromUser.ambiguous ? migrateFromUser.uid : null;
+    if (!fromUid) {
+        migratePeriodData = { fromUid: null, weeks: [], months: [], loading: false, failed: false };
+        return;
+    }
+    if (migratePeriodData.fromUid === fromUid) return; // already loading or cached for this source
+
+    migratePeriodData = { fromUid, weeks: [], months: [], loading: true, failed: false };
+    refreshMigratePreview(); // show "checking…" immediately
+    try {
+        const [w, m] = await Promise.all([get(ref(db, 'lbWeekly')), get(ref(db, 'lbMonthly'))]);
+        const weeks = [], months = [];
+        if (w.exists()) w.forEach(ws => { const p = Number(ws.child(fromUid).val()) || 0; if (p > 0) weeks.push({ period: ws.key, pts: p }); });
+        if (m.exists()) m.forEach(ms => { const p = Number(ms.child(fromUid).val()) || 0; if (p > 0) months.push({ period: ms.key, pts: p }); });
+        migratePeriodData = { fromUid, weeks, months, loading: false, failed: false };
+    } catch (err) {
+        console.error('loadMigratePeriodData failed:', err);
+        migratePeriodData = { fromUid, weeks: [], months: [], loading: false, failed: true };
+    }
+    refreshMigratePreview();
+}
+
 // Re-render the before/after preview + enable/disable the Migrate button.
 function refreshMigratePreview() {
     const fromInput = document.getElementById('migrate-from-user');
@@ -1087,15 +1130,26 @@ function refreshMigratePreview() {
     if (migrateToUser && migrateToUser.ambiguous) return warn(`Multiple users are named "${toInput.value.trim()}" — type a more specific name or paste the UID.`);
     if (fromInput.value.trim() && !migrateFromUser) return warn(`Source user "${fromInput.value.trim()}" was not found.`);
     if (toInput.value.trim() && !migrateToUser) return warn(`Target user "${toInput.value.trim()}" was not found.`);
-    if (!migrateFromUser || !migrateToUser) return;
+    if (!migrateFromUser || !migrateToUser) {
+        migratePeriodData = { fromUid: null, weeks: [], months: [], loading: false, failed: false };
+        preview.innerHTML = `<p class="text-[11px] text-slate-400 dark:text-slate-500 px-1">Select both the source and the target user to preview the transfer.</p>`;
+        if (status) status.textContent = '';
+        return;
+    }
 
     if (migrateFromUser.uid === migrateToUser.uid) return warn('Source and target are the same user.');
+
+    // Ensure the weekly/monthly scan is running (or cached) for this source.
+    loadMigratePeriodData();
 
     const pts = Number(migrateFromUser.points) || 0;
     const lb = Number(migrateFromUser.lbPoints) || 0;
     const toPts = Number(migrateToUser.points) || 0;
     const toLb = Number(migrateToUser.lbPoints) || 0;
-    if (pts <= 0 && lb <= 0) return warn(`${migrateFromUser.name} has no Stars or LB points to migrate.`);
+    if (pts <= 0 && lb <= 0 && !migratePeriodData.weeks.length && !migratePeriodData.months.length && !migratePeriodData.loading) {
+        if (migratePeriodData.failed) return warn(`Could not read the weekly/monthly leaderboards and ${migrateFromUser.name} has no overall points — nothing to migrate.`);
+        return warn(`${migrateFromUser.name} has no Stars, LB, or weekly/monthly points to migrate.`);
+    }
 
     const row = (tag, name, shortUid, ptsChip, lbChip) => `
         <div class="flex items-center justify-between gap-2 text-[11px]">
@@ -1107,6 +1161,23 @@ function refreshMigratePreview() {
 
     const chip = (value, cls) => `<span class="shrink-0 text-[10px] font-semibold ${cls}">${value}</span>`;
 
+    // Weekly/monthly history line
+    let periodLine = '';
+    if (migratePeriodData.loading) {
+        periodLine = `<p class="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 px-1"><i class="fa-solid fa-circle-notch fa-spin text-violet-400"></i> Scanning weekly &amp; monthly LB history for ${escHtml(migrateFromUser.name)}…</p>`;
+    } else if (migratePeriodData.failed) {
+        periodLine = `<p class="flex items-center gap-1.5 text-[10px] text-amber-500 dark:text-amber-400 px-1"><i class="fa-solid fa-triangle-exclamation"></i> Couldn't read the weekly/monthly leaderboards — only overall points will be migrated. You can try again.</p>`;
+    } else if (migratePeriodData.weeks.length || migratePeriodData.months.length) {
+        const wkTotal = migratePeriodData.weeks.reduce((s, x) => s + x.pts, 0);
+        const moTotal = migratePeriodData.months.reduce((s, x) => s + x.pts, 0);
+        periodLine = `
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <span><i class="fa-solid fa-calendar-week text-violet-500 mr-1"></i>Weekly history: <span class="text-blue-500">${migratePeriodData.weeks.length} bucket${migratePeriodData.weeks.length === 1 ? '' : 's'}</span> (${fmtNum(wkTotal)} 🏆)</span>
+                <span><i class="fa-solid fa-calendar text-violet-500 mr-1"></i>Monthly history: <span class="text-blue-500">${migratePeriodData.months.length} bucket${migratePeriodData.months.length === 1 ? '' : 's'}</span> (${fmtNum(moTotal)} 🏆)</span>
+                <span class="text-emerald-600 dark:text-emerald-400">→ merged into the same periods</span>
+            </div>`;
+    }
+
     preview.innerHTML = `
         <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3 space-y-1.5">
             ${row('From', migrateFromUser.name, migrateFromUser.uid.substring(0, 6), chip(`★ ${fmtNum(pts)}`, 'text-amber-500'), chip(`🏆 ${fmtNum(lb)}`, 'text-blue-500'))}
@@ -1117,7 +1188,14 @@ function refreshMigratePreview() {
                 <span class="shrink-0 text-[10px] font-bold text-amber-500">★ ${fmtNum(toPts + pts)}</span>
                 <span class="shrink-0 text-[10px] font-bold text-blue-500">🏆 ${fmtNum(toLb + lb)}</span>
             </div>
+            ${periodLine}
         </div>`;
-    if (status) status.textContent = `${fmtNum(pts)} ★ + ${fmtNum(lb)} 🏆 will be added to ${migrateToUser.name}. Source stays as-is.`;
+    if (status) {
+        const extra = (!migratePeriodData.loading && (migratePeriodData.weeks.length || migratePeriodData.months.length))
+            ? ' Weekly/monthly history will be merged too.'
+            : '';
+        status.textContent = `${fmtNum(pts)} ★ + ${fmtNum(lb)} 🏆 will be added to ${migrateToUser.name}. Source stays as-is.${extra}`;
+    }
+    if (migratePeriodData.loading) return; // keep the button disabled until the scan finishes
     btn.disabled = false;
 }
