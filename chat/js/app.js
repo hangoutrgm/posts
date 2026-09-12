@@ -2143,12 +2143,24 @@ async function deleteMessage(message) {
   }
 }
 
+let _lastTypingWriteAt = 0;
 function setTyping(active) {
   if (!state.user || !state.activeThreadId) return;
   const path = ref(db, `chatTyping/${state.activeThreadId}/${state.user.uid}`);
+  // Clearing re-arms the throttle so the next typing burst writes immediately.
+  if (!active) _lastTypingWriteAt = 0;
   (active ? set(path, Date.now()) : remove(path)).catch(() => {});
 }
-function noteTyping() { setTyping(true); clearTimeout(state.typingTimer); state.typingTimer = setTimeout(() => setTyping(false), 1600); }
+// The typing indicator is freshness-based on receivers (7s window), so the value
+// only needs refreshing every ~5s. Writing on EVERY keystroke (old behavior) sent
+// one RTDB write per key + a delta to every open member of the thread — for fast
+// typists that was ~50 writes per message for zero UX benefit.
+function noteTyping() {
+  const now = Date.now();
+  if (now - _lastTypingWriteAt >= 5000) { setTyping(true); _lastTypingWriteAt = now; }
+  clearTimeout(state.typingTimer);
+  state.typingTimer = setTimeout(() => setTyping(false), 1600);
+}
 function closeActiveChat() {
   setTyping(false); clearTimeout(state.typingTimer); if (state.stopMessages) state.stopMessages(); if (state.stopTyping) state.stopTyping();
   state.stopMessages = null; state.stopTyping = null;
