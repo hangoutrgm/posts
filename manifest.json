@@ -1,12 +1,12 @@
 {
-  "name": "Hangout",
-  "short_name": "Hangout",
+  "name": "Hangout RPW",
+  "short_name": "Hangout RPW",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#1e293b",
-  "description": "Hangout Posts - Roleplay Community",
+  "description": "Hangout RPW - Roleplay Community",
   "icons": [
     {
       "src": "./icon-192.png",
