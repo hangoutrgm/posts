@@ -18,6 +18,12 @@ onValue(ref(db, '.info/serverTimeOffset'), snap => {
     serverTimeOffset = snap.val() || 0;
 });
 
+window.allPosts = window.allPosts || [];
+window.globalPinnedPosts = window.globalPinnedPosts || [];
+window.profilePinnedPosts = window.profilePinnedPosts || [];
+window.usersReady = (typeof window.usersReady === 'boolean') ? window.usersReady : false;
+window._pendingPostRender = (typeof window._pendingPostRender === 'boolean') ? window._pendingPostRender : false;
+
 const presenceSessionId = `posts_${crypto.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
 const presenceSessionRef = (uid) => ref(db, `presence/${uid}/${presenceSessionId}`);
 
@@ -504,7 +510,7 @@ window.applyUsersData = (raw) => {
 
 window.ensureUsersFresh = async () => {
     const now = Date.now();
-    if (now - _lastUsersFreshCheck < 30000) return;
+    if (now - _lastUsersFreshCheck < 300000) return; // 5 minutes debounce (bandwidth saver)
     _lastUsersFreshCheck = now;
     const cached = window.usersCache ? window.usersCache.read() : null;
     if (cached && window.usersCache.isFresh(cached)) return; // already fresh enough
@@ -517,8 +523,14 @@ window.ensureUsersFresh = async () => {
 (async () => {
     const cached = window.usersCache ? window.usersCache.read() : null;
     const fresh = cached && window.usersCache.isFresh(cached);
-    if (fresh && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
-        window.applyUsersData(cached.users); // instant paint, zero downloads
+    if (cached && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users) && Object.keys(cached.users).length >= 2) {
+        window.applyUsersData(cached.users); // instant paint, zero wait
+        if (!fresh) {
+            try {
+                const snap = await get(ref(db, 'users'));
+                window.applyUsersData(snap.val() || {});
+            } catch (e) { /* keep cached on failure */ }
+        }
     } else {
         const snap = await get(ref(db, 'users'));
         window.applyUsersData(snap.val() || {});
@@ -601,15 +613,20 @@ window._startNotifListener = (uid) => {
     });
 };
 
-window.allPosts = [];
-window.globalPinnedPosts = [];
-window.profilePinnedPosts = [];
+window.allPosts = window.allPosts || [];
+window.globalPinnedPosts = window.globalPinnedPosts || [];
+window.profilePinnedPosts = window.profilePinnedPosts || [];
 window.isLoadingHistory = false;
 window.hasMorePosts = true;
 window.postLimit = 15;
 window.postsUnsubscribe = null;
-window.usersReady = false;   // Gate: don't render posts until users cache is loaded
-window._pendingPostRender = false; // Was a render requested before users were ready?
+window.usersReady = (typeof window.usersReady === 'boolean') ? window.usersReady : false;
+window._pendingPostRender = (typeof window._pendingPostRender === 'boolean') ? window._pendingPostRender : false;
+if (window.usersReady && window._pendingPostRender) {
+    window._pendingPostRender = false;
+    if (window.activeProfileUid) window.renderProfileData(false);
+    else if (window.renderFeed) window.renderFeed(false);
+}
 window.loadPinnedPosts = () => {
     onSnapshot(doc(fsdb, 'settings', 'pinned'), (docSnap) => {
         if (!docSnap.exists()) return;

@@ -77,6 +77,11 @@ const reactionsMore = ['\u{1F525}','\u{1F389}','\u{1F973}','\u{1F923}','\u{1F605
 const fallbackAvatar = (seed = 'hangout') => `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed)}&backgroundColor=transparent`;
 const presenceSessionId = `chat_${crypto.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
 
+// Presence state variables — hoisted to top level so synchronous render calls never hit TDZ ReferenceError
+const _presenceHandles = {};      // uid -> unsubscribe
+let _presenceWhole = null;        // whole-tree listener while People dialog open
+let _syncingPresence = false;     // re-entrancy guard (see syncPresenceListeners)
+
 function escapeHtml(value = '') { return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char])); }
 function linkifyText(value = '') {
   return escapeHtml(value).replace(/https?:\/\/[^\s<]+/gi, (url) => {
@@ -223,6 +228,27 @@ function openUserProfile(uid) {
   window.location.href = `../?profile=${encodeURIComponent(uid)}`;
 }
 
+const _lastPeerProfileFetch = {};
+async function refreshPeerProfile(peerUid) {
+  if (!peerUid || !state.user) return;
+  const now = Date.now();
+  if (_lastPeerProfileFetch[peerUid] && (now - _lastPeerProfileFetch[peerUid] < 300000)) return; // 5 min debounce
+  _lastPeerProfileFetch[peerUid] = now;
+  try {
+    const snap = await get(ref(db, `users/${peerUid}`));
+    if (snap.exists()) {
+      const freshUser = { ...snap.val(), uid: peerUid };
+      state.users[peerUid] = freshUser;
+      if (window.usersCache?.updateUser) window.usersCache.updateUser(peerUid, freshUser);
+      saveUsersCache();
+      if (state.activePeerId === peerUid) {
+        updateChatHeader();
+        renderConversations();
+      }
+    }
+  } catch (_) {}
+}
+
 function getNickname(uid) {
   if (state.activeThreadId && state.inbox[state.activeThreadId]?.nicknames?.[uid]) return state.inbox[state.activeThreadId].nicknames[uid];
   return state.users[uid]?.name || 'Hangout member';
@@ -246,7 +272,7 @@ function renderAvatarHtml(peerIds, item = null) {
   const imgs = peerIds.slice(0, 4).map(uid => `<img src="${escapeHtml(avatarUrl(state.users[uid]))}" alt="">`).join('');
   return `<div class="avatar-collage count-${count}">${imgs}</div>`;
 }
-const VALID_THEMES = ['light', 'dark', 'sakura', 'emerald', 'mocha', 'cyberpunk'];
+const VALID_THEMES = ['light', 'dark', 'messenger', 'sakura', 'emerald', 'mocha', 'cyberpunk'];
 // Only the canonical 'dark' theme gets the .dark class — the 64+ hardcoded :root.dark
 // component rules in styles.css are tuned for the indigo dark palette specifically.
 // Mocha/Cyberpunk use color-scheme: dark + data-theme selectors instead.
@@ -254,6 +280,7 @@ const DARK_THEMES  = new Set(['dark']);
 const THEME_META_COLORS = {
   light:     '#6c63ff',
   dark:      '#0d0f1a',
+  messenger: '#0084ff',
   sakura:    '#fff0f4',
   emerald:   '#f0fdf6',
   mocha:     '#14100e',
@@ -504,7 +531,7 @@ function renderPeople() {
   const people = Object.values(state.users).filter((person) => person.uid && person.uid !== state.user?.uid && (!term || `${person.name || ''}`.toLowerCase().includes(term))).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   
   let html = '';
-  if (!state.groupMode && (!term || 'notes (me)'.includes(term))) {
+  if (state.user && !state.groupMode && (!term || 'notes (me)'.includes(term))) {
     html += `<button class="person" data-user="${escapeHtml(state.user.uid)}"><div class="avatar" style="background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-size:16px;">📝</div><span class="person-copy"><span class="person-name">Notes (Me)</span><span class="person-status">Saved Messages</span></span></button>`;
   }
   
@@ -1648,6 +1675,7 @@ function openThread(threadId, inboxItem) {
   state.noMoreOldMessages = false;
   state.loadingOldMessages = false;
   $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
+  if (state.activePeerId) refreshPeerProfile(state.activePeerId);
   if (state.stopMessages) {
     try { state.stopMessages(); } catch (_) {}
     state.stopMessages = null;
@@ -1870,6 +1898,7 @@ function clearAttachment() {
   state.pendingImageFile = null; 
   $('media-preview-banner').classList.add('hidden');
   $('media-preview-content').innerHTML = '';
+  updateSendMode();
 }
 function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); updateSendMode(); $('message-input').focus(); }
 async function updateConversationSummaries(preview, timestamp) {
@@ -2667,8 +2696,13 @@ function applyUsersMap(raw) {
 (async () => {
   const cached = window.usersCache ? window.usersCache.read() : null;
   const fresh = cached && window.usersCache.isFresh(cached);
-  if (fresh && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
-    applyUsersMap(cached.users); // instant paint, zero downloads
+  if (cached && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users) && Object.keys(cached.users).length >= 2) {
+    applyUsersMap(cached.users); // instant paint, zero wait
+    if (!fresh) {
+      get(ref(db, 'users')).then((snapshot) => {
+        applyUsersMap(snapshot.val() || {});
+      }).catch(() => {});
+    }
   } else {
     const snapshot = await get(ref(db, 'users'));
     applyUsersMap(snapshot.val() || {});
@@ -2682,13 +2716,9 @@ function applyUsersMap(raw) {
 // ANY heartbeat — with N online users that was N full-tree downloads per minute
 // per open chat tab. Now:
 //   • Watch presence/{uid} only for the conversation partners we display.
-//   • While the People dialog is open, temporarily use a whole-tree listener.
+//   • While the People dialog is open, snapshot presence on open (no continuous stream).
 //   • All presence listening pauses when the tab is hidden.
 // ============================================================
-const _presenceHandles = {};      // uid -> unsubscribe
-let _presenceWhole = null;        // whole-tree listener while People dialog open
-let _syncingPresence = false;     // re-entrancy guard (see syncPresenceListeners)
-
 function presenceWatchedUids() {
   const set = new Set();
   Object.values(state.inbox).forEach((item) => {
@@ -2747,10 +2777,10 @@ function syncPresenceListeners() {
 function startWholePresence() {
   if (_presenceWhole) return;
   stopGranularPresence();
-  _presenceWhole = onValue(ref(db, 'presence'), (snapshot) => {
+  get(ref(db, 'presence')).then((snapshot) => {
     state.online = snapshot.val() || {};
     renderConversations(); renderPeople(); updateChatHeader();
-  }, (e) => reportRealtimeError('presence', e));
+  }).catch((e) => reportRealtimeError('presence', e));
 }
 
 function stopWholePresence() {
@@ -3009,6 +3039,7 @@ $('image-input').addEventListener('change', (event) => {
   }
   
   state.pendingImageFile = file || null; 
+  updateSendMode();
   
   if (file) {
     showToast(`Media ready: ${file.name}. Limit: ${chatSettings.chatImageLimit} images or ${chatSettings.chatVideoLimit} videos daily.`);
@@ -3030,6 +3061,30 @@ $('image-input').addEventListener('change', (event) => {
     $('media-preview-banner').classList.remove('hidden');
   } else {
     clearAttachment();
+  }
+});
+
+// Paste image support directly in message textarea
+$('message-input')?.addEventListener('paste', (event) => {
+  const items = (event.clipboardData || window.clipboardData)?.items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type && items[i].type.startsWith('image/')) {
+      const file = items[i].getAsFile();
+      if (file) {
+        if (state.users[state.user?.uid]?.isBanned) return;
+        state.pendingImageFile = file;
+        $('media-preview-content').innerHTML = '';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.maxHeight = '100px';
+        img.style.borderRadius = '8px';
+        $('media-preview-content').appendChild(img);
+        $('media-preview-banner').classList.remove('hidden');
+        updateSendMode();
+        break;
+      }
+    }
   }
 });
 $('group-photo-input')?.addEventListener('change', async (event) => {

@@ -800,8 +800,8 @@ window.renderProfileData = (resetLimit = true) => {
     const pFeed = document.getElementById('profile-feed');
     // Merge profile pinned posts into the display pool
     const mergedMap = new Map();
-    window.allPosts.forEach(p => mergedMap.set(p.id, p));
-    window.profilePinnedPosts.filter(p => p.authorId === window.activeProfileUid).forEach(p => mergedMap.set(p.id, p));
+    (window.allPosts || []).forEach(p => mergedMap.set(p.id, p));
+    (window.profilePinnedPosts || []).filter(p => p && p.authorId === window.activeProfileUid).forEach(p => mergedMap.set(p.id, p));
     const mergedPosts = Array.from(mergedMap.values());
     
     let pPosts = mergedPosts.filter(p => {
