@@ -1,4 +1,4 @@
-import { auth, db, cloudinaryConfig } from '../../js/firebase-config.js';
+import { auth, db, db2, cloudinaryConfig } from '../../js/firebase-config.js?v=2';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import '../games/index.js?v=32';
@@ -60,7 +60,7 @@ function isSiteAdmin() {
 const $ = (id) => document.getElementById(id);
 const state = {
   user: null, users: {}, inbox: {}, online: {}, clears: {}, typing: {}, messages: {}, activeThreadId: null, activeInboxItem: null,
-  activePeerId: null, stopMessages: null, stopInbox: null, stopTyping: null, stopClears: null, stopSeen: null, stopThreadSummaries: {}, signUp: false,
+  activePeerId: null, stopMessages: null, stopInbox: null, stopTyping: null, stopClears: null, stopSeen: null, stopThreadSummaries: {}, signUp: false, notes: {}, stopNotes: null,
   replyTo: null, pendingImageFile: null, inboxReady: false, messagesLoaded: false, typingTimer: null, typingExpiryTimer: null, peerSeenAt: 0, groupSeenAt: {}, connected: false,
   groupMode: false, groupSelection: [],
   noMoreOldMessages: false, loadingOldMessages: false, streakData: null, stopPostsNotif: null,
@@ -256,6 +256,9 @@ function applyTheme(theme) {
     toggle.setAttribute('aria-label', toggle.title);
   }
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d0f1a' : '#6c63ff');
+  // Mark the active option in the theme menu (if open)
+  const menu = $('theme-menu');
+  if (menu) menu.querySelectorAll('.theme-option').forEach((btn) => btn.classList.toggle('active', btn.dataset.theme === theme));
 }
 applyTheme(localStorage.getItem('hangout-chat-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
@@ -373,6 +376,95 @@ function renderConversations() {
   list.querySelectorAll('.member-result').forEach((button) => button.addEventListener('click', () => startConversation(button.dataset.user)));
 }
 
+// ============================================================
+// NOTES (Messenger-style) — shared status notes. Data lives in the
+// SECOND Realtime Database (db2 / hangoutrgm2) so the main DB stays lean.
+// /notes/{uid} = { text, updatedAt }
+// ============================================================
+function renderNotes() {
+  const strip = $('notes-strip');
+  if (!strip) return;
+  const me = state.user?.uid;
+  if (!me) {
+    strip.innerHTML = `<p class="notes-empty">Sign in to share a note with your friends.</p>`;
+    return;
+  }
+  const others = Object.entries(state.notes)
+    .filter(([uid, n]) => uid !== me && n && n.text)
+    .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+
+  const myNote = state.notes[me]?.text;
+  let html = `
+    <button class="note-item me${myNote ? ' has-note' : ''}" onclick="window.openMyNote()" title="${myNote ? 'Edit my note' : 'Add a note'}">
+      ${myNote ? `<span class="note-bubble"><span class="note-bubble-text">${escapeHtml(myNote)}</span></span>` : ''}
+      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl({ ...(state.users[me] || {}), uid: me }))}" alt=""></span>
+      <span class="note-label">My note</span>
+    </button>`;
+  others.forEach(([uid, n]) => {
+    const u = state.users[uid] || {};
+    html += `
+    <button class="note-item has-note" onclick="window.openNote('${uid}', this)" title="${escapeHtml(n.text)}">
+      <span class="note-bubble"><span class="note-bubble-text">${escapeHtml(n.text)}</span></span>
+      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl(u))}" alt=""></span>
+      <span class="note-label">${escapeHtml(u.name || 'Member')}</span>
+    </button>`;
+  });
+  strip.innerHTML = html;
+}
+
+// View someone else's note — tiny popover hovering next to their avatar
+window.openNote = (uid, anchorEl) => {
+  const note = state.notes[uid];
+  if (!note || !note.text) return;
+  const u = state.users[uid] || {};
+  $('note-view-avatar').src = avatarUrl(u);
+  $('note-view-name').textContent = u.name || 'Member';
+  $('note-view-text').textContent = note.text;
+  const pop = $('note-popover');
+  pop.classList.remove('hidden');
+  // Anchor under the clicked avatar, clamped to the viewport (flip above if needed)
+  if (anchorEl && anchorEl.getBoundingClientRect) {
+    const r = anchorEl.getBoundingClientRect();
+    const pw = pop.offsetWidth || 200;
+    const ph = pop.offsetHeight || 120;
+    let x = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+    let y = r.bottom + 6;
+    if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 6);
+    pop.style.left = `${x}px`;
+    pop.style.top = `${y}px`;
+  } else {
+    pop.style.left = '12px';
+    pop.style.top = '120px';
+  }
+};
+
+// Set / clear my own note (saved to db2)
+window.openMyNote = async () => {
+  if (!state.user) return showAuth();
+  const me = state.user.uid;
+  const current = state.notes[me]?.text || '';
+  const result = await showAppModal({
+    title: 'My Note',
+    textarea: true,
+    inputValue: current,
+    placeholder: 'Share a short note (max 140 chars)…',
+    confirmText: 'Save',
+  });
+  if (result === null) return; // cancelled
+  const text = String(result || '').trim();
+  try {
+    if (!text) {
+      await remove(ref(db2, `notes/${me}`));
+      showToast('Note cleared.');
+    } else {
+      await set(ref(db2, `notes/${me}`), { text: text.slice(0, 140), updatedAt: Date.now() });
+      showToast('Note saved.');
+    }
+  } catch (e) {
+    showToast('Could not save note: ' + e.message);
+  }
+};
+
 function renderPeople() {
   const list = $('people-list');
   const term = $('people-search').value.trim().toLowerCase();
@@ -436,6 +528,22 @@ function updateChatHeader() {
     } else {
       const peer = state.users[peerIds[0]] || {};
       $('chat-status').innerHTML = peer.isBanned ? 'Unavailable' : normalStatus(peerIds[0]);
+    }
+  }
+
+  // Note chip next to the name: show the peer's note while chatting with them
+  const chip = $('chat-note-chip');
+  if (chip) {
+    const peerUid = !item.isGroup && peerIds.length ? peerIds[0] : null;
+    const note = peerUid ? (state.notes[peerUid]?.text || '') : '';
+    if (note) {
+      const short = note.length > 26 ? note.slice(0, 26) + '…' : note;
+      chip.textContent = short;
+      chip.title = note;
+      chip.classList.remove('hidden');
+    } else {
+      chip.classList.add('hidden');
+      chip.textContent = '';
     }
   }
 }
@@ -2198,7 +2306,7 @@ async function removeConversation() {
 }
 
 function showAuth() { $('auth-dialog').showModal(); }
-function syncAuthUi() { $('signed-out-card').classList.toggle('hidden', Boolean(state.user)); renderConversations(); }
+function syncAuthUi() { $('signed-out-card').classList.toggle('hidden', Boolean(state.user)); renderConversations(); renderNotes(); }
 function startOwnPresence() {
   if (!state.user || !state.connected) return;
   const ownPresence = ref(db, `presence/${state.user.uid}/${presenceSessionId}`);
@@ -2544,7 +2652,7 @@ let checkedDmParam = false;
 let checkedThreadParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
-  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false;
+  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false; if (state.stopNotes) { state.stopNotes(); state.stopNotes = null; } state.notes = {}; renderNotes();
   // Restore cached inbox immediately so the first render shows correct GC names & nicknames (no flicker)
   if (user) {
     try {
@@ -2607,6 +2715,8 @@ onAuthStateChanged(auth, async (user) => {
     });
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
+    // Notes (Messenger-style) — stored in the 2nd RTDB so the main DB stays lean.
+    state.stopNotes = onValue(ref(db2, 'notes'), (snap) => { state.notes = snap.val() || {}; renderNotes(); if (state.activeThreadId) updateChatHeader(); }, (e) => reportRealtimeError('notes', e));
     // Mirror Hangout Posts notification badge on the back button (limited to latest 50)
     state.stopPostsNotif = onValue(query(ref(db, `notifications/${user.uid}`), limitToLast(50)), (snapshot) => {
       const notifs = snapshot.val() || {};
@@ -2652,7 +2762,40 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 $('new-chat-button').addEventListener('click', () => { if (state.user) { startWholePresence(); $('people-dialog').showModal(); } else showAuth(); }); $('empty-new-chat-button').addEventListener('click', () => { if (state.user) { startWholePresence(); $('people-dialog').showModal(); } else showAuth(); }); $('people-dialog').addEventListener('close', stopWholePresence); $('show-auth-button').addEventListener('click', showAuth);
-$('theme-toggle').addEventListener('click', () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'));
+const themeMenu = $('theme-menu');
+function setThemeMenu(open) {
+  if (!themeMenu) return;
+  themeMenu.classList.toggle('hidden', !open);
+  const cur = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  themeMenu.querySelectorAll('.theme-option').forEach((b) => b.classList.toggle('active', b.dataset.theme === cur));
+}
+$('theme-toggle').addEventListener('click', (e) => { e.stopPropagation(); setThemeMenu(themeMenu.classList.contains('hidden')); });
+themeMenu.querySelectorAll('.theme-option').forEach((b) => b.addEventListener('click', () => { applyTheme(b.dataset.theme); setThemeMenu(false); }));
+document.addEventListener('click', () => setThemeMenu(false));
+$('search-toggle-button').addEventListener('click', () => {
+  const box = $('search-box-label'), notes = $('notes-strip');
+  const opening = box.classList.contains('hidden');
+  box.classList.toggle('hidden', !opening);
+  notes.classList.toggle('hidden', opening);
+  if (opening) { $('conversation-search').focus(); renderConversations(); }
+});
+$('search-clear').addEventListener('click', () => {
+  const box = $('search-box-label'), notes = $('notes-strip');
+  $('conversation-search').value = '';
+  box.classList.add('hidden');
+  notes.classList.remove('hidden');
+  renderConversations();
+});
+// Note viewer — tiny popover (close via X, outside click, or Escape)
+const closeNotePopover = () => $('note-popover')?.classList.add('hidden');
+$('note-view-close').addEventListener('click', closeNotePopover);
+document.addEventListener('click', (e) => {
+  const pop = $('note-popover');
+  if (!pop || pop.classList.contains('hidden')) return;
+  if (pop.contains(e.target) || e.target.closest('.note-item')) return;
+  closeNotePopover();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNotePopover(); });
 $('conversation-search').addEventListener('input', renderConversations); $('people-search').addEventListener('input', renderPeople); $('message-form').addEventListener('submit', sendMessage);
 $('message-input').addEventListener('input', (event) => { 
   const list = $('message-list');

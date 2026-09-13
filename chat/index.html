@@ -29,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=22">
+  <link rel="stylesheet" href="css/styles.css?v=34">
   <link rel="manifest" href="../manifest.json">
   <link rel="icon" type="image/x-icon" href="../favicon.ico">
   <link rel="apple-touch-icon" href="../icon-192.png">
@@ -54,19 +54,31 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
               <span id="back-notif-badge" class="back-notif-badge hidden"></span>
             </a>
-            <button id="theme-toggle" class="icon-btn theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
-              <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-              <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <button id="search-toggle-button" class="icon-btn" type="button" title="Search chats or members" aria-label="Search chats or members">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </button>
+            <div class="theme-btn-wrap">
+              <button id="theme-toggle" class="icon-btn theme-toggle" type="button" title="Themes" aria-label="Themes" aria-haspopup="listbox">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.622 17.897-10.68-2.913"/><path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z"/><path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.518.518 0 0 0-.417.805.517.517 0 0 0 .055.065l1.5 1.5"/><path d="M4 22h12"/></svg>
+              </button>
+              <div id="theme-menu" class="theme-menu hidden" role="listbox" aria-label="Themes">
+                <button type="button" class="theme-option" data-theme="light" role="option"><span aria-hidden="true">☀️</span> Light</button>
+                <button type="button" class="theme-option" data-theme="dark" role="option"><span aria-hidden="true">🌙</span> Dark</button>
+              </div>
+            </div>
             <button id="new-chat-button" class="icon-btn accent" title="New message" aria-label="New message">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
           </div>
         </div>
         <div class="search-wrap">
-          <label class="search-box">
+          <div id="notes-strip" class="notes-strip" aria-label="Notes"></div>
+          <label class="search-box hidden" id="search-box-label">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input id="conversation-search" type="search" autocomplete="off" placeholder="Search chats or members…">
+            <button type="button" id="search-clear" class="search-clear" aria-label="Close search" title="Close search">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </label>
         </div>
       </header>
@@ -147,7 +159,10 @@
           </button>
           <span id="chat-avatar-wrap"><img id="chat-avatar" class="avatar large" alt=""></span>
           <div class="chat-heading">
-            <h2 id="chat-name">Conversation</h2>
+            <div class="chat-heading-row">
+              <h2 id="chat-name">Conversation</h2>
+              <span id="chat-note-chip" class="chat-note-chip hidden" title=""></span>
+            </div>
             <p id="chat-status">Offline</p>
           </div>
           <span id="streak-badge" class="streak-badge hidden" title="Chat streak"></span>
@@ -397,6 +412,21 @@
     </div>
   </dialog>
 
+  <!-- NOTE VIEWER (tiny floating popover anchored near the avatar) -->
+  <div id="note-popover" class="note-popover hidden">
+    <button id="note-view-close" type="button" class="dialog-close-btn" aria-label="Close">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="note-view-person">
+      <img id="note-view-avatar" class="avatar" alt="">
+      <div class="note-view-meta">
+        <strong id="note-view-name"></strong>
+        <span class="note-view-label">Note</span>
+      </div>
+    </div>
+    <p id="note-view-text" class="note-view-text"></p>
+  </div>
+
   <!-- IMAGE/VIDEO VIEWER -->
   <div id="image-viewer" class="image-viewer hidden" role="dialog" aria-label="Media viewer" aria-modal="true">
     <div class="image-viewer-backdrop" id="image-viewer-backdrop"></div>
@@ -418,6 +448,6 @@
   <div id="message-action-menu" class="message-action-menu hidden" role="menu" aria-label="Message actions"></div>
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="../js/users-cache.js"></script>
-  <script type="module" src="js/app.js?v=59"></script>
+  <script type="module" src="js/app.js?v=64"></script>
 </body>
 </html>

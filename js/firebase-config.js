@@ -54,6 +54,10 @@ export const fsdb2 = initializeFirestore(app2, {
     })
 });
 
+// Secondary Realtime Database (hangoutrgm2) — used for Notes & other light,
+// non-critical data so the main RTDB stays lean. Rules in database2.rules.json.
+export const db2 = getDatabase(app2);
+
 // Tertiary Firebase App and Firestore instance (fsdb3)
 export const app3 = initializeApp(firebaseConfig3, "rpw3-67a05");
 export const fsdb3 = initializeFirestore(app3, {
@@ -132,6 +136,7 @@ export function getRoundRobinFsdb() {
 // Attach utilities to window for global access
 window.fsdb = fsdb;
 window.fsdb2 = fsdb2;
+window.db2 = db2;
 window.fsdb3 = fsdb3;
 window.getFirestoreBySource = getFirestoreBySource;
 window.getSourceByFirestore = getSourceByFirestore;

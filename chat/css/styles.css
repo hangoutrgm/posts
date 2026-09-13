@@ -150,7 +150,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 
 .brand-actions { display: flex; align-items: center; gap: 4px; }
 
-.search-wrap { padding: 0 12px 12px; }
+.search-wrap { padding: 0 10px 8px; }
 
 .search-box {
   display: flex;
@@ -2131,10 +2131,216 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   border: none;
   border-radius: 20px;
   display: flex;
+}
+/* ═══════════ NOTES STRIP (Messenger-style) ═══════════ */
+.notes-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 2px 6px 4px;
+  scrollbar-width: none;
+}
+.notes-strip::-webkit-scrollbar { display: none; }
+.notes-empty { margin: 0; padding: 4px 2px; font-size: 11.5px; color: var(--ink-muted); }
+.note-item {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px;
+  padding-top: 22px; /* headroom for the 2-row floating bubble — same for ALL items so avatars align */
+  display: inline-flex;
   flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink-muted);
+}
+/* Thought-cloud bubble floating on the avatar's top edge */
+.note-bubble {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+  width: 66px; /* fits the column pitch (64px + thin gap) so bubbles never overlap */
+  max-width: 66px;
   height: auto;
-  max-height: min(85dvh, 620px);
-  box-sizing: border-box;
+  min-height: 18px;
+  padding: 3px 8px;
+  border-radius: 12px 12px 12px 5px; /* soft corner adds the "thought" feel */
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+.note-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--surface-2);
+  border-bottom: 0;
+}
+/* Up to 3 rows of text inside the bubble (long notes end with "…") */
+.note-bubble-text {
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.note-ring {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--surface-3);
+  border: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: box-shadow var(--transition), background var(--transition), transform var(--transition);
+}
+.note-item:hover .note-ring { box-shadow: 0 0 0 3px var(--accent-glow); }
+.note-item:active .note-ring { transform: scale(0.94); }
+/* Explicit square + object-fit cover = never stretched, always circular */
+.note-ring .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 0;
+  box-shadow: none;
+}
+.note-item.me .note-ring {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.note-item.me .note-ring .avatar { border-color: transparent; }
+.note-item .note-label {
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.15;
+  max-width: 60px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════ THEME MENU (paint brush) ═══════════ */
+.theme-btn-wrap { position: relative; }
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 150px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.theme-option:hover { background: var(--surface-2); color: var(--ink); }
+.theme-option.active { color: var(--accent); background: var(--accent-glow); }
+
+/* ═══════════ SEARCH CLEAR BUTTON ═══════════ */
+.search-clear {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  border-radius: 8px;
+  color: var(--ink-muted);
+}
+.search-clear:hover { color: var(--ink); background: var(--surface-3); }
+.search-clear svg { width: 14px; height: 14px; }
+
+/* ═══════════ NOTE VIEWER (tiny floating popover) ═══════════ */
+.note-popover {
+  position: fixed;
+  z-index: 120;
+  width: 200px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+}
+.note-popover .dialog-close-btn {
+  position: absolute; top: 10px; right: 10px;
+  width: 26px; height: 26px;
+}
+.note-popover .note-view-person { display: flex; align-items: center; gap: 10px; padding-right: 24px; }
+.note-popover .note-view-person .avatar { width: 40px; height: 40px; }
+.note-popover .note-view-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.note-popover .note-view-meta strong {
+  font-size: 14px; font-weight: 800; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.note-popover .note-view-label {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--ink-muted);
+}
+.note-popover .note-view-text {
+  margin: 10px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ═══════════ CHAT HEADER NOTE CHIP ═══════════ */
+.chat-heading-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.chat-heading-row h2 { flex-shrink: 1; }
+.chat-note-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 120px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--accent);
+  background: var(--accent-glow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cg-picker-scroll {
   flex: 1;
