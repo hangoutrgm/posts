@@ -2713,13 +2713,35 @@ window.processBingoAnimations = () => {
 };
 
 window.checkBingoWinner = (entries, calledItems) => {
-    const calledSet = new Set(calledItems);
+    // Normalize both sides to strings so a number vs string drift can never
+    // silently block a real BINGO (called items come from the pool as strings;
+    // entries store strings too, but this also tolerates legacy/mixed types).
+    const calledSet = new Set((calledItems || []).map(String));
+
+    let winnerUid = null;
+    let earliestSub = Infinity;
+
     for (const uid in entries) {
         const entry = entries[uid];
-        const allCalled = [...entry.letters, ...entry.numbers].every(i => calledSet.has(i));
-        if (allCalled) return uid;
+        // Skip malformed/placeholder entries instead of throwing (a throw inside
+        // the transaction would abort the spin and never declare a winner).
+        if (!entry || !Array.isArray(entry.letters) || !Array.isArray(entry.numbers)) continue;
+        const picked = [...entry.letters, ...entry.numbers];
+        if (!picked.length) continue;
+
+        const allCalled = picked.map(String).every(i => calledSet.has(i));
+        if (!allCalled) continue;
+
+        // Two players can complete on the SAME drawn item. Instead of "whoever
+        // appears first in the Firestore object map" (feels random), break ties
+        // deterministically: the entry that was SUBMITTED EARLIEST wins.
+        const subAt = Number(entry.timestamp || 0);
+        if (subAt < earliestSub) {
+            earliestSub = subAt;
+            winnerUid = uid;
+        }
     }
-    return null;
+    return winnerUid;
 };
 
 window.resetBingoGame = async (postId) => {
