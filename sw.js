@@ -12,7 +12,7 @@ const PRECACHE_ASSETS = [
   './js/helpers.js?v=57',
   './js/games.js?v=53',
   './js/main.js?v=44',
-      './chat/js/app.js?v=65',
+      './chat/js/app.js?v=70',
   './js/users-cache.js',
   './config/emoji_riddles.json',
   './config/flags.json',

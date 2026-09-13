@@ -684,6 +684,10 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       messageText = highlightMentions(linkifyText(message.text || ''));
     }
 
+    // Emoji-only messages → bare big emoji, no bubble (Messenger-style)
+    let emojiOnly = !isGameCard && !isGameBump && !image && !audioHtml && !message.replyTo && isEmojiOnlyText(message.text);
+    const emojiOnlyCount = emojiOnly ? emojiCountOf(message.text) : 0;
+
     if (!isGameCard && !isGameBump && !messageText && image) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
     } else if (!isGameCard && !isGameBump && !messageText && isVoice) {
@@ -691,6 +695,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     }
     
     if (message.isDeleted) {
+      emojiOnly = false;
       quote = '';
       bumpTag = '';
       image = '';
@@ -712,7 +717,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     const senderNameHtml = (state.activeInboxItem?.isGroup && !mine) ? `<div class="message-sender-name" style="font-size:10.5px; color:var(--ink-muted); margin-bottom:2px; margin-left:6px; font-weight:600;">${escapeHtml(getNickname(message.senderId))}</div>` : '';
     const noSwipeHint = isGameCard || isGameBump;
     const metaHtml = isGameCard ? '' : `<div class="message-meta"><div class="message-time hidden">${formatTime(message.timestamp)}</div>${message.editedAt ? '<span class="edited-label">Edited</span>' : ''}${seen}</div>`;
-    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}${isGameCard ? ' is-game-row' : ''}"><div>${senderNameHtml}<div class="message-bubble${isGameCard ? ' is-game-bubble' : ''}" data-message="${escapeHtml(message.id)}">${noSwipeHint ? '' : '<span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>'}${quote}${bumpTag}${messageText}${image}${audioHtml}</div>${!isGameCard && !isGameBump && reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}${metaHtml}</div></div>`;
+    return `<div id="message-${escapeHtml(message.id)}" class="message-row${mine ? ' me' : ''}${isGameCard ? ' is-game-row' : ''}"><div>${senderNameHtml}<div class="message-bubble${isGameCard ? ' is-game-bubble' : ''}${emojiOnly ? ' emoji-only' : ''}"${emojiOnly ? ` style="font-size:${emojiOnlyCount > 1 ? '44px' : '54px'};"` : ''} data-message="${escapeHtml(message.id)}">${noSwipeHint ? '' : '<span class="swipe-reply-hint"><svg viewBox="0 0 24 24"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span>'}${quote}${bumpTag}${messageText}${image}${audioHtml}</div>${!isGameCard && !isGameBump && reactionSummary ? `<div class="reaction-summary">${reactionSummary}</div>` : ''}${metaHtml}</div></div>`;
   }).forEach((html, i) => {
     const key = 'message-' + rows[i].id;
     rowHtml[key] = html;
@@ -1866,7 +1871,7 @@ function clearAttachment() {
   $('media-preview-banner').classList.add('hidden');
   $('media-preview-content').innerHTML = '';
 }
-function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); $('message-input').focus(); }
+function resetComposer() { $('message-input').value = ''; $('message-input').style.height = ''; clearAttachment(); clearReply(); setTyping(false); updateSendMode(); $('message-input').focus(); }
 async function updateConversationSummaries(preview, timestamp) {
   const own = { ...(state.inbox[state.activeThreadId] || {}), lastMessage: preview, lastTimestamp: timestamp, lastSenderId: state.user.uid, unreadCount: 0 };
   if (!state.activeInboxItem?.isGroup) own.peerId = state.activePeerId;
@@ -2024,6 +2029,67 @@ async function checkChatCooldown() {
   } catch (e) { return true; } // fail-open on read errors
 }
 
+// ==========================================
+// MESSENGER-STYLE SEND BUTTON
+// Empty composer → the button shows your preferred emoji and tapping sends it.
+// Typing → the button becomes the send arrow. Long-press / right-click the
+// emoji to change it (saved on this device via localStorage).
+// ==========================================
+const PREFERRED_EMOJI_KEY = 'hangout-preferred-emoji';
+const EMOJI_CHOICES = ['😊','😍','🥰','😂','🤣','😎','🥳','🤗','😢','😡','👍','🙏','🎉','❤️','🔥','💯'];
+function getPreferredEmoji() { try { return localStorage.getItem(PREFERRED_EMOJI_KEY) || '😊'; } catch (e) { return '😊'; } }
+function setPreferredEmoji(emoji) { try { localStorage.setItem(PREFERRED_EMOJI_KEY, emoji); } catch (e) {} updateSendMode(); }
+function isEmojiMode() { return $('send-button')?.classList.contains('emoji-mode') === true; }
+function updateSendMode() {
+  const btn = $('send-button'); if (!btn) return;
+  const emojiSpan = $('send-emoji'), plane = $('send-plane');
+  const empty = !$('message-input').value.trim() && !state.pendingImageFile;
+  btn.classList.toggle('emoji-mode', empty);
+  if (emojiSpan) { emojiSpan.textContent = getPreferredEmoji(); emojiSpan.classList.toggle('hidden', !empty); }
+  if (plane) plane.classList.toggle('hidden', empty);
+  const label = empty ? 'Tap to send your emoji — long-press to change it' : 'Send';
+  btn.title = label; btn.setAttribute('aria-label', label);
+}
+// Emoji-only messages (like "😂" or "🎉😎") render as big bare emojis with no
+// bubble — Messenger-style. Up to 3 emojis get the large treatment.
+function isEmojiOnlyText(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 26) return false;
+  const stripped = t.replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0E\uFE0F\u200D\u20E3\u{1F3FB}-\u{1F3FF}\u{E000}-\u{F8FF}\s]/gu, '');
+  return stripped.length === 0;
+}
+function emojiCountOf(text) {
+  return ((String(text || '').match(/\p{Extended_Pictographic}/gu)) || []).length;
+}
+let _preferredEmojiPop = null;
+function openPreferredEmojiPicker(anchor) {
+  if (!_preferredEmojiPop) {
+    _preferredEmojiPop = document.createElement('div');
+    _preferredEmojiPop.className = 'preferred-emoji-pop';
+    _preferredEmojiPop.innerHTML = EMOJI_CHOICES.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
+    document.body.appendChild(_preferredEmojiPop);
+    _preferredEmojiPop.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-emoji]');
+      if (!btn) return;
+      setPreferredEmoji(btn.dataset.emoji);
+      _preferredEmojiPop.classList.add('hidden');
+      showToast('Preferred emoji updated!');
+    });
+    document.addEventListener('click', (e) => {
+      if (_preferredEmojiPop.classList.contains('hidden')) return;
+      if (_preferredEmojiPop.contains(e.target) || e.target.closest('#send-button')) return;
+      _preferredEmojiPop.classList.add('hidden');
+    });
+  }
+  const r = anchor.getBoundingClientRect();
+  _preferredEmojiPop.classList.remove('hidden');
+  const pw = _preferredEmojiPop.offsetWidth || 240, ph = _preferredEmojiPop.offsetHeight || 100;
+  const x = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+  let y = r.top - ph - 8; if (y < 8) y = r.bottom + 8;
+  _preferredEmojiPop.style.left = `${x}px`;
+  _preferredEmojiPop.style.top = `${y}px`;
+}
+
 async function sendMessage(event) {
   event.preventDefault(); if (!state.user || !state.activeThreadId) return;
 
@@ -2045,7 +2111,13 @@ async function sendMessage(event) {
       return showToast('Only admins can send messages in Global Announcements.');
     }
   }
-  const input = $('message-input'); const text = input.value.trim(); const file = state.pendingImageFile; if (!text && !file) return;
+  const input = $('message-input'); let text = input.value.trim(); const file = state.pendingImageFile;
+  if (!text && !file) {
+    // Messenger-style: tapping the emoji button with an empty composer sends
+    // the user's preferred emoji as a message.
+    if (!isEmojiMode()) return;
+    text = getPreferredEmoji();
+  }
   // Cooldown gate (settings.chatCooldownSec)
   if (!(await checkChatCooldown())) return;
   const button = $('send-button'); 
@@ -2869,6 +2941,7 @@ $('message-input').addEventListener('input', (event) => {
 
   if (wasNearLatest) list.scrollTop = list.scrollHeight;
   if (event.target.value.trim()) noteTyping(); else setTyping(false); 
+  updateSendMode();
   updateMentionSuggestions();
 });
 
@@ -2911,8 +2984,14 @@ $('message-input').addEventListener('keydown', (event) => {
     event.preventDefault(); $('message-form').requestSubmit();
   }
 });
-$('send-button').addEventListener('mousedown', e => e.preventDefault());
-$('send-button').addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
+let _sendPressTimer = null; let _sendLongPress = false;
+$('send-button').addEventListener('mousedown', (e) => { e.preventDefault(); _sendLongPress = false; if (isEmojiMode()) { _sendPressTimer = setTimeout(() => { _sendLongPress = true; openPreferredEmojiPicker($('send-button')); }, 500); } });
+$('send-button').addEventListener('mouseup', () => clearTimeout(_sendPressTimer));
+$('send-button').addEventListener('click', (e) => { if (_sendLongPress) { e.preventDefault(); e.stopPropagation(); _sendLongPress = false; } });
+$('send-button').addEventListener('contextmenu', (e) => { if (!isEmojiMode()) return; e.preventDefault(); openPreferredEmojiPicker($('send-button')); });
+$('send-button').addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); _sendLongPress = false; if ($('send-button').disabled) return; if (isEmojiMode()) { _sendPressTimer = setTimeout(() => { _sendLongPress = true; openPreferredEmojiPicker($('send-button')); }, 500); } else $('message-form').requestSubmit(); }, { passive: false });
+$('send-button').addEventListener('touchend', (e) => { clearTimeout(_sendPressTimer); if (_sendLongPress) { if (e.cancelable) e.preventDefault(); _sendLongPress = false; return; } if (!$('send-button').disabled) $('message-form').requestSubmit(); }, { passive: false });
+updateSendMode();
 $('image-input').addEventListener('change', (event) => { 
   const file = event.target.files[0]; 
 

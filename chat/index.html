@@ -272,7 +272,8 @@
             </div>
             <textarea id="message-input" rows="1" maxlength="1500" placeholder="Type a message…" aria-label="Message"></textarea>
             <button id="send-button" class="send-button" type="submit" aria-label="Send message">
-              <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <span id="send-emoji" class="send-emoji hidden">😊</span>
+              <svg id="send-plane" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
         </form>
@@ -489,6 +490,6 @@
   <div id="message-action-menu" class="message-action-menu hidden" role="menu" aria-label="Message actions"></div>
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="../js/users-cache.js"></script>
-  <script type="module" src="js/app.js?v=68"></script>
+  <script type="module" src="js/app.js?v=70"></script>
 </body>
 </html>

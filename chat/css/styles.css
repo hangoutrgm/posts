@@ -969,6 +969,43 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .send-button:hover { transform: scale(1.08); box-shadow: 0 6px 20px var(--accent-glow); }
 .send-button:disabled { opacity: .4; cursor: not-allowed; transform: none; }
 .send-button svg { width: 16px; height: 16px; }
+.send-emoji { font-size: 24px; line-height: 1; user-select: none; }
+.send-button.emoji-mode { background: transparent; box-shadow: none; color: var(--ink-2); }
+.send-button.emoji-mode:hover { transform: scale(1.15); box-shadow: none; }
+
+/* ── Preferred-emoji picker (long-press / right-click the emoji send button) ── */
+.preferred-emoji-pop {
+  position: fixed;
+  z-index: 130;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 250px;
+}
+.preferred-emoji-pop button {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  font-size: 20px; border-radius: 10px;
+  transition: background var(--transition), transform var(--transition);
+}
+.preferred-emoji-pop button:hover { background: var(--surface-2); transform: scale(1.15); }
+
+/* ── Emoji-only messages: bare big emoji, no bubble (Messenger-style) ── */
+.message-bubble.emoji-only {
+  background: transparent !important;
+  color: var(--ink);
+  box-shadow: none;
+  padding: 0 4px;
+  border-radius: 0;
+  line-height: 1.15;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
 
 /* ── Reply / media banner ── */
 .reply-banner {
