@@ -29,7 +29,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=35">
+  <script>
+    (function() {
+      try {
+        var s = localStorage.getItem('hangout-chat-theme');
+        var v = ['light', 'dark', 'sakura', 'emerald', 'mocha', 'cyberpunk'];
+        var darkSet = {dark: 1, mocha: 1, cyberpunk: 1};
+        var t = (s && v.indexOf(s) !== -1) ? s : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.dataset.theme = t;
+        document.documentElement.classList.add('theme-' + t);
+        if (darkSet[t]) document.documentElement.classList.add('dark');
+      } catch(e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="css/styles.css?v=37">
   <link rel="manifest" href="../manifest.json">
   <link rel="icon" type="image/x-icon" href="../favicon.ico">
   <link rel="apple-touch-icon" href="../icon-192.png">
@@ -62,8 +76,36 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.622 17.897-10.68-2.913"/><path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z"/><path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.518.518 0 0 0-.417.805.517.517 0 0 0 .055.065l1.5 1.5"/><path d="M4 22h12"/></svg>
               </button>
               <div id="theme-menu" class="theme-menu hidden" role="listbox" aria-label="Themes">
-                <button type="button" class="theme-option" data-theme="light" role="option"><span aria-hidden="true">☀️</span> Light</button>
-                <button type="button" class="theme-option" data-theme="dark" role="option"><span aria-hidden="true">🌙</span> Dark</button>
+                <button type="button" class="theme-option" data-theme="light" role="option">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                  <span>Light</span>
+                  <span class="theme-dot" style="background:#6c63ff;" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="theme-option" data-theme="dark" role="option">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  <span>Dark</span>
+                  <span class="theme-dot" style="background:#7c73ff;" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="theme-option" data-theme="sakura" role="option">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 16.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 1 1 4.5 4.5 4.5 4.5 0 1 1-4.5 4.5"/></svg>
+                  <span>Sakura</span>
+                  <span class="theme-dot" style="background:#fb7185;" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="theme-option" data-theme="emerald" role="option">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  <span>Emerald</span>
+                  <span class="theme-dot" style="background:#10b981;" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="theme-option" data-theme="mocha" role="option">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>
+                  <span>Mocha</span>
+                  <span class="theme-dot" style="background:#f59e0b;" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="theme-option" data-theme="cyberpunk" role="option">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <span>Cyberpunk</span>
+                  <span class="theme-dot" style="background:#e024c3;" aria-hidden="true"></span>
+                </button>
               </div>
             </div>
             <button id="new-chat-button" class="icon-btn accent" title="New message" aria-label="New message">
@@ -448,6 +490,6 @@
   <div id="message-action-menu" class="message-action-menu hidden" role="menu" aria-label="Message actions"></div>
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="../js/users-cache.js"></script>
-  <script type="module" src="js/app.js?v=65"></script>
+  <script type="module" src="js/app.js?v=67"></script>
 </body>
 </html>

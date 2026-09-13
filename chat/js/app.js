@@ -246,21 +246,40 @@ function renderAvatarHtml(peerIds, item = null) {
   const imgs = peerIds.slice(0, 4).map(uid => `<img src="${escapeHtml(avatarUrl(state.users[uid]))}" alt="">`).join('');
   return `<div class="avatar-collage count-${count}">${imgs}</div>`;
 }
+const VALID_THEMES = ['light', 'dark', 'sakura', 'emerald', 'mocha', 'cyberpunk'];
+const DARK_THEMES  = new Set(['dark', 'mocha', 'cyberpunk']);
+const THEME_META_COLORS = {
+  light:     '#6c63ff',
+  dark:      '#0d0f1a',
+  sakura:    '#fff0f4',
+  emerald:   '#f0fdf6',
+  mocha:     '#14100e',
+  cyberpunk: '#0a0815',
+};
+
 function applyTheme(theme) {
-  const dark = theme === 'dark';
-  document.documentElement.classList.toggle('dark', dark);
-  localStorage.setItem('hangout-chat-theme', dark ? 'dark' : 'light');
+  if (!VALID_THEMES.includes(theme)) theme = 'dark';
+  const isDark = DARK_THEMES.has(theme);
+  document.documentElement.classList.toggle('dark', isDark);
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.dataset.theme = theme;
+  VALID_THEMES.forEach(t => document.documentElement.classList.remove(`theme-${t}`));
+  document.documentElement.classList.add(`theme-${theme}`);
+  localStorage.setItem('hangout-chat-theme', theme);
   const toggle = $('theme-toggle');
   if (toggle) {
-    toggle.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    const capitalized = theme.charAt(0).toUpperCase() + theme.slice(1);
+    toggle.title = `Theme: ${capitalized}`;
     toggle.setAttribute('aria-label', toggle.title);
   }
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d0f1a' : '#6c63ff');
+  const metaColor = THEME_META_COLORS[theme] || (isDark ? '#0d0f1a' : '#6c63ff');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', metaColor);
   // Mark the active option in the theme menu (if open)
   const menu = $('theme-menu');
   if (menu) menu.querySelectorAll('.theme-option').forEach((btn) => btn.classList.toggle('active', btn.dataset.theme === theme));
 }
-applyTheme(localStorage.getItem('hangout-chat-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+const savedTheme = localStorage.getItem('hangout-chat-theme');
+applyTheme(VALID_THEMES.includes(savedTheme) ? savedTheme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
 function showAppModal(options = {}) {
   return new Promise((resolve) => {
@@ -2794,11 +2813,19 @@ const themeMenu = $('theme-menu');
 function setThemeMenu(open) {
   if (!themeMenu) return;
   themeMenu.classList.toggle('hidden', !open);
-  const cur = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  const cur = document.documentElement.dataset.theme || (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
   themeMenu.querySelectorAll('.theme-option').forEach((b) => b.classList.toggle('active', b.dataset.theme === cur));
 }
 $('theme-toggle').addEventListener('click', (e) => { e.stopPropagation(); setThemeMenu(themeMenu.classList.contains('hidden')); });
-themeMenu.querySelectorAll('.theme-option').forEach((b) => b.addEventListener('click', () => { applyTheme(b.dataset.theme); setThemeMenu(false); }));
+themeMenu.addEventListener('click', (e) => {
+  const btn = e.target.closest('.theme-option');
+  if (!btn) return;
+  const t = btn.dataset.theme;
+  if (t) {
+    applyTheme(t);
+    setThemeMenu(false);
+  }
+});
 document.addEventListener('click', () => setThemeMenu(false));
 $('search-toggle-button').addEventListener('click', () => {
   const box = $('search-box-label'), notes = $('notes-strip');
