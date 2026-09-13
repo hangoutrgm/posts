@@ -223,27 +223,6 @@ function openUserProfile(uid) {
   window.location.href = `../?profile=${encodeURIComponent(uid)}`;
 }
 
-const _lastPeerProfileFetch = {};
-async function refreshPeerProfile(peerUid) {
-  if (!peerUid || !state.user) return;
-  const now = Date.now();
-  if (_lastPeerProfileFetch[peerUid] && (now - _lastPeerProfileFetch[peerUid] < 300000)) return; // 5 min debounce
-  _lastPeerProfileFetch[peerUid] = now;
-  try {
-    const snap = await get(ref(db, `users/${peerUid}`));
-    if (snap.exists()) {
-      const freshUser = { ...snap.val(), uid: peerUid };
-      state.users[peerUid] = freshUser;
-      if (window.usersCache?.updateUser) window.usersCache.updateUser(peerUid, freshUser);
-      saveUsersCache();
-      if (state.activePeerId === peerUid) {
-        updateChatHeader();
-        renderConversations();
-      }
-    }
-  } catch (_) {}
-}
-
 function getNickname(uid) {
   if (state.activeThreadId && state.inbox[state.activeThreadId]?.nicknames?.[uid]) return state.inbox[state.activeThreadId].nicknames[uid];
   return state.users[uid]?.name || 'Hangout member';
@@ -1669,7 +1648,6 @@ function openThread(threadId, inboxItem) {
   state.noMoreOldMessages = false;
   state.loadingOldMessages = false;
   $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
-  if (state.activePeerId) refreshPeerProfile(state.activePeerId);
   if (state.stopMessages) {
     try { state.stopMessages(); } catch (_) {}
     state.stopMessages = null;
@@ -2689,13 +2667,8 @@ function applyUsersMap(raw) {
 (async () => {
   const cached = window.usersCache ? window.usersCache.read() : null;
   const fresh = cached && window.usersCache.isFresh(cached);
-  if (cached && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
-    applyUsersMap(cached.users); // instant paint, zero wait
-    if (!fresh) {
-      get(ref(db, 'users')).then((snapshot) => {
-        applyUsersMap(snapshot.val() || {});
-      }).catch(() => {});
-    }
+  if (fresh && cached.users && typeof cached.users === 'object' && !Array.isArray(cached.users)) {
+    applyUsersMap(cached.users); // instant paint, zero downloads
   } else {
     const snapshot = await get(ref(db, 'users'));
     applyUsersMap(snapshot.val() || {});
@@ -2709,11 +2682,11 @@ function applyUsersMap(raw) {
 // ANY heartbeat — with N online users that was N full-tree downloads per minute
 // per open chat tab. Now:
 //   • Watch presence/{uid} only for the conversation partners we display.
-//   • While the People dialog is open, fetch a single snapshot (no continuous stream).
+//   • While the People dialog is open, temporarily use a whole-tree listener.
 //   • All presence listening pauses when the tab is hidden.
 // ============================================================
 const _presenceHandles = {};      // uid -> unsubscribe
-let _presenceWholeActive = false; // whether People dialog is currently open
+let _presenceWhole = null;        // whole-tree listener while People dialog open
 let _syncingPresence = false;     // re-entrancy guard (see syncPresenceListeners)
 
 function presenceWatchedUids() {
@@ -2743,7 +2716,7 @@ function syncPresenceListeners() {
   // inside onValue() itself. That callback re-renders -> renderConversations() ->
   // syncPresenceListeners(). Without this guard (plus the reserved-slot pattern
   // below) it subscribed repeatedly and overflowed the stack on tab switches.
-  if (_syncingPresence || _presenceWholeActive || document.hidden) return;
+  if (_syncingPresence || _presenceWhole || document.hidden) return;
   _syncingPresence = true;
   try {
     const want = presenceWatchedUids();
@@ -2772,24 +2745,23 @@ function syncPresenceListeners() {
 }
 
 function startWholePresence() {
-  _presenceWholeActive = true;
+  if (_presenceWhole) return;
   stopGranularPresence();
-  get(ref(db, 'presence')).then((snapshot) => {
-    if (!_presenceWholeActive) return;
+  _presenceWhole = onValue(ref(db, 'presence'), (snapshot) => {
     state.online = snapshot.val() || {};
     renderConversations(); renderPeople(); updateChatHeader();
-  }).catch((e) => reportRealtimeError('presence', e));
+  }, (e) => reportRealtimeError('presence', e));
 }
 
 function stopWholePresence() {
-  _presenceWholeActive = false;
+  if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; }
   syncPresenceListeners();
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopGranularPresence();
-    _presenceWholeActive = false;
+    if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; }
     if (state.stopTyping) { try { state.stopTyping(); } catch (_) {} state.stopTyping = null; }
   } else {
     if (state.activeThreadId) watchTyping(state.activeThreadId);
@@ -2802,7 +2774,7 @@ let checkedDmParam = false;
 let checkedThreadParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
-  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); _presenceWholeActive = false; if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false; if (state.stopNotes) { state.stopNotes(); state.stopNotes = null; } state.notes = {}; restoreNotesCache(); renderNotes();
+  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false; if (state.stopNotes) { state.stopNotes(); state.stopNotes = null; } state.notes = {}; restoreNotesCache(); renderNotes();
   // Restore cached inbox immediately so the first render shows correct GC names & nicknames (no flicker)
   if (user) {
     try {
