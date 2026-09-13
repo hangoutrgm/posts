@@ -10,7 +10,7 @@
 // ============================================================
 (function () {
   var KEY = 'hangout-users-cache';
-  var TTL_MS = 120000; // 2 minutes
+  var TTL_MS = 1200000; // 20 minutes (optimized for RTDB bandwidth conservation)
 
   window.usersCache = {
     read: function () {
@@ -29,6 +29,17 @@
     write: function (users) {
       try { localStorage.setItem(KEY, JSON.stringify({ savedAt: Date.now(), users: users || {} })); }
       catch (e) { /* storage quota — skip gracefully */ }
+    },
+    updateUser: function (uid, userData) {
+      if (!uid || !userData) return;
+      try {
+        var current = window.usersCache.read();
+        var users = (current && current.users) ? current.users : {};
+        users[uid] = Object.assign({}, users[uid] || {}, userData);
+        // Persist with original savedAt timestamp if present so we don't reset the full-cache TTL
+        var savedAt = (current && current.savedAt) ? current.savedAt : Date.now();
+        localStorage.setItem(KEY, JSON.stringify({ savedAt: savedAt, users: users }));
+      } catch (e) {}
     },
     invalidate: function () {
       try { localStorage.removeItem(KEY); } catch (e) {}
