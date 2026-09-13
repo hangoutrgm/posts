@@ -163,6 +163,17 @@ function initAdminDashboard() {
     }
     fetchPostsCount();
 
+    function collectRankRewards() {
+    const obj = {};
+    for (let i = 1; i <= 10; i++) {
+        const v = document.getElementById('set-rankReward' + i)?.value;
+        if (v !== undefined && v !== null && String(v).trim() !== '') {
+            obj[String(i)] = parseFloat(v) || 0;
+        }
+    }
+    return obj;
+}
+
     // 4. Listen to Settings
     onValue(ref(db, 'settings'), (snap) => {
         if (snap.exists()) {
@@ -196,6 +207,11 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
             document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
             document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
+            const lbRew = settings.leaderboardRewards || {};
+            for (let i = 1; i <= 10; i++) {
+                const el = document.getElementById('set-rankReward' + i);
+                if (el) el.value = lbRew[String(i)] ?? '';
+            }
             renderGameLimitInputs(settings.gameLimits || {}, settings.gameLbRewards || {});
             renderSiteControl(settings.pausePosts === true, settings.pauseChat === true);
         } else {
@@ -228,6 +244,10 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = '';
             document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
+            for (let i = 1; i <= 10; i++) {
+                const el = document.getElementById('set-rankReward' + i);
+                if (el) el.value = '';
+            }
             renderGameLimitInputs({}, {});
             renderSiteControl(false, false);
         }
@@ -300,6 +320,7 @@ function initAdminDashboard() {
             zeroLbForFlaggedPair: currentZeroLbState === true,
             gameLbRewards: collectGameLbRewards(),
             gameLimits: collectGameLimits(),
+            leaderboardRewards: collectRankRewards(),
         };
 
         try {

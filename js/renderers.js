@@ -3230,6 +3230,7 @@ window.renderRankings = async (resetLimit = true) => {
         
         if (window.currentRankingFilter === "Leaderboards") {
             const scope = window.lbScope || 'overall';
+            if (scope === 'rewards') { await renderRankingRewards(list); return; }
             let lbMap = null;
             if (scope !== 'overall') {
                 const period = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
@@ -3314,6 +3315,100 @@ window.renderRankings = async (resetLimit = true) => {
     requestAnimationFrame(() => list.style.minHeight = '');
 };
 
+// Rewards tab: top players of the CURRENT WEEKLY leaderboard with the prizes
+// an admin set (ranks 1–10, empty boxes = cutoff).
+async function renderRankingRewards(list) {
+    const loader = document.getElementById('ranking-loader');
+    if (loader) loader.classList.remove('hidden');
+
+    // Fetch the admin-configured prizes + the current weekly leaderboard together
+    const [rewardsSnap, weeklySnap] = await Promise.all([
+        get(ref(db, 'settings/leaderboardRewards')).catch(() => null),
+        get(ref(db, `lbWeekly/${window.lbPeriodKeyFor('weekly')}`)).catch(() => null)
+    ]);
+    const rewards = (rewardsSnap && rewardsSnap.exists()) ? (rewardsSnap.val() || {}) : {};
+    const weekly = (weeklySnap && weeklySnap.exists()) ? (weeklySnap.val() || {}) : {};
+    if (loader) loader.classList.add('hidden');
+
+    // Ranks 1–10 with a non-empty prize (empty tail = "stop rewarding there")
+    const configured = [];
+    for (let i = 1; i <= 10; i++) {
+        const v = rewards[String(i)];
+        if (v !== undefined && v !== null && String(v).trim() !== '') configured.push(i);
+    }
+    if (!configured.length) {
+        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🎁 No leaderboard rewards are configured yet.</p>`;
+        list.style.minHeight = '';
+        return;
+    }
+
+    // Rank by THIS week's LB points (users with 0 weekly points are excluded)
+    const pool = Object.entries(weekly)
+        .map(([uid, pts]) => {
+            const u = window.globalUsersCache[uid] || {};
+            return { uid, name: u.name, pic: u.pic, pts: Number(pts) || 0, isInactive: u.isInactive === true };
+        })
+        .filter(u => u.name && !u.isInactive && u.pts > 0)
+        .sort((a, b) => b.pts - a.pts)
+        .slice(0, Math.max(...configured));
+    if (!pool.length) {
+        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">No LB points recorded this week yet — rewards will appear once the weekly leaderboard fills up.</p>`;
+        list.style.minHeight = '';
+        return;
+    }
+
+    const maxRank = Math.max(...configured);
+    const fmtPrize = (p) => {
+        const s = String(p ?? '').trim();
+        const n = parseFloat(s);
+        return (!s || isNaN(n)) ? s : '₱' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    };
+
+    list.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'flex items-center justify-around p-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800/50 mb-3';
+    head.innerHTML = `
+        <div class="text-center">
+            <div class="text-xl font-black text-yellow-600 dark:text-yellow-400">🎁</div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">This week's Top ${maxRank} win prizes</div>
+        </div>
+        <div class="text-center">
+            <div class="text-lg font-black text-green-600 dark:text-green-400">${configured.length}</div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Prized ranks</div>
+        </div>`;
+    list.appendChild(head);
+
+    const fragment = document.createDocumentFragment();
+    pool.forEach((u, idx) => {
+        const rank = idx + 1;
+        const prize = escapeHtml(fmtPrize(rewards[String(rank)]));
+        let rankHtml = `<div class="w-7 text-center font-bold text-gray-400 dark:text-gray-500 text-xs">#${rank}</div>`;
+        if (rank === 1) rankHtml = `<div class="w-7 text-center text-yellow-500 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+        else if (rank === 2) rankHtml = `<div class="w-7 text-center text-gray-400 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+        else if (rank === 3) rankHtml = `<div class="w-7 text-center text-amber-600 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+
+        const el = document.createElement('div');
+        el.className = 'flex items-center justify-between p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2';
+        el.innerHTML = `
+            <div class="flex items-center space-x-3 overflow-hidden">
+                ${rankHtml}
+                <div class="relative shrink-0">
+                    <img src="${u.pic || window.generateAvatar(u.uid)}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
+                </div>
+                <div class="leading-tight truncate pr-2">
+                    <h3 class="font-bold text-sm text-gray-900 dark:text-white truncate cursor-pointer hover:underline" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">${u.name}</h3>
+                </div>
+            </div>
+            <div class="flex items-center shrink-0 gap-2 pr-1 text-sm">
+                <span class="text-yellow-600 dark:text-yellow-500 font-bold">🏆 ${u.pts}</span>
+                ${rank <= configured.length ? `<span class="text-green-600 dark:text-green-400 font-bold whitespace-nowrap">${prize}</span>` : ''}
+            </div>`;
+        fragment.appendChild(el);
+    });
+    list.appendChild(fragment);
+    list.style.minHeight = '';
+}
+
 // ============================================================
 // LEADERBOARD PERIOD CONTROLS (Weekly / Monthly / Overall)
 // ============================================================
@@ -3324,7 +3419,7 @@ window.updateLbPeriodBar = () => {
     bar.classList.toggle('hidden', !isFilter);
     if (!isFilter) return;
     const scope = window.lbScope || 'overall';
-    ['overall', 'weekly', 'monthly'].forEach(s => {
+    ['overall', 'weekly', 'monthly', 'rewards'].forEach(s => {
         const b = document.getElementById('lb-scope-' + s);
         if (!b) return;
         const on = s === scope;
@@ -3338,7 +3433,7 @@ window.updateLbPeriodBar = () => {
     });
     const nav = document.getElementById('lb-period-nav');
     const lbl = document.getElementById('lb-period-label');
-    if (scope === 'overall') {
+    if (scope === 'overall' || scope === 'rewards') {
         if (nav) nav.classList.add('hidden');
         if (lbl) lbl.textContent = '';
     } else {
@@ -3350,7 +3445,7 @@ window.updateLbPeriodBar = () => {
 
 window.setLbScope = (scope) => {
     window.lbScope = scope;
-    window.lbPeriodKey = scope === 'overall' ? '' : window.lbPeriodKeyFor(scope);
+    window.lbPeriodKey = (scope === 'overall' || scope === 'rewards') ? '' : window.lbPeriodKeyFor(scope);
     window.renderRankings(true);
     window.updateLbPeriodBar();
 };
