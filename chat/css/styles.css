@@ -334,16 +334,6 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   background: linear-gradient(135deg, #201338, #150c26);
   border-color: #392062;
 }
-/* Sakura & Emerald: conversation area uses the light theme's background
-   (everything else in these themes stays themed as-is) */
-:root[data-theme="sakura"] .chat-panel,
-html[data-theme="sakura"] .chat-panel,
-:root.theme-sakura .chat-panel,
-:root[data-theme="emerald"] .chat-panel,
-html[data-theme="emerald"] .chat-panel,
-:root.theme-emerald .chat-panel {
-  background: #f6f7fe; /* light theme conversation background */
-}
 .signed-out-icon {
   width: 44px; height: 44px;
   margin: 0 auto 10px;
