@@ -63,7 +63,7 @@
 }
 
 :root[data-theme="sakura"],
-[data-theme="sakura"],
+html[data-theme="sakura"],
 :root.theme-sakura {
   color-scheme: light;
   --accent: #e11d48;
@@ -87,7 +87,7 @@
 }
 
 :root[data-theme="emerald"],
-[data-theme="emerald"],
+html[data-theme="emerald"],
 :root.theme-emerald {
   color-scheme: light;
   --accent: #059669;
@@ -111,9 +111,8 @@
 }
 
 :root[data-theme="mocha"],
-[data-theme="mocha"],
-:root.theme-mocha,
-:root.dark[data-theme="mocha"] {
+html[data-theme="mocha"],
+:root.theme-mocha {
   color-scheme: dark;
   --accent: #f59e0b;
   --accent-2: #fbbf24;
@@ -135,9 +134,8 @@
 }
 
 :root[data-theme="cyberpunk"],
-[data-theme="cyberpunk"],
-:root.theme-cyberpunk,
-:root.dark[data-theme="cyberpunk"] {
+html[data-theme="cyberpunk"],
+:root.theme-cyberpunk {
   color-scheme: dark;
   --accent: #e024c3;
   --accent-2: #38bdf8;
@@ -291,8 +289,20 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .icon-btn.accent:hover { background: var(--accent-dark); transform: translateY(-1px); }
 .theme-toggle .sun-icon { display: none; }
 .theme-toggle .moon-icon { display: block; }
-:root.dark .theme-toggle .sun-icon { display: block; }
-:root.dark .theme-toggle .moon-icon { display: none; }
+/* Only the canonical dark theme shows the sun-icon (toggle back to light) */
+:root.dark .theme-toggle .sun-icon,
+:root[data-theme="mocha"] .theme-toggle .sun-icon,
+:root[data-theme="cyberpunk"] .theme-toggle .sun-icon { display: block; }
+:root.dark .theme-toggle .moon-icon,
+:root[data-theme="mocha"] .theme-toggle .moon-icon,
+:root[data-theme="cyberpunk"] .theme-toggle .moon-icon { display: none; }
+
+/* ── Dark-theme component alias ───────────────────────────────────────────
+   Mocha and Cyberpunk are dark-background themes but do NOT use the .dark
+   class (to avoid 64+ hardcoded :root.dark indigo-palette overrides bleeding
+   in). Instead their dark component variants are handled via [data-theme]
+   selectors below, using their own CSS variable tokens so colors always match.
+   ──────────────────────────────────────────────────────────────────────── */
 
 /* ── Signed-out card ── */
 .signed-out-card {
@@ -456,6 +466,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   font-size: 10px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
 }
 :root.dark .conv-streak-badge { background: #2d1500; color: #fb923c; }
+:root[data-theme="mocha"] .conv-streak-badge,
+:root[data-theme="cyberpunk"] .conv-streak-badge { background: var(--surface-3); color: var(--accent); }
 
 /* ── Back-to-posts button badge ── */
 .back-notif-badge {
@@ -551,6 +563,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .streak-restore-btn:hover { background: #ff6b00; color: #fff; }
 :root.dark .streak-restore-btn { border-color: #fb923c; color: #fb923c; }
 :root.dark .streak-restore-btn:hover { background: #fb923c; color: #fff; }
+:root[data-theme="mocha"] .streak-restore-btn,
+:root[data-theme="cyberpunk"] .streak-restore-btn { border-color: var(--accent); color: var(--accent); }
+:root[data-theme="mocha"] .streak-restore-btn:hover,
+:root[data-theme="cyberpunk"] .streak-restore-btn:hover { background: var(--accent); color: #fff; }
 
 /* ── Message List ── */
 .message-list {
@@ -613,6 +629,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   border: 1px solid var(--line);
 }
 :root.dark .reaction-chip { background: var(--surface-2); }
+:root[data-theme="mocha"] .reaction-chip,
+:root[data-theme="cyberpunk"] .reaction-chip { background: var(--surface-2); }
 .seen-label { color: var(--accent); font-size: 10px; font-weight: 600; }
 .message-link { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .message-row:not(.me) .message-link { color: var(--accent); }
@@ -1260,6 +1278,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 :root.dark .toast { background: var(--surface-3); color: var(--ink); border: 1px solid var(--line); }
+:root[data-theme="mocha"] .toast,
+:root[data-theme="cyberpunk"] .toast { background: var(--surface-3); color: var(--ink); border: 1px solid var(--line); }
 
 /* ── Image Viewer ── */
 .image-viewer { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; }
@@ -1456,6 +1476,22 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 :root.dark .cg-emerald { background: linear-gradient(160deg,#022c22,#021f18); border-color: #047857; }
 :root.dark .cg-fuchsia { background: linear-gradient(160deg,#3b0764,#2e0550); border-color: #a21caf; }
 :root.dark .cg-ended   { background: linear-gradient(160deg,#0f172a,#1e293b); border-color: #475569; }
+
+/* Mocha / Cyberpunk game cards — use their own surface tokens */
+:root[data-theme="mocha"] .cg-card,
+:root[data-theme="cyberpunk"] .cg-card { background: var(--surface-2); border-color: var(--line); color: var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+:root[data-theme="mocha"] .cg-blue,
+:root[data-theme="cyberpunk"] .cg-blue { background: linear-gradient(160deg, color-mix(in srgb, #1e3a5f 80%, var(--bg)), color-mix(in srgb, #172554 80%, var(--bg))); border-color: #1d4ed8; }
+:root[data-theme="mocha"] .cg-rose,
+:root[data-theme="cyberpunk"] .cg-rose { background: linear-gradient(160deg, color-mix(in srgb, #4c0519 80%, var(--bg)), color-mix(in srgb, #3d0011 80%, var(--bg))); border-color: #9f1239; }
+:root[data-theme="mocha"] .cg-amber,
+:root[data-theme="cyberpunk"] .cg-amber { background: linear-gradient(160deg, color-mix(in srgb, #431407 80%, var(--bg)), color-mix(in srgb, #361a00 80%, var(--bg))); border-color: var(--accent); }
+:root[data-theme="mocha"] .cg-indigo,
+:root[data-theme="cyberpunk"] .cg-indigo { background: linear-gradient(160deg, var(--surface-2), var(--surface-3)); border-color: var(--accent); }
+:root[data-theme="mocha"] .cg-fuchsia,
+:root[data-theme="cyberpunk"] .cg-fuchsia { background: linear-gradient(160deg, color-mix(in srgb, #3b0764 80%, var(--bg)), color-mix(in srgb, #2e0550 80%, var(--bg))); border-color: #a21caf; }
+:root[data-theme="mocha"] .cg-ended,
+:root[data-theme="cyberpunk"] .cg-ended { background: var(--surface-2); border-color: var(--line); }
 
 /* ── Header ── */
 .cg-header {
@@ -2413,22 +2449,22 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  opacity: .8;
+  opacity: .85;
   transition: opacity var(--transition), color var(--transition);
 }
 .theme-option span:first-of-type {
   flex: 1;
 }
 .theme-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .15);
+  box-shadow: 0 0 0 1px var(--line), 0 0 0 2px rgba(0, 0, 0, .08);
 }
 .theme-option:hover { background: var(--surface-2); color: var(--ink); }
 .theme-option:hover svg { opacity: 1; }
-.theme-option.active { color: var(--accent); background: var(--accent-glow); }
+.theme-option.active { color: var(--accent); background: var(--accent-glow); font-weight: 700; }
 .theme-option.active svg { opacity: 1; color: var(--accent); }
 
 /* ═══════════ SEARCH CLEAR BUTTON ═══════════ */

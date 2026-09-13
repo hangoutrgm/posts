@@ -247,7 +247,10 @@ function renderAvatarHtml(peerIds, item = null) {
   return `<div class="avatar-collage count-${count}">${imgs}</div>`;
 }
 const VALID_THEMES = ['light', 'dark', 'sakura', 'emerald', 'mocha', 'cyberpunk'];
-const DARK_THEMES  = new Set(['dark', 'mocha', 'cyberpunk']);
+// Only the canonical 'dark' theme gets the .dark class — the 64+ hardcoded :root.dark
+// component rules in styles.css are tuned for the indigo dark palette specifically.
+// Mocha/Cyberpunk use color-scheme: dark + data-theme selectors instead.
+const DARK_THEMES  = new Set(['dark']);
 const THEME_META_COLORS = {
   light:     '#6c63ff',
   dark:      '#0d0f1a',
