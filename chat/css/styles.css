@@ -95,10 +95,10 @@ html[data-theme="sakura"],
   --accent-2: #fb7185;
   --accent-dark: #be123c;
   --accent-glow: #e11d4825;
-  --bg: #fff0f4;
+  --bg: #f0f2ff;
   --surface: #ffffff;
-  --surface-2: #fce7ef;
-  --surface-3: #f9d0df;
+  --surface-2: #f6f7fe;
+  --surface-3: #eef0fb;
   --sidebar-bg: #ffffff;
   --ink: #3b0a1c;
   --ink-2: #6b2038;
@@ -119,10 +119,10 @@ html[data-theme="emerald"],
   --accent-2: #10b981;
   --accent-dark: #047857;
   --accent-glow: #05966920;
-  --bg: #f0fdf6;
+  --bg: #f0f2ff;
   --surface: #ffffff;
-  --surface-2: #dcfce9;
-  --surface-3: #bbf7d4;
+  --surface-2: #f6f7fe;
+  --surface-3: #eef0fb;
   --sidebar-bg: #ffffff;
   --ink: #052e16;
   --ink-2: #166534;

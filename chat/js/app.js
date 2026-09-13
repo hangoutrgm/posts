@@ -281,8 +281,8 @@ const THEME_META_COLORS = {
   light:     '#6c63ff',
   dark:      '#0d0f1a',
   messenger: '#0084ff',
-  sakura:    '#fff0f4',
-  emerald:   '#f0fdf6',
+  sakura:    '#f0f2ff',
+  emerald:   '#f0f2ff',
   mocha:     '#14100e',
   cyberpunk: '#0a0815',
 };
