@@ -381,6 +381,17 @@ function renderConversations() {
 // SECOND Realtime Database (db2 / hangoutrgm2) so the main DB stays lean.
 // /notes/{uid} = { text, updatedAt }
 // ============================================================
+// Notes are cached to localStorage so the strip paints instantly on open
+// (live db2 listener still refreshes + rewrites the cache on every change).
+const NOTES_CACHE_KEY = 'hangout-notes';
+function cacheNotes() { try { localStorage.setItem(NOTES_CACHE_KEY, JSON.stringify(state.notes)); } catch (e) {} }
+function restoreNotesCache() {
+  try {
+    const raw = localStorage.getItem(NOTES_CACHE_KEY);
+    if (raw) { const v = JSON.parse(raw); if (v && typeof v === 'object' && !Array.isArray(v)) state.notes = v; }
+  } catch (e) {}
+}
+
 function renderNotes() {
   const strip = $('notes-strip');
   if (!strip) return;
@@ -1874,6 +1885,7 @@ function watchStreak(threadId) {
   state.stopStreak = onValue(streakRef, (snap) => {
     state.streakData = snap.val() || null;
     state.streaks[threadId] = state.streakData;
+    cacheStreaks();
     renderStreakBadge();
     renderConversations();
   });
@@ -1939,6 +1951,7 @@ async function updateStreak(threadId) {
     await set(streakRef, { ...data, ...update_data });
     state.streakData = { ...data, ...update_data };
     state.streaks[threadId] = state.streakData;
+    cacheStreaks();
     renderStreakBadge();
     renderConversations();
   } catch (err) {
@@ -1967,6 +1980,7 @@ async function restoreStreak() {
   await set(streakRef, newData).catch(() => {});
   state.streakData = newData;
   state.streaks[state.activeThreadId] = newData;
+  cacheStreaks();
   renderStreakBadge();
   showToast('🔥 Streak restored!');
 }
@@ -2466,8 +2480,21 @@ function syncThreadSummaryWatchers() {
 }
 
 
+// Streaks are cached per-account so the 🔥 badges appear instantly on load,
+// then loadAllStreaks() / live listeners refresh + rewrite the cache.
+const streaksCacheKey = () => `hangout-streaks-${state.user?.uid || 'anon'}`;
+function cacheStreaks() { try { localStorage.setItem(streaksCacheKey(), JSON.stringify(state.streaks)); } catch (e) {} }
+function restoreStreaksCache() {
+  try {
+    const raw = localStorage.getItem(streaksCacheKey());
+    if (raw) { const v = JSON.parse(raw); if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(state.streaks, v); }
+  } catch (e) {}
+}
+
 async function loadAllStreaks() {
   if (!state.user) return;
+  restoreStreaksCache(); // instant paint from cache…
+  renderConversations();
   const threadIds = Object.keys(state.inbox);
   const results = await Promise.all(
     threadIds.map(tid => {
@@ -2479,6 +2506,7 @@ async function loadAllStreaks() {
     })
   );
   results.forEach(({ tid, data }) => { if (data) state.streaks[tid] = data; });
+  cacheStreaks(); // …then refresh from the server and update the cache
   renderConversations();
 }
 
@@ -2652,7 +2680,7 @@ let checkedDmParam = false;
 let checkedThreadParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
-  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false; if (state.stopNotes) { state.stopNotes(); state.stopNotes = null; } state.notes = {}; renderNotes();
+  state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false; if (state.stopNotes) { state.stopNotes(); state.stopNotes = null; } state.notes = {}; restoreNotesCache(); renderNotes();
   // Restore cached inbox immediately so the first render shows correct GC names & nicknames (no flicker)
   if (user) {
     try {
@@ -2716,7 +2744,7 @@ onAuthStateChanged(auth, async (user) => {
     state.stopInbox = onValue(ref(db, `chatInboxes/${user.uid}`), handleInbox, (error) => reportRealtimeError('conversation list', error));
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
     // Notes (Messenger-style) — stored in the 2nd RTDB so the main DB stays lean.
-    state.stopNotes = onValue(ref(db2, 'notes'), (snap) => { state.notes = snap.val() || {}; renderNotes(); if (state.activeThreadId) updateChatHeader(); }, (e) => reportRealtimeError('notes', e));
+    state.stopNotes = onValue(ref(db2, 'notes'), (snap) => { state.notes = snap.val() || {}; cacheNotes(); renderNotes(); if (state.activeThreadId) updateChatHeader(); }, (e) => reportRealtimeError('notes', e));
     // Mirror Hangout Posts notification badge on the back button (limited to latest 50)
     state.stopPostsNotif = onValue(query(ref(db, `notifications/${user.uid}`), limitToLast(50)), (snapshot) => {
       const notifs = snapshot.val() || {};
