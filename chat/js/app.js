@@ -2512,27 +2512,47 @@ function saveInboxCache() {
 }
 
 // ── Message history cache (localStorage) ──
-// Persists every thread's loaded messages so they survive a page refresh and the
-// scroll-history never needs to be rebuilt from scratch. Debounced per-thread so
-// rapid message/typing events don't thrash storage.
+// Persists the most recent slice of each thread's messages (~35) so threads paint
+// instantly without parsing or rendering hundreds of stale messages on open.
+// Debounced per-thread so rapid message/typing events don't thrash storage.
+const MAX_CACHED_MESSAGES = 35;
+function trimMessagesToRecent(messages, max = MAX_CACHED_MESSAGES) {
+  if (!messages || typeof messages !== 'object') return {};
+  const entries = Object.entries(messages);
+  if (entries.length <= max) return messages;
+  entries.sort(([k1, m1], [k2, m2]) => {
+    const t1 = Number(m1?.timestamp || 0);
+    const t2 = Number(m2?.timestamp || 0);
+    if (t1 && t2 && t1 !== t2) return t1 - t2;
+    return k1 < k2 ? -1 : k1 > k2 ? 1 : 0;
+  });
+  return Object.fromEntries(entries.slice(-max));
+}
+
 const _msgsTimer = {};
 function saveMessagesCache(threadId, messages, delay = 400) {
   if (!threadId || !state.user) return;
   clearTimeout(_msgsTimer[threadId]);
-  _msgsTimer[threadId] = setTimeout(() => {
+  const doSave = () => {
     try {
-      const payload = { savedAt: Date.now(), uid: state.user.uid, messages: messages || {} };
+      const trimmed = trimMessagesToRecent(messages, MAX_CACHED_MESSAGES);
+      const payload = { savedAt: Date.now(), uid: state.user.uid, messages: trimmed };
       localStorage.setItem(`hangout-chat-msgs3-${threadId}`, JSON.stringify(payload));
     } catch (e) { /* storage quota — skip gracefully */ }
     delete _msgsTimer[threadId];
-  }, delay);
+  };
+  if (delay <= 0) {
+    doSave();
+  } else {
+    _msgsTimer[threadId] = setTimeout(doSave, delay);
+  }
 }
 function loadMessagesCache(threadId) {
   if (!threadId || !state.user) return null;
   try {
     const p = JSON.parse(localStorage.getItem(`hangout-chat-msgs3-${threadId}`) || 'null');
     if (!p || p.uid !== state.user.uid || !p.messages) return null;
-    return p.messages;
+    return trimMessagesToRecent(p.messages, MAX_CACHED_MESSAGES);
   } catch (e) { return null; }
 }
 
