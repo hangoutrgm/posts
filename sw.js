@@ -11,7 +11,7 @@ const PRECACHE_ASSETS = [
   './js/renderers.js?v=56',
   './js/helpers.js?v=57',
   './js/games.js?v=53',
-  './js/main.js?v=48',
+  './js/main.js?v=49',
   './chat/js/app.js?v=76',
   './js/users-cache.js?v=3',
   './config/emoji_riddles.json',

@@ -539,17 +539,25 @@ window.ensureUsersFresh = async () => {
 
 // Live own-record listener: keeps the signed-in user's avatar/role/points/bio
 // current without watching (or re-downloading) other users' records.
-window._stopOwnUserListener && window._stopOwnUserListener();
-if (auth.currentUser) {
-    window._stopOwnUserListener = onValue(ref(db, `users/${auth.currentUser.uid}`), (snap) => {
+// Exposed as a function and (re)started from onAuthStateChanged because
+// `auth.currentUser` is still null while modules eval on a cold load — the old
+// `if (auth.currentUser)` below never fired on a fresh page load, so the
+// own-record listener (and therefore the .mod-only post-category toggle) only
+// ever worked after an unrelated re-render happened. Now it always starts once
+// the session is restored.
+window.startOwnUserListener = (uid) => {
+    if (window._stopOwnUserListener) { try { window._stopOwnUserListener(); } catch (_) {} window._stopOwnUserListener = null; }
+    if (!uid) return;
+    window._stopOwnUserListener = onValue(ref(db, `users/${uid}`), (snap) => {
         const v = snap.val();
         if (!v) return;
-        window.globalUsersCache[auth.currentUser.uid] = v;
+        window.globalUsersCache[uid] = v;
         if (window.writeUsersCache) window.writeUsersCache(window.globalUsersCache);
         window._updateNavUserUI && window._updateNavUserUI();
-        if (window.activeProfileUid === auth.currentUser.uid && window.renderProfileData) window.renderProfileData(false);
+        if (window.activeProfileUid === uid && window.renderProfileData) window.renderProfileData(false);
     });
-}
+};
+if (auth.currentUser) window.startOwnUserListener(auth.currentUser.uid);
 
 // Wrap Members modal + profile opens with a cheap freshness prefetch so users
 // see current data there even if the shared cache is a couple minutes old.
@@ -1892,6 +1900,11 @@ onAuthStateChanged(auth, (user) => {
         // Never overwrites existing values — only fills what's missing.
         get(ref(db, `users/${user.uid}`)).then((snap) => {
             const p = snap.val() || {};
+            // Mirror the authoritative DB record (incl. isMod/isAdmin role flags)
+            // into the local user cache so role-gated UI updates instantly.
+            window.globalUsersCache[user.uid] = p;
+            if (window.writeUsersCache) window.writeUsersCache(window.globalUsersCache);
+            window._updateNavUserUI && window._updateNavUserUI();
             const patch = { lastSeen: serverTimestamp() };
             const prefix = user.isAnonymous ? 'Guest_' : 'User_';
             const hasName = p.name && p.name !== 'undefined' && p.name !== 'null';
@@ -1902,6 +1915,9 @@ onAuthStateChanged(auth, (user) => {
         }).catch(e => console.warn('Profile self-heal failed:', e));
         
         startOwnPresence(user);
+        
+        // Live own-record mirror — always (re)start it now that the session is up.
+        window.startOwnUserListener && window.startOwnUserListener(user.uid);
         
         // Anti-abuse: keep this account's public IP fresh on every login/load.
         // captureUserIP() only writes when the IP actually changed, and it retries
