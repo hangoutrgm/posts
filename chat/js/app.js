@@ -583,8 +583,12 @@ function updateChatHeader() {
     state.typingExpiryTimer = setTimeout(updateChatHeader, 7100);
   } else {
     if (item.isGroup) {
-      const lbTag = item.lbRewardsEnabled === true ? ' • 🏆 LB Rewards' : '';
-      $('chat-status').textContent = `${peerIds.length + 1} members${lbTag}`;
+      if (state.activeThreadId === 'global_announcements') {
+        $('chat-status').textContent = '';
+      } else {
+        const lbTag = item.lbRewardsEnabled === true ? ' • 🏆 LB Rewards' : '';
+        $('chat-status').textContent = `${peerIds.length + 1} members${lbTag}`;
+      }
     } else {
       const peer = state.users[peerIds[0]] || {};
       $('chat-status').innerHTML = peer.isBanned ? 'Unavailable' : normalStatus(peerIds[0]);
