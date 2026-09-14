@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v142';
+const CACHE_NAME = 'hangout-v143';
 
 // All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
@@ -6,7 +6,7 @@ const PRECACHE_ASSETS = [
   './index.html',
   './chat/index.html',
   './css/tailwind.min.css?v=2',
-  './css/styles.css',
+  './css/styles.css?v=1',
   './chat/css/styles.css?v=42',
   './js/renderers.js?v=56',
   './js/helpers.js?v=57',
@@ -88,17 +88,18 @@ self.addEventListener('fetch', (event) => {
         .catch(() => caches.match(request).then((res) => res || caches.match('./index.html')))
     );
   } else {
-    // Stale-while-revalidate for other local assets (json, icons, css)
+    // Cache-first for other local static assets (json, icons, images, unversioned assets):
+    // Serve immediately from cache without background network fetch. Only fetch from network if missing.
     event.respondWith(
       caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request).then((response) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
           }
           return response;
-        }).catch(() => cached);
-        return cached || fetchPromise;
+        });
       })
     );
   }
