@@ -3,7 +3,7 @@ import { app, auth, db, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=2";
+import "../js/globals.js?v=3";
 import "../js/helpers.js";
 
 const loadingScreen = document.getElementById('loading-screen');
@@ -203,6 +203,7 @@ function initAdminDashboard() {
             document.getElementById('set-imageUploadLimit').value = settings.imageUploadLimit ?? '';
             document.getElementById('set-videoUploadLimit').value = settings.videoUploadLimit ?? '';
             document.getElementById('set-videoSizeLimitMB').value = settings.videoSizeLimitMB ?? '';
+            document.getElementById('set-voicePostLimit').value = settings.voicePostLimit ?? '';
             document.getElementById('set-chatImageLimit').value = settings.chatImageLimit ?? '';
             document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
             document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
@@ -240,6 +241,7 @@ function initAdminDashboard() {
             document.getElementById('set-imageUploadLimit').value = '';
             document.getElementById('set-videoUploadLimit').value = '';
             document.getElementById('set-videoSizeLimitMB').value = '';
+            document.getElementById('set-voicePostLimit').value = '';
             document.getElementById('set-chatImageLimit').value = '';
             document.getElementById('set-chatVideoLimit').value = '';
             document.getElementById('set-chatVoiceLimit').value = '';
@@ -278,6 +280,7 @@ function initAdminDashboard() {
         document.getElementById('set-imageUploadLimit').placeholder = window.siteSettings.imageUploadLimit;
         document.getElementById('set-videoUploadLimit').placeholder = window.siteSettings.videoUploadLimit;
         document.getElementById('set-videoSizeLimitMB').placeholder = window.siteSettings.videoSizeLimitMB;
+        document.getElementById('set-voicePostLimit').placeholder = window.siteSettings.voicePostLimit ?? 10;
     });
 
     // 5. Handle Form Submit
@@ -312,6 +315,7 @@ function initAdminDashboard() {
             imageUploadLimit: parseInt(document.getElementById('set-imageUploadLimit').value) || 0,
             videoUploadLimit: parseInt(document.getElementById('set-videoUploadLimit').value) || 0,
             videoSizeLimitMB: parseInt(document.getElementById('set-videoSizeLimitMB').value) || 0,
+            voicePostLimit: parseInt(document.getElementById('set-voicePostLimit').value) || 10,
             chatImageLimit: parseInt(document.getElementById('set-chatImageLimit').value) || 10,
             chatVideoLimit: parseInt(document.getElementById('set-chatVideoLimit').value) || 3,
             chatVoiceLimit: parseInt(document.getElementById('set-chatVoiceLimit').value) || 10,

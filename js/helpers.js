@@ -136,6 +136,7 @@ window.siteSettings = {
     chatImageLimit: 10,
     chatVideoLimit: 3,
     chatVoiceLimit: 10,
+    voicePostLimit: 10,
     chatVideoSizeLimitMB: 20,
     postCooldownSec: 60,
     commentCooldownSec: 60,
@@ -488,7 +489,26 @@ window.pokeUser = async function(targetUid) {
 };
 
 window.viewImage = (src) => {
-    document.getElementById('viewer-img').src = src;
+    const isVideo = /\.(mp4|webm|mov|ogg|m4v)(\?|#|$)/i.test(String(src || '')) || String(src || '').includes('/video/upload/');
+    const imgEl = document.getElementById('viewer-img');
+    const vidEl = document.getElementById('viewer-video');
+    const downloadBtn = document.getElementById('viewer-download-btn');
+
+    // Video → show the shared viewer's <video> player (non-fullscreen modal)
+    if (isVideo && vidEl) {
+        if (imgEl) { imgEl.src = ''; imgEl.classList.add('hidden'); }
+        vidEl.classList.remove('hidden');
+        vidEl.src = src;
+        vidEl.play().catch(() => {});
+        downloadBtn.classList.add('hidden');
+        downloadBtn.href = '#';
+        document.getElementById('image-viewer-modal').classList.remove('hidden');
+        return;
+    }
+
+    if (imgEl) imgEl.classList.remove('hidden');
+    imgEl.src = src;
+    if (vidEl) { vidEl.pause(); vidEl.removeAttribute('src'); vidEl.load(); vidEl.classList.add('hidden'); }
     document.getElementById('image-viewer-modal').classList.remove('hidden');
     
     // Generate unique filename based on current date/time
@@ -499,9 +519,9 @@ window.viewImage = (src) => {
     const uniqueName = `hangout_${dateStr}_${timeStr}`;
     
     // Attempt to fetch image as blob to allow download for cross-origin images
-    const downloadBtn = document.getElementById('viewer-download-btn');
     downloadBtn.href = '#';
     downloadBtn.download = uniqueName;
+    downloadBtn.classList.remove('hidden');
     fetch(src)
         .then(res => res.blob())
         .then(blob => {
@@ -520,9 +540,13 @@ window.closeImageViewer = () => {
     if (downloadBtn.href && downloadBtn.href.startsWith('blob:')) {
         URL.revokeObjectURL(downloadBtn.href);
     }
+    const imgEl = document.getElementById('viewer-img');
+    const vidEl = document.getElementById('viewer-video');
     document.getElementById('image-viewer-modal').classList.add('hidden');
-    document.getElementById('viewer-img').src = '';
+    if (imgEl) { imgEl.src = ''; imgEl.classList.remove('hidden'); }
+    if (vidEl) { vidEl.pause(); vidEl.removeAttribute('src'); vidEl.load(); vidEl.classList.add('hidden'); }
     downloadBtn.href = '#';
+    downloadBtn.classList.remove('hidden');
 };
 
 window.compressImage = (file, heavy = false) => {

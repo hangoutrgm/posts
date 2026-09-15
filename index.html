@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=1">
+    <link rel="stylesheet" href="css/styles.css?v=10">
     <link rel="stylesheet" href="css/tailwind.min.css?v=2">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -83,6 +83,9 @@
                     <i class="fa-solid fa-search absolute left-3 top-2.5 text-gray-400 text-sm"></i>
                     <input type="text" id="post-search" autocomplete="off" placeholder="Search posts or authors..." class="w-full bg-white dark:bg-slate-800 text-sm pl-9 pr-3 py-2 rounded-lg dark:text-white focus:outline-none shadow-sm border border-gray-200 dark:border-slate-700">
                 </div>
+                <button onclick="window.toggleCreateMenu()" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative mr-2" title="Create a post">
+                    <i class="fa-solid fa-plus text-lg"></i>
+                </button>
                 <button onclick="window.openPostGameModal()" class="shrink-0 bg-purple-600 hover:bg-purple-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative mr-2" title="Post a Game">
                     <i class="fa-solid fa-gamepad text-lg"></i>
                     <i class="fa-solid fa-plus absolute top-1 right-1 text-[8px] bg-purple-600 rounded-full font-bold"></i>
@@ -103,17 +106,37 @@
                 <button class="filter-btn active snap-start bg-blue-600 text-white px-3 py-1 rounded-full font-semibold whitespace-nowrap shadow-sm" data-cat="All">All</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="My Posts">👤 My Posts</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="General">General</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Reels">🎬 Reels</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Games">🎮 Games</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Announcements">📢 Announcements</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Rules">📜 Rules</button>
             </div>
 
+            <div id="myday-strip" class="myday-strip"></div>
+            <input type="file" id="myday-media-input" accept="image/*,video/*" class="hidden">
+
             <div id="create-post-box" class="hidden bg-white dark:bg-slate-800 rounded-xl p-3 mb-4 shadow-sm border border-gray-200 dark:border-slate-700">
+                <div class="flex items-center justify-between mb-2">
+                    <span id="create-post-title" class="text-xs font-bold text-gray-600 dark:text-gray-300 flex items-center"><i class="fa-solid fa-pen text-blue-500 mr-1.5"></i>New post</span>
+                    <button onclick="window.closeCreateComposer()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="Close composer"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+
+                <div id="create-voice-recorder-bar" class="voice-recorder-bar hidden">
+                    <div class="voice-rec-dot"></div>
+                    <span id="create-voice-rec-timer" class="voice-rec-timer">00:00</span>
+                    <span class="voice-rec-label">Recording…</span>
+                    <button type="button" class="voice-rec-btn" onclick="window.cancelPostVoice()" title="Cancel recording"><i class="fa-solid fa-xmark"></i></button>
+                    <button type="button" class="voice-rec-send" onclick="window.stopPostVoice()" title="Finish recording"><i class="fa-solid fa-check"></i></button>
+                </div>
+
                 <div class="flex items-center space-x-2">
-                    <label class="cursor-pointer text-gray-500 hover:text-blue-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600" title="Attach photo or video">
+                    <label id="post-attach-label" class="hidden cursor-pointer text-gray-500 hover:text-blue-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600" title="Attach media">
                         <i class="fa-solid fa-image text-lg"></i>
                         <input type="file" id="post-image-file" accept="image/*,video/*" multiple class="hidden">
                     </label>
+                    <button id="post-voice-btn" class="hidden cursor-pointer text-gray-500 hover:text-rose-500 transition p-1.5 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 border border-gray-200 dark:border-slate-600" title="Record voice message" onclick="window.startPostVoiceRecording()">
+                        <i class="fa-solid fa-microphone text-lg"></i>
+                    </button>
                     <textarea id="post-text" class="flex-1 min-w-0 bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" rows="2" placeholder="Share something or @mention someone..."></textarea>
                 </div>
                 <div id="file-name" class="text-[9px] text-blue-500 truncate mt-1 font-bold px-1"></div>
@@ -122,6 +145,7 @@
                 <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 dark:border-slate-700">
                     <select id="post-category" class="bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 text-xs rounded p-1 focus:outline-none">
                         <option value="General">General</option>
+                        <option value="Reels">🎬 Reels</option>
                         <option value="Games">🎮 Games</option>
                         <option value="Announcements" class="mod-only hidden">📢 Announcements (Mod+)</option>
                         <option value="Rules" class="mod-only hidden">📜 Rules (Mod+)</option>
@@ -143,6 +167,47 @@
             </div>
             <div id="profile-feed" class="space-y-3"></div>
         </main>
+    </div>
+
+    <div id="create-type-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.closeCreateMenu()">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-xs p-4 shadow-2xl relative border border-gray-200 dark:border-slate-700" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-bold dark:text-white">Create a post</h3>
+                <button onclick="window.closeCreateMenu()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="flex flex-col">
+                <button class="create-type-btn" onclick="window.openCreateComposer('post')">
+                    <span class="create-type-icon bg-blue-100 dark:bg-blue-900/30 text-blue-500"><i class="fa-solid fa-pen"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Post</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Share a text update</span></span>
+                </button>
+                <button class="create-type-btn" onclick="window.openCreateComposer('photo')">
+                    <span class="create-type-icon bg-green-100 dark:bg-green-900/30 text-green-500"><i class="fa-solid fa-image"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Photo</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Share a photo</span></span>
+                </button>
+                <button class="create-type-btn" onclick="window.openCreateComposer('reels')">
+                    <span class="create-type-icon bg-purple-100 dark:bg-purple-900/30 text-purple-500"><i class="fa-solid fa-clapperboard"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Reels</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Share a video</span></span>
+                </button>
+                <button class="create-type-btn" onclick="window.openCreateComposer('voice')">
+                    <span class="create-type-icon bg-rose-100 dark:bg-rose-900/30 text-rose-500"><i class="fa-solid fa-microphone"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Voice message</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Record a voice note</span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="myday-note-modal" class="hidden fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.MyDay.closeNote()">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl w-64 p-4 shadow-2xl border border-gray-200 dark:border-slate-700" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500"><i class="fa-solid fa-quote-left mr-1"></i>Note</span>
+                <button type="button" onclick="window.MyDay.closeNote()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="flex items-center gap-2.5">
+                <img id="myday-note-avatar" class="w-10 h-10 rounded-full object-cover shrink-0" alt="">
+                <strong id="myday-note-name" class="min-w-0 text-sm font-extrabold text-gray-800 dark:text-white truncate"></strong>
+            </div>
+            <p id="myday-note-text" class="mt-2.5 text-[13px] leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words"></p>
+        </div>
     </div>
 
     <div id="custom-alert-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -169,6 +234,7 @@
     <div id="image-viewer-modal" class="hidden fixed inset-0 z-[120] flex flex-col items-center justify-center p-2 bg-black/95 backdrop-blur-sm" onclick="window.closeImageViewer()">
         <button onclick="window.closeImageViewer()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10 transition p-2"><i class="fa-solid fa-xmark text-2xl"></i></button>
         <img id="viewer-img" src="" class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl transition-transform mb-4" onclick="event.stopPropagation()">
+        <video id="viewer-video" src="" controls autoplay playsinline class="hidden max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl bg-black" onclick="event.stopPropagation()"></video>
         <a id="viewer-download-btn" href="#" onclick="event.stopPropagation()" class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-full font-bold text-sm transition shadow-lg flex items-center space-x-2 border border-gray-700">
             <i class="fa-solid fa-download"></i> <span>Save Image</span>
         </a>
@@ -184,7 +250,7 @@
             <div id="edit-category-wrap" class="hidden mt-3">
                 <label class="block text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-1 ml-0.5">Category</label>
                 <select id="edit-category" class="w-full bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg p-2 text-sm focus:outline-none border border-gray-100 dark:border-slate-700"></select>
-                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 ml-0.5">Admins can use General / Announcements / Rules. Mods can use General / Announcements.</p>
+                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 ml-0.5">Admins can use General / Announcements / Rules / Reels. Mods can use General / Announcements / Reels.</p>
             </div>
             
             <div class="flex justify-end mt-3 space-x-2">
@@ -905,10 +971,12 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=3"></script>
-    <script type="module" src="js/renderers.js?v=56"></script>
-    <script type="module" src="js/helpers.js?v=57"></script>
+    <script type="module" src="js/renderers.js?v=57"></script>
+    <script type="module" src="js/helpers.js?v=59"></script>
     <script type="module" src="js/games.js?v=53"></script>
-    <script type="module" src="js/main.js?v=49"></script>
+    <script type="module" src="js/voice-recorder.js?v=1"></script>
+    <script type="module" src="js/myday.js?v=11"></script>
+    <script type="module" src="js/main.js?v=54"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

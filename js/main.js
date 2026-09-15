@@ -1,7 +1,7 @@
 // main.js
 import { app, auth, db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, push, onValue, get, set, update, remove, increment, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, push, onValue, get, set, update, remove, increment, runTransaction, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
@@ -1148,6 +1148,186 @@ window.removeCollageFile = (index) => {
     } catch (e) { input.value = ''; }
     input.dispatchEvent(new Event('change'));
 };
+// ==========================================
+// + CREATE BUTTON & POST TYPE COMPOSER
+// The + button opens a small chooser with 4 post types:
+// post / photo / reels / voice message. Each one reveals the
+// compose box pre-configured for that type.
+// ==========================================
+window.createComposerType = 'post';
+window._pendingVoiceBlob = null;
+window._pendingVoiceObjectUrl = null;
+
+window.toggleCreateMenu = () => {
+    if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+    const modal = document.getElementById('create-type-modal');
+    if (modal) modal.classList.toggle('hidden');
+};
+
+window.closeCreateMenu = () => {
+    const modal = document.getElementById('create-type-modal');
+    if (modal) modal.classList.add('hidden');
+};
+
+window.clearPendingVoice = () => {
+    if (window._pendingVoiceObjectUrl) {
+        URL.revokeObjectURL(window._pendingVoiceObjectUrl);
+        window._pendingVoiceObjectUrl = null;
+    }
+    window._pendingVoiceBlob = null;
+    const recBar = document.getElementById('create-voice-recorder-bar');
+    if (recBar) recBar.classList.add('hidden');
+};
+
+window.closeCreateComposer = () => {
+    if (window.VoiceRecorder && window.VoiceRecorder.isRecording()) window.VoiceRecorder.cancel();
+    window.clearPendingVoice();
+    const fileInput = document.getElementById('post-image-file');
+    if (fileInput) fileInput.value = '';
+    const previewEl = document.getElementById('media-preview-container');
+    if (previewEl) { previewEl.innerHTML = ''; previewEl.classList.add('hidden'); }
+    const textEl = document.getElementById('post-text');
+    if (textEl) textEl.value = '';
+    const box = document.getElementById('create-post-box');
+    if (box) box.classList.add('hidden');
+    // Restore My Day strip as the default view
+    if (window.MyDay && window.MyDay.show) window.MyDay.show();
+    else { const md = document.getElementById('myday-strip'); if (md) md.classList.remove('hidden'); }
+    window.closeCreateMenu();
+};
+
+window.openCreateComposer = (type = 'post') => {
+    window.closeCreateMenu();
+    if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+
+    window.createComposerType = type;
+    window.clearPendingVoice();
+
+    const box = document.getElementById('create-post-box');
+    const attachLabel = document.getElementById('post-attach-label');
+    const voiceBtn = document.getElementById('post-voice-btn');
+    const fileInput = document.getElementById('post-image-file');
+    const catSelect = document.getElementById('post-category');
+    const titleEl = document.getElementById('create-post-title');
+    const textEl = document.getElementById('post-text');
+    const previewEl = document.getElementById('media-preview-container');
+
+    // Fresh composer state
+    box.classList.remove('hidden');
+    // Composer replaces My Day (strip) while open
+    if (window.MyDay && window.MyDay.hide) window.MyDay.hide();
+    else { const md = document.getElementById('myday-strip'); if (md) md.classList.add('hidden'); }
+    if (textEl) textEl.value = '';
+    if (fileInput) fileInput.value = '';
+    if (previewEl) { previewEl.innerHTML = ''; previewEl.classList.add('hidden'); }
+    const fileNameEl = document.getElementById('file-name');
+    if (fileNameEl) fileNameEl.innerText = '';
+    window.postVisibility = 'public';
+    const eyeBtn = document.getElementById('visibility-toggle-btn');
+    if (eyeBtn) {
+        eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 mr-1 text-xs"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
+        eyeBtn.title = "Public Post";
+    }
+
+    // Per-type configuration
+    // Category dropdown: show only what fits the post type —
+    //   post/photo/voice -> General (+ Announcements/Rules for mods); Reels & Games hidden
+    //   reels          -> Reels only
+    // Announcements/Rules still follow the role-based mod-only logic.
+    const catOptions = Array.from(catSelect.querySelectorAll('option'));
+    const roleLevel = window.currentUser ? window.getRole(window.currentUser.uid).level : 1;
+    const applyCat = (composerType) => {
+        catOptions.forEach(o => {
+            const isMod = o.classList.contains('mod-only');
+            let hidden;
+            if (composerType === 'reels') hidden = o.value !== 'Reels';
+            else if (o.value === 'Reels' || o.value === 'Games') hidden = true;
+            else if (isMod) hidden = roleLevel < 2;
+            else hidden = false;
+            o.classList.toggle('hidden', hidden);
+            o.disabled = hidden;
+        });
+        // NOTE: use `o.disabled` (set above) to detect visibility — never the
+        // `o.hidden` DOM property, because <option> elements do NOT reflect the
+        // CSS `.hidden` class onto the `.hidden` property (every option would
+        // look "visible" and the value would never switch to Reels).
+        const firstVisible = catOptions.find(o => !o.disabled);
+        if (firstVisible && !catOptions.some(o => !o.disabled && o.value === catSelect.value)) {
+            catSelect.value = firstVisible.value;
+        }
+    };
+    applyCat(type);
+
+    if (type === 'post') {
+        attachLabel.classList.add('hidden');
+        voiceBtn.classList.add('hidden');
+        fileInput.accept = 'image/*,video/*';
+        if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-pen text-blue-500 mr-1.5"></i>New post';
+        if (textEl) textEl.placeholder = 'Share something or @mention someone...';
+    } else if (type === 'photo') {
+        attachLabel.classList.remove('hidden');
+        voiceBtn.classList.add('hidden');
+        fileInput.accept = 'image/*';
+        if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-image text-green-500 mr-1.5"></i>New photo post';
+        if (textEl) textEl.placeholder = 'Say something about your photo...';
+    } else if (type === 'reels') {
+        attachLabel.classList.remove('hidden');
+        voiceBtn.classList.add('hidden');
+        fileInput.accept = 'video/*';
+        if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-clapperboard text-purple-500 mr-1.5"></i>New reels post';
+        if (textEl) textEl.placeholder = 'Upload a video or paste a link...';
+    } else if (type === 'voice') {
+        attachLabel.classList.add('hidden');
+        voiceBtn.classList.remove('hidden');
+        fileInput.accept = 'image/*,video/*';
+        if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-microphone text-rose-500 mr-1.5"></i>New voice message';
+        if (textEl) textEl.placeholder = 'Add a caption (optional)...';
+    }
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+// Voice-recording hooks for the post composer (backs onto voice-recorder.js)
+window.startPostVoiceRecording = async () => {
+    if (!window.currentUser) return;
+    if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
+
+    // Daily voice-post limit (admin /config → Posts Upload Limits → Voice/Day)
+    const voiceLimit = Number(window.siteSettings?.voicePostLimit ?? 10);
+    const voiceDay = new Date().toISOString().slice(0, 10);
+    const quotaSnap = await get(ref(db, `voicePostUploadQuota/${window.currentUser.uid}/${voiceDay}`)).catch(() => null);
+    const usedCount = Number(quotaSnap?.val() || 0);
+    if (usedCount >= voiceLimit) {
+        return window.showAlert(`Daily voice post limit reached (${voiceLimit} recordings). Try again tomorrow.`);
+    }
+
+    window.clearPendingVoice();
+    if (window.VoiceRecorder) window.VoiceRecorder.start();
+};
+window.stopPostVoice = () => { if (window.VoiceRecorder) window.VoiceRecorder.stop(); };
+window.cancelPostVoice = () => { if (window.VoiceRecorder) window.VoiceRecorder.cancel(); };
+
+// Wire the standalone voice recorder to the post composer
+if (window.VoiceRecorder) {
+    window.VoiceRecorder.init({
+        barId: 'create-voice-recorder-bar',
+        timerId: 'create-voice-rec-timer',
+        onStop: async (audioBlob) => {
+            window.clearPendingVoice();
+            window._pendingVoiceBlob = audioBlob;
+            const url = URL.createObjectURL(audioBlob);
+            window._pendingVoiceObjectUrl = url;
+            const previewEl = document.getElementById('media-preview-container');
+            if (previewEl) {
+                previewEl.innerHTML = `<div class="flex items-center justify-between bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 p-2">
+                    <audio controls src="${url}" class="h-9" style="max-width:180px;"></audio>
+                    <span class="text-[10px] font-bold text-rose-500 whitespace-nowrap">🎤 Voice ready</span>
+                </div>`;
+                previewEl.classList.remove('hidden');
+            }
+        },
+        onCancel: () => window.clearPendingVoice()
+    });
+}
 
 document.getElementById('submit-post-btn').addEventListener('click', async () => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
@@ -1158,7 +1338,7 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
     const text = document.getElementById('post-text').value.trim();
     const fileInput = document.getElementById('post-image-file');
     const files = Array.from(fileInput.files || []).slice(0, 4);
-    if (!text && !files.length) return;
+    if (!text && !files.length && !window._pendingVoiceBlob) return;
     
     // Cooldown gate (settings.postCooldownSec)
     if (!(await window.checkActionCooldown('post'))) return;
@@ -1210,12 +1390,30 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
             finalImage = collageImages[0];
         }
 
+        // Voice-message post: upload the recorded audio (if any) alongside text
+        let finalAudio = '';
+        if (window._pendingVoiceBlob) {
+            // Daily voice-post limit (admin /config → Posts Upload Limits → Voice/Day).
+            // Transaction is the authoritative guard: race-proof even if two tabs
+            // record/post at the same time.
+            const voiceLimit = Number(window.siteSettings?.voicePostLimit ?? 10);
+            const voiceDay = new Date().toISOString().slice(0, 10);
+            const quotaRef = ref(db, `voicePostUploadQuota/${window.currentUser.uid}/${voiceDay}`);
+            const voiceQuota = await runTransaction(quotaRef, (count) => (Number(count || 0) >= voiceLimit ? undefined : Number(count || 0) + 1));
+            if (!voiceQuota.committed) {
+                throw new Error(`Daily voice post limit reached (${voiceLimit} recordings). Try again tomorrow.`);
+            }
+            finalAudio = await window.uploadToCloudinary(window._pendingVoiceBlob, window.currentUser.uid);
+            window.clearPendingVoice();
+        }
+
         const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
         const postData = {
             authorId: window.currentUser.uid, text: text, image: finalImage,
             category: document.getElementById('post-category').value,
             timestamp: Date.now(), pinned: false, edited: false, locked: false, reactions: {},
             visibility: window.postVisibility || 'public',
+            ...(finalAudio ? { audio: finalAudio } : {}),
             _dbSource: dbSource
         };
         if (collageImages.length > 1) postData.images = collageImages;
@@ -1241,6 +1439,9 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
             eyeBtn.innerHTML = '<i class="fas fa-eye text-blue-500 mr-1 text-xs"></i><span class="text-xs font-bold text-gray-600 dark:text-gray-300">Public</span>';
             eyeBtn.title = "Public Post";
         }
+
+        // Back to the default My Day view after a successful post
+        window.closeCreateComposer();
         
     } catch (err) { window.showAlert("Failed to post: " + err.message); }
     
@@ -1573,7 +1774,7 @@ window.openEditModal = (targetData, currentText) => {
             const roleLevel = window.currentUser ? window.getRole(window.currentUser.uid).level : 1;
             const currentCat = post ? post.category : null;
             if (post && !post.isGame && currentCat !== 'Games' && roleLevel >= 2) {
-                allowed = roleLevel >= 3 ? ['General', 'Announcements', 'Rules'] : ['General', 'Announcements'];
+                allowed = roleLevel >= 3 ? ['General', 'Announcements', 'Rules', 'Reels'] : ['General', 'Announcements', 'Reels'];
                 allowed.forEach(cat => {
                     const opt = document.createElement('option');
                     opt.value = cat;
@@ -1933,7 +2134,8 @@ onAuthStateChanged(auth, (user) => {
         
         window.updateAdminButtons && window.updateAdminButtons();
         
-        if(!window.globalUsersCache[user.uid]?.isBanned) document.getElementById('create-post-box').classList.remove('hidden');
+        // Composer stays hidden — the + button opens it (pick Post/Photo/Reels/Voice)
+        window.closeCreateMenu && window.closeCreateMenu();
         
         if (window.globalUsersCache[user.uid]?.pic || user.photoURL) {
             document.getElementById('nav-avatar').src = window.globalUsersCache[user.uid]?.pic || user.photoURL;

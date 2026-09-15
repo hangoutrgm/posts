@@ -2676,6 +2676,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         <div id="post-body-${prefix}-${post.id}">
             ${post.text ? `<p class="text-sm text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-wrap break-words leading-snug">${safePostText} ${post.edited ? '<span class="text-[10px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>${window.generateEmbed(post.text)}` : ''}
             ${window.renderPostMedia(post)}
+            ${post.audio ? `<audio controls preload="metadata" src="${escapeHtml(post.audio)}" class="w-full h-9 mt-1 mb-1 rounded-lg" style="max-width:260px;"></audio>` : ''}
             ${gameHtml}
         </div>
         
