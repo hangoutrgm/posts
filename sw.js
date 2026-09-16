@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v160';
+const CACHE_NAME = 'hangout-v162';
 
 // All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
@@ -8,11 +8,11 @@ const PRECACHE_ASSETS = [
   './css/tailwind.min.css?v=2',
   './css/styles.css?v=10',
   './chat/css/styles.css?v=42',
-  './js/renderers.js?v=58',
+  './js/renderers.js?v=59',
   './js/helpers.js?v=59',
   './js/games.js?v=53',
   './js/main.js?v=54',
-  './js/myday.js?v=12',
+  './js/myday.js?v=14',
   './js/voice-recorder.js?v=1',
   './chat/js/app.js?v=81',
   './js/users-cache.js?v=3',
@@ -77,9 +77,10 @@ self.addEventListener('fetch', (event) => {
       })
     );
   } else if (isHtml) {
-    // Network-first: always try fresh HTML, fall back to cache if offline
+    // Network-first: always try fresh HTML, fall back to cache if offline.
+    // `no-store` makes sure a fresh shell is never beaten by a stale HTTP-cached copy.
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
@@ -92,10 +93,12 @@ self.addEventListener('fetch', (event) => {
   } else {
     // Cache-first for other local static assets (json, icons, images, unversioned assets):
     // Serve immediately from cache without background network fetch. Only fetch from network if missing.
+    // `no-store` on the miss path stops a stale HTTP-cached copy (vercel.json serves .js with
+    // max-age=86400) from surviving a CACHE_NAME bump.
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
-        return fetch(request).then((response) => {
+        return fetch(request, { cache: 'no-store' }).then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});

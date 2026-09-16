@@ -254,12 +254,19 @@ function fetchCollections(uid) {
 
 // Fills the profile container. The wrapper stays hidden while there is nothing to show.
 async function renderCollections(containerId, uid) {
+    if (!uid) {
+        const s = $(containerId);
+        if (s && s.parentElement) s.parentElement.classList.add('hidden');
+        return;
+    }
+    const items = await fetchCollections(uid);
+    // Re-query the container AFTER the await: renderProfileData() rebuilds
+    // #profile-header on every user/post/online update, so the node we started
+    // with is usually already detached by the time the archive read returns.
+    // Always paint into whichever node is live now.
     const box = $(containerId);
     if (!box) return;
     const section = box.parentElement;
-    if (!uid) { if (section) section.classList.add('hidden'); return; }
-    const items = await fetchCollections(uid);
-    if (!box.isConnected) return; // profile was closed / re-rendered while loading
     if (!items.length) { box.innerHTML = ''; if (section) section.classList.add('hidden'); return; }
     box.innerHTML = items.map((it) => collectionCardHtml(it, uid)).join('');
     if (section) section.classList.remove('hidden');
