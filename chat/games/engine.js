@@ -3,7 +3,7 @@
 // ============================================================
 import { ref, push, get, set, update, runTransaction, increment } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { db } from '../../js/firebase-config.js';
+import { db, db2 } from '../../js/firebase-config.js';
 import { GAME_META, pick, shuffle } from './helpers.js?v=6';
 import {
   mathRound, countEmojiRound, jumbledRound, triviaRound, ROUNDS_PER_GAME,
@@ -51,6 +51,7 @@ const nextBoardDeadline = () => Date.now() + boardMoveTimerSec() * 1000;
 //   all-time : users/{uid}/lbPoints
 //   weekly   : lbWeekly/{ISO-week}/{uid}
 //   monthly  : lbMonthly/{YYYY-MM}/{uid}
+//   daily    : lbDaily/{YYYY-MM-DD}/{uid}  (RTDB 2 — keeps the main DB lean)
 let _toast = () => {};
 export const setToast = (fn) => { if (typeof fn === 'function') _toast = fn; };
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -64,12 +65,16 @@ export const lbWeekKey = (d) => {
   return `${thursday.getFullYear()}-W${pad2(week)}`;
 };
 const lbMonthKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+// Daily key = local calendar date (YYYY-MM-DD) — same convention as js/games.js
+const lbDayKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const creditLb = (uid, pts) => {
   if (!uid || !(pts > 0)) return;
   const now = new Date();
   set(ref(db, `users/${uid}/lbPoints`), increment(pts)).catch(() => {});
   update(ref(db, `lbWeekly/${lbWeekKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
   update(ref(db, `lbMonthly/${lbMonthKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
+  // Daily totals live in RTDB 2 (/lbDaily) so the main database stays lean.
+  update(ref(db2, `lbDaily/${lbDayKey(now)}`), { [uid]: increment(pts) }).catch(() => {});
 };
 
 // ── Same-IP LB shield — same /flaggedGroups mirror as Hangout Posts games ──

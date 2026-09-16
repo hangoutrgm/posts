@@ -1,4 +1,4 @@
-import { db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
 import { ref, update, set, push, get, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayUnion, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -76,7 +76,7 @@ window.claimGame = async (postRef, winnerUid, extraUpdates = {}) => {
 
 // ============================================================
 // LEADERBOARD PERIOD HELPERS
-// weekly = ISO year-week (Mon–Sun), monthly = YYYY-MM
+// daily = YYYY-MM-DD (local), weekly = ISO year-week (Mon–Sun), monthly = YYYY-MM
 // ============================================================
 const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -92,8 +92,13 @@ window.lbWeekKey = (d) => {
 
 window.lbMonthKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 
+// Daily key = local calendar date (YYYY-MM-DD). Daily totals live in RTDB 2
+// (/lbDaily) so the main database stays lean — see creditLbPeriods below.
+window.lbDayKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
 window.lbPeriodKeyFor = (scope) => {
     const now = new Date();
+    if (scope === 'daily') return window.lbDayKey(now);
     if (scope === 'weekly') return window.lbWeekKey(now);
     if (scope === 'monthly') return window.lbMonthKey(now);
     return '';
@@ -115,6 +120,10 @@ const isoMondayOf = (key) => {
 
 window.lbPeriodLabel = (scope, key) => {
     if (!key) return '';
+    if (scope === 'daily') {
+        const [y, mo, d] = key.split('-').map(Number);
+        return new Date(y, mo - 1, d).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+    }
     if (scope === 'monthly') {
         const [y, mo] = key.split('-').map(Number);
         return new Date(y, mo - 1, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
@@ -131,6 +140,10 @@ window.lbPeriodLabel = (scope, key) => {
 };
 
 window.shiftLbPeriod = (scope, key, delta) => {
+    if (scope === 'daily') {
+        const [y, mo, d] = key.split('-').map(Number);
+        return window.lbDayKey(new Date(y, mo - 1, d + delta));
+    }
     if (scope === 'monthly') {
         const [y, mo] = key.split('-').map(Number);
         return window.lbMonthKey(new Date(y, mo - 1 + delta, 1));
@@ -140,14 +153,18 @@ window.shiftLbPeriod = (scope, key, delta) => {
     return window.lbWeekKey(mon);
 };
 
-// Credit LB points to the weekly & monthly period counters.
+// Credit LB points to the daily, weekly & monthly period counters.
 // (Overall/all-time is the per-user users/{uid}/lbPoints counter.)
+// Daily lives in RTDB 2 (/lbDaily) so the main database stays lean; weekly &
+// monthly stay in the main RTDB (/lbWeekly & /lbMonthly).
 window.creditLbPeriods = (uid, pts) => {
     pts = Number(pts || 0);
     if (!uid || pts <= 0) return;
     const now = new Date();
+    const curDay = window.lbDayKey(now);
     const curWeek = window.lbWeekKey(now);
     const curMonth = window.lbMonthKey(now);
+    if (curDay) update(ref(db2, `lbDaily/${curDay}`), { [uid]: increment(pts) }).catch(e => console.warn('lbDaily period credit error:', e));
     if (curWeek) update(ref(db, `lbWeekly/${curWeek}`), { [uid]: increment(pts) }).catch(e => console.warn('lbWeekly period credit error:', e));
     if (curMonth) update(ref(db, `lbMonthly/${curMonth}`), { [uid]: increment(pts) }).catch(e => console.warn('lbMonthly period credit error:', e));
 };
@@ -242,7 +259,7 @@ window.logEarnings = (uid, postId, title, prize, lbPoints) => {
     };
     push(ref(db, `earnings/${uid}`), payload).catch(e => console.warn('earnings write error:', e));
 
-    // Credit the weekly & monthly period counters (all-time totals live on users/{uid}/lbPoints).
+    // Credit the daily, weekly & monthly period counters (all-time totals live on users/{uid}/lbPoints).
     window.creditLbPeriods(uid, lbPoints);
 };
 

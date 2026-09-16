@@ -1,4 +1,4 @@
-import { db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -3244,7 +3244,11 @@ window.renderRankings = async (resetLimit = true) => {
             let lbMap = null;
             if (scope !== 'overall') {
                 const period = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
-                const snap = await get(ref(db, `lb${scope === 'weekly' ? 'Weekly' : 'Monthly'}/${period}`)).catch(() => null);
+                // Daily totals live in RTDB 2 (/lbDaily); weekly & monthly stay in the main RTDB.
+                const periodRef = scope === 'daily'
+                    ? ref(db2, `lbDaily/${period}`)
+                    : ref(db, `lb${scope === 'weekly' ? 'Weekly' : 'Monthly'}/${period}`);
+                const snap = await get(periodRef).catch(() => null);
                 if (snap && snap.exists()) lbMap = snap.val();
             }
             const emptyPeriod = scope !== 'overall' && !lbMap;
@@ -3253,7 +3257,8 @@ window.renderRankings = async (resetLimit = true) => {
             });
             usersArray.sort((a, b) => (b.displayLb || 0) - (a.displayLb || 0));
             if (emptyPeriod) {
-                list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-4">No LB points recorded in this ${scope === 'weekly' ? 'week' : 'month'} yet.</p>`;
+                const periodWord = scope === 'daily' ? 'day' : (scope === 'weekly' ? 'week' : 'month');
+                list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-4">No LB points recorded in this ${periodWord} yet.</p>`;
                 return;
             }
         } else if (window.currentRankingFilter === "Stars") {
@@ -3420,7 +3425,7 @@ async function renderRankingRewards(list) {
 }
 
 // ============================================================
-// LEADERBOARD PERIOD CONTROLS (Weekly / Monthly / Overall)
+// LEADERBOARD PERIOD CONTROLS (Daily / Weekly / Monthly / Overall)
 // ============================================================
 window.updateLbPeriodBar = () => {
     const bar = document.getElementById('ranking-period-bar');
@@ -3429,7 +3434,7 @@ window.updateLbPeriodBar = () => {
     bar.classList.toggle('hidden', !isFilter);
     if (!isFilter) return;
     const scope = window.lbScope || 'overall';
-    ['overall', 'weekly', 'monthly', 'rewards'].forEach(s => {
+    ['daily', 'weekly', 'monthly', 'overall', 'rewards'].forEach(s => {
         const b = document.getElementById('lb-scope-' + s);
         if (!b) return;
         const on = s === scope;
