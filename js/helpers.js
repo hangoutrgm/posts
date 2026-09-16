@@ -1146,3 +1146,57 @@ window.renderPostMedia = function(post) {
     }
     return `<img src="${media}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${media}')">`;
 };
+
+// ==========================================
+// SINGLE-PLAYER ENFORCEMENT — only ONE video plays at a time.
+// Reels / video posts live in a long scrolling feed, so a clip the user has
+// scrolled away from used to keep playing (two clips at once when they started
+// a second one). Rules:
+//   1. Starting any clip pauses every other clip on the page.
+//   2. A clip that scrolls out of view (down OR up) pauses itself automatically.
+//   3. Hiding the tab / app (switching to another page, locking the phone)
+//      counts as "not looking anymore" and pauses everything.
+// Videos inside fixed overlays (image viewer modal, composer previews) keep
+// their own lifecycle — they are always on screen while open.
+// ==========================================
+window.pauseOtherVideos = (except) => {
+    document.querySelectorAll('video').forEach((v) => {
+        if (v === except || v.paused) return;
+        try { v.pause(); } catch (_) {}
+    });
+};
+
+// True when the element sits inside a fixed-position overlay (modal / viewer).
+function isOverlayVideo(el) {
+    for (let node = el; node && node !== document.body; node = node.parentElement) {
+        if (getComputedStyle(node).position === 'fixed') return true;
+    }
+    return false;
+}
+
+// Pauses a clip once less than ~1/3 of it is still on screen, so nothing keeps
+// playing off-screen while the user reads the rest of the feed. Playback is never
+// auto-resumed (browsers only allow that after a gesture anyway).
+const offscreenVideoObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+        const v = entry.target;
+        // Test the ratio itself: isIntersecting stays true while ANY sliver shows.
+        if (entry.intersectionRatio >= 0.33 || !v || v.paused) return;
+        try { v.pause(); } catch (_) {}
+    });
+}, { threshold: [0.33] });
+
+// Capture phase: the `play` event does not bubble, but it still travels down.
+document.addEventListener('play', (event) => {
+    const v = event.target;
+    if (!v || v.tagName !== 'VIDEO') return;
+    window.pauseOtherVideos(v);
+    if (!isOverlayVideo(v)) offscreenVideoObserver.observe(v);
+}, true);
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) window.pauseOtherVideos(null);
+});
+
+// Leaving the page (navigation / PWA close) must never leave audio running.
+window.addEventListener('pagehide', () => window.pauseOtherVideos(null));
