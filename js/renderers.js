@@ -790,11 +790,20 @@ window.renderProfileData = (resetLimit = true) => {
                 `).join('')}
             </div>
         </div>` : ''}
+        <div id="profile-myday-section" class="hidden mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+            <h3 class="text-xs font-bold text-gray-500 uppercase mb-2"><i class="fa-solid fa-clock text-blue-500 mr-1"></i> My Day Collections</h3>
+            <div id="profile-myday-collections" class="myday-strip" style="margin:0;padding:0;min-height:120px"></div>
+        </div>
         <div class="mt-4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
             <h3 class="text-xs font-bold text-gray-500 uppercase mb-1">Followers (${followerCount})</h3>
             ${followersHtml}
         </div>
     `;
+
+    // My Day Collections — this user's archived My Day photos / videos.
+    if (window.MyDay && window.MyDay.renderCollections) {
+        window.MyDay.renderCollections('profile-myday-collections', window.activeProfileUid);
+    }
 
     const profPostsFilter = document.getElementById('profile-posts-filter')?.value || 'All';
     const pFeed = document.getElementById('profile-feed');

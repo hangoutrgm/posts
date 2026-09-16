@@ -7,13 +7,14 @@
 // Data — all in db2 (hangoutrgm2):
 //   /notes/{uid} = { text, updatedAt }           (chat notes — always shown)
 //   /myday/{uid} = { video | pic, createdAt }    (one story per user; 24h TTL)
+//   /myday_collections/{uid}/{id} = { video | pic, createdAt }  (permanent archive — profile section)
 //
 // Ordering priority: video stories → pic stories → note-only users.
 // Media opens the main site's shared viewer modal (window.viewImage)
 // — NOT a full-screen player. Notes open the small note modal.
 // ============================================================
 import { db2 } from "./firebase-config.js";
-import { ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, onValue, set, remove, get, push } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { auth } from "./firebase-config.js";
 
@@ -204,6 +205,78 @@ function renderStrip() {
 }
 
 // ------------------------------------------------------------
+// MY DAY COLLECTIONS — permanent archive of every My Day upload,
+// shown in the user profile (below the Photos section).
+//   /myday_collections/{uid}/{pushId} = { pic | video, createdAt }
+// Read ON DEMAND (one get per user, then cached in memory) so the
+// profile never holds a listener on this ever-growing node.
+// ------------------------------------------------------------
+const collectionsCache = {};    // uid -> [ { pic|video, createdAt } ] (newest first)
+const collectionsPending = {};  // uid -> in-flight promise (dedupes rapid re-renders)
+
+// One archived item — same card look as the feed strip.
+function collectionCardHtml(item, uid) {
+    const avatar = esc(avatarOf(uid));
+    const name = esc(nameOf(uid));
+    if (item.video) {
+        return `
+    <div class="myday-card" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(videoPlayUrl(item.video))}')" title="Watch My Day video">
+        <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
+        <span class="myday-card-avatar video-ring"><img src="${avatar}" alt=""></span>
+        <span class="myday-play"><i class="fa-solid fa-play"></i></span>
+        <span class="myday-card-label">${name}</span>
+    </div>`;
+    }
+    return `
+    <div class="myday-card" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(item.pic)}')" title="View My Day photo">
+        <img class="myday-card-bg" src="${esc(item.pic)}" alt="" loading="lazy">
+        <span class="myday-card-avatar"><img src="${avatar}" alt=""></span>
+        <span class="myday-card-label">${name}</span>
+    </div>`;
+}
+
+function fetchCollections(uid) {
+    if (collectionsCache[uid]) return Promise.resolve(collectionsCache[uid]);
+    if (collectionsPending[uid]) return collectionsPending[uid];
+    collectionsPending[uid] = get(ref(db2, `myday_collections/${uid}`))
+        .then((snap) => {
+            const raw = snap.val() || {};
+            collectionsCache[uid] = Object.keys(raw)
+                .map((k) => raw[k])
+                .filter((it) => it && (it.pic || it.video))
+                .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+            return collectionsCache[uid];
+        })
+        .catch(() => { collectionsCache[uid] = []; return []; })
+        .then((items) => { delete collectionsPending[uid]; return items; });
+    return collectionsPending[uid];
+}
+
+// Fills the profile container. The wrapper stays hidden while there is nothing to show.
+async function renderCollections(containerId, uid) {
+    const box = $(containerId);
+    if (!box) return;
+    const section = box.parentElement;
+    if (!uid) { if (section) section.classList.add('hidden'); return; }
+    const items = await fetchCollections(uid);
+    if (!box.isConnected) return; // profile was closed / re-rendered while loading
+    if (!items.length) { box.innerHTML = ''; if (section) section.classList.add('hidden'); return; }
+    box.innerHTML = items.map((it) => collectionCardHtml(it, uid)).join('');
+    if (section) section.classList.remove('hidden');
+}
+
+// Every My Day upload is also appended to the user's permanent collection.
+// Best-effort: the live story still works even if the archive write fails.
+async function archiveMyDay(media) {
+    const uid = window.currentUser?.uid;
+    if (!uid) return;
+    try {
+        await push(ref(db2, `myday_collections/${uid}`), media);
+        delete collectionsCache[uid]; // refresh on the next profile open
+    } catch (e) { /* archive is best-effort */ }
+}
+
+// ------------------------------------------------------------
 // PUBLIC API + MEDIA UPLOAD (own My Day bubble — photo OR video)
 // ------------------------------------------------------------
 window.MyDay = {
@@ -245,6 +318,7 @@ window.MyDay = {
         });
     },
     rerender: renderStrip,
+    renderCollections,
     hide: () => { const s = $('myday-strip'); if (s) s.classList.add('hidden'); },
     show: () => { const s = $('myday-strip'); if (s) s.classList.remove('hidden'); },
     isVisible: () => { const s = $('myday-strip'); return Boolean(s && !s.classList.contains('hidden')); }
@@ -274,14 +348,18 @@ function bindMediaInput() {
                 // Count against the admin's Posts Upload Limits → video quota
                 if (window.checkVideoUploadLimit && !window.checkVideoUploadLimit()) return;
                 const url = await window.uploadToCloudinary(file, window.currentUser.uid);
-                await set(ref(db2, `myday/${window.currentUser.uid}`), { video: url, createdAt: Date.now() });
+                const createdAt = Date.now();
+                await set(ref(db2, `myday/${window.currentUser.uid}`), { video: url, createdAt });
+                await archiveMyDay({ video: url, createdAt });
                 if (window.incrementVideoUploadLimit) window.incrementVideoUploadLimit();
             } else {
                 // Count against the admin's Posts Upload Limits → photo quota
                 if (window.checkUploadLimit && !window.checkUploadLimit()) return;
                 const b64 = await window.compressImage(file);
                 const url = await window.uploadToCloudinary(b64, window.currentUser.uid);
-                await set(ref(db2, `myday/${window.currentUser.uid}`), { pic: url, createdAt: Date.now() });
+                const createdAt = Date.now();
+                await set(ref(db2, `myday/${window.currentUser.uid}`), { pic: url, createdAt });
+                await archiveMyDay({ pic: url, createdAt });
                 if (window.incrementUploadLimit) window.incrementUploadLimit();
             }
             window.showToast('🎬 My Day posted!');
