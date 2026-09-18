@@ -2732,12 +2732,38 @@ window.renderMembers = (resetLimit = true) => {
 
     const searchQuery = (document.getElementById('member-search')?.value || '').toLowerCase();
     
-    let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name);
+    const isOnlineFn = (uid) => {
+        if (!window.onlineUsers || !uid) return false;
+        const val = window.onlineUsers[uid];
+        if (val === true) return true;
+        if (val && typeof val === 'object') return Object.keys(val).length > 0;
+        return false;
+    };
+    window.isUserOnline = isOnlineFn;
+
+    const onlineUids = Object.keys(window.onlineUsers || {}).filter(uid => isOnlineFn(uid));
+    const membersOnlineEl = document.getElementById('members-online-count');
+    if (membersOnlineEl) membersOnlineEl.innerText = onlineUids.length;
+
+    // Targeted fetch for any online members not yet in globalUsersCache
+    onlineUids.forEach(uid => {
+        if ((!window.globalUsersCache[uid] || !window.globalUsersCache[uid].name) && typeof window.ensureSingleUserLoaded === 'function') {
+            window.ensureSingleUserLoaded(uid);
+        }
+    });
+
+    let usersMap = { ...window.globalUsersCache };
+    onlineUids.forEach(uid => {
+        if (!usersMap[uid] || !usersMap[uid].name) {
+            usersMap[uid] = { ...(usersMap[uid] || {}), name: usersMap[uid]?.name || 'Loading...' };
+        }
+    });
+
+    let usersArray = Object.keys(usersMap).map(uid => ({uid, ...usersMap[uid]})).filter(u => u.name);
     
     document.getElementById('members-total-count').innerText = `${usersArray.length} Total`;
-    document.getElementById('members-online-count').innerText = Object.keys(window.onlineUsers).length;
 
-    if(window.currentMemberFilter === "Online") usersArray = usersArray.filter(u => window.onlineUsers[u.uid]);
+    if(window.currentMemberFilter === "Online") usersArray = usersArray.filter(u => isOnlineFn(u.uid));
     else if(window.currentMemberFilter === "Mods") usersArray = usersArray.filter(u => u.isMod === true);
     else if(window.currentMemberFilter === "Admins") usersArray = usersArray.filter(u => window.getRole(u.uid).level === 3);
 
@@ -2763,7 +2789,7 @@ window.renderMembers = (resetLimit = true) => {
     const fragment = document.createDocumentFragment();
 
     usersToRender.forEach(u => {
-        const isOnline = window.onlineUsers[u.uid];
+        const isOnline = isOnlineFn(u.uid);
         const followerCount = u.followers ? Object.keys(u.followers).length : 0;
         
         let followBtn = '';

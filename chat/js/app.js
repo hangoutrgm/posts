@@ -372,10 +372,52 @@ function updateUnreadTitle() {
   document.title = unread ? `(${unread > 99 ? '99+' : unread}) Hangout Chat` : 'Hangout Chat';
 }
 
-function renderConversations() {
+// Render debouncer & DOM cache to prevent flicker storm on startup
+let _renderConvoRaf = null;
+let _lastConvoHtml = null;
+let _convoListDelegationDone = false;
+
+function setupConvoListDelegation() {
+  if (_convoListDelegationDone) return;
+  const list = $('conversation-list');
+  if (!list) return;
+  _convoListDelegationDone = true;
+  list.addEventListener('click', (e) => {
+    const memberBtn = e.target.closest('.member-result');
+    if (memberBtn && memberBtn.dataset.user) {
+      startConversation(memberBtn.dataset.user);
+      return;
+    }
+    const convBtn = e.target.closest('.conversation:not(.member-result)');
+    if (convBtn && convBtn.dataset.thread) {
+      const threadId = convBtn.dataset.thread;
+      openThread(threadId, state.inbox[threadId]);
+    }
+  });
+}
+
+function renderConversations(immediate = false) {
+  if (immediate) {
+    if (_renderConvoRaf) {
+      cancelAnimationFrame(_renderConvoRaf);
+      _renderConvoRaf = null;
+    }
+    _doRenderConversations();
+    return;
+  }
+  if (_renderConvoRaf) return;
+  _renderConvoRaf = requestAnimationFrame(() => {
+    _renderConvoRaf = null;
+    _doRenderConversations();
+  });
+}
+
+function _doRenderConversations() {
+  setupConvoListDelegation();
   syncPresenceListeners(); // keep online dots accurate for the current list + search matches
   const list = $('conversation-list');
-  const term = $('conversation-search').value.trim().toLowerCase();
+  if (!list) return;
+  const term = $('conversation-search')?.value.trim().toLowerCase() || '';
   const items = Object.entries(state.inbox).map(([id, item]) => ({ id, ...item })).filter((item) => {
     const peerIds = getThreadPeers(item);
     const name = getThreadName(item, peerIds).toLowerCase();
@@ -395,14 +437,31 @@ function renderConversations() {
       return `${person.name || ''}`.toLowerCase().includes(term);
     }).sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 10);
   }
-  if (!state.user) { list.innerHTML = ''; return; }
-  if (!Object.keys(state.inbox).length && !state.inboxReady && !term) {
-    list.innerHTML = `<div class="conv-skeleton-list">${Array.from({length:6}, () =>
-      `<div class="conv-skeleton-row"><div class="conv-skeleton-avatar skeleton"></div><div class="conv-skeleton-body"><div class="conv-skeleton-name skeleton"></div><div class="conv-skeleton-preview skeleton"></div></div></div>`
-    ).join('')}</div>`;
+  if (!state.user) {
+    if (_lastConvoHtml !== '') {
+      _lastConvoHtml = '';
+      list.innerHTML = '';
+    }
     return;
   }
-  if (!items.length && !memberMatches.length) { list.innerHTML = `<p class="list-empty">${term ? `No chats or members found for \u201c${escapeHtml(term)}\u201d.` : 'No conversations yet. Tap the compose button to say hello.'}</p>`; return; }
+  if (!Object.keys(state.inbox).length && !state.inboxReady && !term) {
+    const skeletonHtml = `<div class="conv-skeleton-list">${Array.from({length:6}, () =>
+      `<div class="conv-skeleton-row"><div class="conv-skeleton-avatar skeleton"></div><div class="conv-skeleton-body"><div class="conv-skeleton-name skeleton"></div><div class="conv-skeleton-preview skeleton"></div></div></div>`
+    ).join('')}</div>`;
+    if (_lastConvoHtml !== skeletonHtml) {
+      _lastConvoHtml = skeletonHtml;
+      list.innerHTML = skeletonHtml;
+    }
+    return;
+  }
+  if (!items.length && !memberMatches.length) {
+    const emptyHtml = `<p class="list-empty">${term ? `No chats or members found for \u201c${escapeHtml(term)}\u201d.` : 'No conversations yet. Tap the compose button to say hello.'}</p>`;
+    if (_lastConvoHtml !== emptyHtml) {
+      _lastConvoHtml = emptyHtml;
+      list.innerHTML = emptyHtml;
+    }
+    return;
+  }
   let html = items.map((item) => {
     const peerIds = getThreadPeers(item);
     const name = getThreadName(item, peerIds);
@@ -417,12 +476,10 @@ function renderConversations() {
     html += `<div class="member-search-label">Members</div>`;
     html += memberMatches.map((person) => `<button class="conversation member-result" data-user="${escapeHtml(person.uid)}"><span class="conversation-avatar"><img class="avatar" src="${escapeHtml(avatarUrl(person))}" alt=""></span><span class="conversation-copy"><span class="conversation-top"><span class="conversation-name">${escapeHtml(person.name || 'Hangout member')}</span></span><span class="conversation-preview"><span><i class="online-dot${isOnline(person.uid) ? ' online' : ''}"></i> ${isOnline(person.uid) ? 'Online · Tap to message' : 'Tap to message'}</span></span></span></button>`).join('');
   }
-  list.innerHTML = html;
-  list.querySelectorAll('.conversation:not(.member-result)').forEach((button) => button.addEventListener('click', () => {
-    const threadId = button.dataset.thread;
-    openThread(threadId, state.inbox[threadId]);
-  }));
-  list.querySelectorAll('.member-result').forEach((button) => button.addEventListener('click', () => startConversation(button.dataset.user)));
+  if (_lastConvoHtml !== html) {
+    _lastConvoHtml = html;
+    list.innerHTML = html;
+  }
 }
 
 // ============================================================
@@ -528,6 +585,10 @@ window.openMyNote = async () => {
 function renderPeople() {
   const list = $('people-list');
   const term = $('people-search').value.trim().toLowerCase();
+  const missingOnline = Object.keys(state.online || {}).filter(uid => !state.users[uid] || !state.users[uid].name);
+  if (missingOnline.length > 0 && typeof ensureChatUserLoaded === 'function') {
+    missingOnline.forEach(uid => ensureChatUserLoaded(uid));
+  }
   const people = Object.values(state.users).filter((person) => person.uid && person.uid !== state.user?.uid && (!term || `${person.name || ''}`.toLowerCase().includes(term))).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   
   let html = '';
@@ -564,16 +625,32 @@ function updateChatHeader() {
   const item = state.activeInboxItem;
   const peerIds = getThreadPeers(item);
   const name = getThreadName(item, peerIds);
+
+  const isNameKnown = Boolean(
+    (item.isGroup && item.name) ||
+    (!item.isGroup && item.peerId === state.user?.uid) ||
+    (peerIds.length && peerIds.some(uid => (item.nicknames && item.nicknames[uid]) || state.users[uid]?.name))
+  );
   
   const avatarHtml = renderAvatarHtml(peerIds, item);
   const wrap = $('chat-avatar-wrap');
   if (wrap) {
-    wrap.innerHTML = avatarHtml;
-    wrap.title = item.isGroup ? 'Group options' : (peerIds[0] ? `View ${getNickname(peerIds[0])}'s profile` : 'View profile');
-    const el = wrap.firstElementChild;
-    if (el) { el.classList.add('large'); if (el.tagName === 'IMG') el.classList.add('avatar'); }
+    if (!isNameKnown && !item.pic && (!peerIds.length || !state.users[peerIds[0]]?.pic)) {
+      wrap.innerHTML = '<div class="avatar large skeleton"></div>';
+      wrap.title = 'Loading…';
+    } else {
+      wrap.innerHTML = avatarHtml;
+      wrap.title = item.isGroup ? 'Group options' : (peerIds[0] ? `View ${getNickname(peerIds[0])}'s profile` : 'View profile');
+      const el = wrap.firstElementChild;
+      if (el) { el.classList.add('large'); if (el.tagName === 'IMG') el.classList.add('avatar'); }
+    }
   }
-  $('chat-name').textContent = name;
+
+  if (!isNameKnown) {
+    $('chat-name').innerHTML = '<span class="chat-header-skeleton-name skeleton"></span>';
+  } else {
+    $('chat-name').textContent = name;
+  }
   
   const typingPeers = item.isGroup ? peerIsTyping() : (peerIsTyping() ? [state.activePeerId] : []);
   if (typingPeers.length > 0) {
@@ -581,6 +658,8 @@ function updateChatHeader() {
     $('chat-status').innerHTML = `<span class="typing-status">${escapeHtml(typistName)} is typing…</span>`;
     clearTimeout(state.typingExpiryTimer);
     state.typingExpiryTimer = setTimeout(updateChatHeader, 7100);
+  } else if (!isNameKnown || !state.messagesLoaded) {
+    $('chat-status').innerHTML = '<span class="chat-loading-status"><span class="chat-loading-dot"></span>Connecting…</span>';
   } else {
     if (item.isGroup) {
       if (state.activeThreadId === 'global_announcements') {
@@ -1664,6 +1743,15 @@ async function sendVoiceMessage(audioBlob) {
   }
 }
 
+function showChatLoading() {
+  const bar = $('chat-loading-bar');
+  if (bar) bar.classList.add('active');
+}
+function hideChatLoading() {
+  const bar = $('chat-loading-bar');
+  if (bar) bar.classList.remove('active');
+}
+
 function openThread(threadId, inboxItem) {
   if (!state.user) return showAuth();
   const leavingThreadId = state.activeThreadId;
@@ -1678,7 +1766,8 @@ function openThread(threadId, inboxItem) {
   state.activePeerId = state.activeInboxItem.isGroup ? null : state.activeInboxItem.peerId;
   state.noMoreOldMessages = false;
   state.loadingOldMessages = false;
-  $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(); markThreadRead(threadId);
+  showChatLoading();
+  $('empty-state').classList.add('hidden'); $('active-chat').classList.remove('hidden'); updateChatHeader(); renderConversations(true); markThreadRead(threadId);
   if (state.activePeerId) refreshPeerProfile(state.activePeerId);
   if (state.stopMessages) {
     try { state.stopMessages(); } catch (_) {}
@@ -1701,11 +1790,11 @@ function openThread(threadId, inboxItem) {
     renderMessages(undefined, false);
   } else {
     $('message-list').innerHTML = `<div class="msg-skeleton-list">
-    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
-    <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
-    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
-    <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-bubble short skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
-    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton" style="width: 65%;"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton" style="width: 48%;"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton" style="width: 82%; height: 50px;"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row me"><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton" style="width: 36%;"></div><div class="msg-skeleton-time skeleton"></div></div></div>
+    <div class="msg-skeleton-row"><div class="msg-skeleton-avatar skeleton"></div><div class="msg-skeleton-body"><div class="msg-skeleton-bubble skeleton" style="width: 58%;"></div><div class="msg-skeleton-time skeleton"></div></div></div>
   </div>`;
   }
 
@@ -1723,6 +1812,8 @@ function openThread(threadId, inboxItem) {
       state.messagesLoaded = true;
       renderMessages(undefined, initial || forceJump);
       markThreadSeen(threadId);
+      hideChatLoading();
+      updateChatHeader();
     });
   };
 
@@ -1750,6 +1841,8 @@ function openThread(threadId, inboxItem) {
     if (!state.messagesLoaded && state.activeThreadId === threadId) {
       state.messagesLoaded = true;
       renderMessages(undefined, true);
+      hideChatLoading();
+      updateChatHeader();
     }
   }, 400);
 
@@ -2432,7 +2525,8 @@ function closeActiveChat() {
   const badge = $('streak-badge'); if (badge) badge.classList.add('hidden');
   const restoreBtn = $('streak-restore-btn'); if (restoreBtn) restoreBtn.classList.add('hidden');
   syncThreadSummaryWatchers();
-  $('active-chat').classList.add('hidden'); $('empty-state').classList.remove('hidden'); renderConversations();
+  hideChatLoading();
+  $('active-chat').classList.add('hidden'); $('empty-state').classList.remove('hidden'); renderConversations(true);
 }
 async function clearChatForMe() {
   if (!state.user || !state.activeThreadId) return;
@@ -2507,8 +2601,15 @@ function stopThreadSummaryWatchers() {
   Object.values(state.stopThreadSummaries).forEach((stop) => stop());
   state.stopThreadSummaries = {};
 }
+let _saveInboxTimer = null;
 function saveInboxCache() {
-  if (state.user) localStorage.setItem(`hangout-inbox-${state.user.uid}`, JSON.stringify(state.inbox));
+  if (!state.user) return;
+  clearTimeout(_saveInboxTimer);
+  _saveInboxTimer = setTimeout(() => {
+    try {
+      if (state.user) localStorage.setItem(`hangout-inbox-${state.user.uid}`, JSON.stringify(state.inbox));
+    } catch (_) {}
+  }, 250);
 }
 
 // ── Message history cache (localStorage) ──
@@ -2652,9 +2753,17 @@ async function loadAllStreaks() {
         .catch(() => ({ tid, data: null }));
     })
   );
-  results.forEach(({ tid, data }) => { if (data) state.streaks[tid] = data; });
+  let changed = false;
+  results.forEach(({ tid, data }) => {
+    if (data) {
+      if (JSON.stringify(state.streaks[tid]) !== JSON.stringify(data)) {
+        state.streaks[tid] = data;
+        changed = true;
+      }
+    }
+  });
   cacheStreaks(); // …then refresh from the server and update the cache
-  renderConversations();
+  if (changed) renderConversations();
 }
 
 function handleInbox(snapshot) {
@@ -2785,11 +2894,13 @@ function syncPresenceListeners() {
       const stop = onValue(ref(db, `presence/${uid}`), (snap) => {
         const v = snap.val();
         const prev = state.online[uid];
-        const changed = JSON.stringify(v) !== JSON.stringify(prev);
+        const wasOnline = isOnline(uid);
         state.online[uid] = v;
-        if (!changed) return; // unchanged (e.g. re-sync after tab focus) — skip re-render churn
+        const nowOnline = isOnline(uid);
+        if (wasOnline === nowOnline && JSON.stringify(v) === JSON.stringify(prev)) return;
+        if (wasOnline === nowOnline && state.activePeerId !== uid) return;
         renderConversations();
-        updateChatHeader();
+        if (state.activePeerId === uid) updateChatHeader();
       }, (e) => reportRealtimeError('presence', e));
       _presenceHandles[uid] = stop;
     });
@@ -2798,11 +2909,37 @@ function syncPresenceListeners() {
   }
 }
 
+const _pendingChatUserFetches = new Set();
+async function ensureChatUserLoaded(uid) {
+  if (!uid || _pendingChatUserFetches.has(uid)) return;
+  _pendingChatUserFetches.add(uid);
+  try {
+    const snap = await get(ref(db, `users/${uid}`));
+    if (snap.exists()) {
+      const userData = snap.val() || {};
+      state.users[uid] = { ...userData, uid };
+      saveUsersCache();
+      if (window.writeUsersCache) window.writeUsersCache(state.users);
+      renderConversations();
+      renderPeople();
+      updateChatHeader();
+    }
+  } catch (e) {
+    console.warn('Chat targeted user fetch failed for', uid, e);
+  } finally {
+    _pendingChatUserFetches.delete(uid);
+  }
+}
+
 function startWholePresence() {
   if (_presenceWhole) return;
   stopGranularPresence();
   get(ref(db, 'presence')).then((snapshot) => {
     state.online = snapshot.val() || {};
+    const missing = Object.keys(state.online).filter(uid => !state.users[uid] || !state.users[uid].name);
+    if (missing.length > 0) {
+      missing.forEach(uid => ensureChatUserLoaded(uid));
+    }
     renderConversations(); renderPeople(); updateChatHeader();
   }).catch((e) => reportRealtimeError('presence', e));
 }
@@ -2829,9 +2966,10 @@ let checkedThreadParam = false;
 onAuthStateChanged(auth, async (user) => {
   const previousUser = state.user; if (previousUser && previousUser.uid !== user?.uid) stopOwnPresence(previousUser);
   state.user = user; if (state.stopInbox) state.stopInbox(); if (state.stopClears) state.stopClears(); if (state.stopPostsNotif) { state.stopPostsNotif(); state.stopPostsNotif = null; } stopThreadSummaryWatchers(); stopGranularPresence(); if (_presenceWhole) { try { _presenceWhole(); } catch (_) {} _presenceWhole = null; } if (window._stopChatOwnUser) { window._stopChatOwnUser(); window._stopChatOwnUser = null; } state.inbox = {}; state.clears = {}; state.inboxReady = false; if (state.stopNotes) { state.stopNotes(); state.stopNotes = null; } state.notes = {}; restoreNotesCache(); renderNotes();
-  // Restore cached inbox immediately so the first render shows correct GC names & nicknames (no flicker)
+  // Restore cached streaks & inbox immediately so the first render shows correct GC names, nicknames & streak badges (no flicker)
   if (user) {
     try {
+      restoreStreaksCache();
       const cached = localStorage.getItem(`hangout-inbox-${user.uid}`);
       if (cached) { state.inbox = JSON.parse(cached); renderConversations(); }
     } catch (e) {}
@@ -2961,14 +3099,14 @@ $('search-toggle-button').addEventListener('click', () => {
   const opening = box.classList.contains('hidden');
   box.classList.toggle('hidden', !opening);
   notes.classList.toggle('hidden', opening);
-  if (opening) { $('conversation-search').focus(); renderConversations(); }
+  if (opening) { $('conversation-search').focus(); renderConversations(true); }
 });
 $('search-clear').addEventListener('click', () => {
   const box = $('search-box-label'), notes = $('notes-strip');
   $('conversation-search').value = '';
   box.classList.add('hidden');
   notes.classList.remove('hidden');
-  renderConversations();
+  renderConversations(true);
 });
 // Note viewer — tiny popover (close via X, outside click, or Escape)
 const closeNotePopover = () => $('note-popover')?.classList.add('hidden');
@@ -2980,7 +3118,7 @@ document.addEventListener('click', (e) => {
   closeNotePopover();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNotePopover(); });
-$('conversation-search').addEventListener('input', renderConversations); $('people-search').addEventListener('input', renderPeople); $('message-form').addEventListener('submit', sendMessage);
+$('conversation-search').addEventListener('input', () => renderConversations(true)); $('people-search').addEventListener('input', renderPeople); $('message-form').addEventListener('submit', sendMessage);
 $('message-input').addEventListener('input', (event) => { 
   const list = $('message-list');
   const wasNearLatest = list ? list.scrollHeight - list.scrollTop - list.clientHeight < 90 : false;

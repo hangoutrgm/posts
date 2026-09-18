@@ -442,18 +442,50 @@ onValue(ref(db, 'settings'), (snap) => {
 // ============================================================
 window.onlineUsers = {};
 
+const _pendingUserFetches = new Set();
+window.ensureSingleUserLoaded = async (uid) => {
+    if (!uid || _pendingUserFetches.has(uid)) return;
+    _pendingUserFetches.add(uid);
+    try {
+        const snap = await get(ref(db, `users/${uid}`));
+        if (snap.exists()) {
+            const userData = snap.val() || {};
+            window.globalUsersCache[uid] = userData;
+            if (window.usersCache?.updateUser) window.usersCache.updateUser(uid, userData);
+            if (!document.getElementById('members-modal')?.classList.contains('hidden')) {
+                window.renderMembers(false);
+            }
+            if (window.activeProfileUid === uid) window.renderProfileData(false);
+        }
+    } catch (e) {
+        console.warn('Targeted user fetch failed for', uid, e);
+    } finally {
+        _pendingUserFetches.delete(uid);
+    }
+};
+
 onChildAdded(ref(db, 'presence'), (snap) => {
-    window.onlineUsers[snap.key] = snap.val();
+    const uid = snap.key;
+    window.onlineUsers[uid] = snap.val();
     const count = Object.keys(window.onlineUsers).length;
     const countEl = document.getElementById('online-count');
     if (countEl) countEl.innerText = count;
-    if (!document.getElementById('members-modal')?.classList.contains('hidden')) window.renderMembers(false);
-    if (window.activeProfileUid) window.renderProfileData(false);
+
+    if (uid && (!window.globalUsersCache[uid] || !window.globalUsersCache[uid].name)) {
+        window.ensureSingleUserLoaded(uid);
+    } else {
+        if (!document.getElementById('members-modal')?.classList.contains('hidden')) window.renderMembers(false);
+        if (window.activeProfileUid) window.renderProfileData(false);
+    }
 });
 
 onChildChanged(ref(db, 'presence'), (snap) => {
     // Only update memory cache, do not trigger DOM reflow on every 60s heartbeat
-    window.onlineUsers[snap.key] = snap.val();
+    const uid = snap.key;
+    window.onlineUsers[uid] = snap.val();
+    if (uid && (!window.globalUsersCache[uid] || !window.globalUsersCache[uid].name)) {
+        window.ensureSingleUserLoaded(uid);
+    }
 });
 
 onChildRemoved(ref(db, 'presence'), (snap) => {
