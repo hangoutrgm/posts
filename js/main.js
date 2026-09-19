@@ -874,11 +874,20 @@ window.listenPosts = () => {
     const q3 = query(window._buildBaseQueryForDb(fsdb3), limit(15));
 
     window.postsUnsubscribe1 = onSnapshot(q1, { includeMetadataChanges: false }, (snapshot) => {
-        livePosts1 = [];
-        snapshot.forEach(child => {
-            const p = { id: child.id, ...child.data(), _dbSource: 1 };
-            window._postDbMap.set(child.id, 1);
-            livePosts1.push(p);
+        // Use docChanges() so only the 1-2 docs that actually changed are billed,
+        // not the full 15-doc result set on every write (was 45 reads/write across 3 DBs).
+        snapshot.docChanges().forEach(change => {
+            const id = change.doc.id;
+            if (change.type === 'removed') {
+                livePosts1 = livePosts1.filter(p => p.id !== id);
+            } else {
+                // 'added' or 'modified' — upsert into the live array
+                const p = { id, ...change.doc.data(), _dbSource: 1 };
+                window._postDbMap.set(id, 1);
+                const idx = livePosts1.findIndex(p => p.id === id);
+                if (idx !== -1) livePosts1[idx] = p;
+                else livePosts1.push(p);
+            }
         });
         if (snapshot.docs.length > 0) {
             window._liveLastDoc1 = snapshot.docs[snapshot.docs.length - 1];
@@ -894,11 +903,17 @@ window.listenPosts = () => {
     });
 
     window.postsUnsubscribe2 = onSnapshot(q2, { includeMetadataChanges: false }, (snapshot) => {
-        livePosts2 = [];
-        snapshot.forEach(child => {
-            const p = { id: child.id, ...child.data(), _dbSource: 2 };
-            window._postDbMap.set(child.id, 2);
-            livePosts2.push(p);
+        snapshot.docChanges().forEach(change => {
+            const id = change.doc.id;
+            if (change.type === 'removed') {
+                livePosts2 = livePosts2.filter(p => p.id !== id);
+            } else {
+                const p = { id, ...change.doc.data(), _dbSource: 2 };
+                window._postDbMap.set(id, 2);
+                const idx = livePosts2.findIndex(p => p.id === id);
+                if (idx !== -1) livePosts2[idx] = p;
+                else livePosts2.push(p);
+            }
         });
         if (snapshot.docs.length > 0) {
             window._liveLastDoc2 = snapshot.docs[snapshot.docs.length - 1];
@@ -914,11 +929,17 @@ window.listenPosts = () => {
     });
 
     window.postsUnsubscribe3 = onSnapshot(q3, { includeMetadataChanges: false }, (snapshot) => {
-        livePosts3 = [];
-        snapshot.forEach(child => {
-            const p = { id: child.id, ...child.data(), _dbSource: 3 };
-            window._postDbMap.set(child.id, 3);
-            livePosts3.push(p);
+        snapshot.docChanges().forEach(change => {
+            const id = change.doc.id;
+            if (change.type === 'removed') {
+                livePosts3 = livePosts3.filter(p => p.id !== id);
+            } else {
+                const p = { id, ...change.doc.data(), _dbSource: 3 };
+                window._postDbMap.set(id, 3);
+                const idx = livePosts3.findIndex(p => p.id === id);
+                if (idx !== -1) livePosts3[idx] = p;
+                else livePosts3.push(p);
+            }
         });
         if (snapshot.docs.length > 0) {
             window._liveLastDoc3 = snapshot.docs[snapshot.docs.length - 1];
