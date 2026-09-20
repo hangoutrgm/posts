@@ -2035,7 +2035,12 @@ document.getElementById('forgot-pass-btn').addEventListener('click', async () =>
     } catch (error) { showError(error.message.replace('Firebase:', '')); }
 });
 
-document.getElementById('auth-action-btn').addEventListener('click', async () => {
+// Bound to the <form> submit (not a button click) so Enter works in either field
+// AND browsers' password managers recognise the sign-in/sign-up credentials —
+// a password <input> outside a <form> triggers "[DOM] Password field is not
+// contained in a form" and is ignored by autofill.
+document.getElementById('email-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
     const email = document.getElementById('auth-email').value;
     const pass = document.getElementById('auth-password').value;
     const btn = document.getElementById('auth-action-btn');

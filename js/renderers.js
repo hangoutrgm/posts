@@ -3465,16 +3465,22 @@ window.renderRankings = async (resetLimit = true) => {
     requestAnimationFrame(() => list.style.minHeight = '');
 };
 
-// Rewards tab: top players of the CURRENT WEEKLY leaderboard with the prizes
-// an admin set (ranks 1–10, empty boxes = cutoff).
+// Rewards tab: top players of the SELECTED WEEK with the prizes an admin set
+// (ranks 1–10, empty boxes = cutoff). The week is the one chosen in the period
+// bar — shared with the Weekly tab, so mirroring works both ways — and falls
+// back to the current ISO week when no week has been picked yet.
 async function renderRankingRewards(list) {
     const loader = document.getElementById('ranking-loader');
     if (loader) loader.classList.remove('hidden');
 
-    // Fetch the admin-configured prizes + the current weekly leaderboard together
+    const weekKey = window.lbPeriodKey || window.lbPeriodKeyFor('weekly');
+    const isThisWeek = weekKey === window.lbPeriodKeyFor('weekly');
+    const weekLabel = window.lbPeriodLabel('weekly', weekKey);
+
+    // Fetch the admin-configured prizes + that week's leaderboard together
     const [rewardsSnap, weeklySnap] = await Promise.all([
         get(ref(db, 'settings/leaderboardRewards')).catch(() => null),
-        get(ref(db, `lbWeekly/${window.lbPeriodKeyFor('weekly')}`)).catch(() => null)
+        get(ref(db, `lbWeekly/${weekKey}`)).catch(() => null)
     ]);
     const rewards = (rewardsSnap && rewardsSnap.exists()) ? (rewardsSnap.val() || {}) : {};
     const weekly = (weeklySnap && weeklySnap.exists()) ? (weeklySnap.val() || {}) : {};
@@ -3502,7 +3508,7 @@ async function renderRankingRewards(list) {
         .sort((a, b) => b.pts - a.pts)
         .slice(0, Math.max(...configured));
     if (!pool.length) {
-        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">No LB points recorded this week yet — rewards will appear once the weekly leaderboard fills up.</p>`;
+        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">No LB points recorded for ${isThisWeek ? 'this week' : escapeHtml(weekLabel)} yet — rewards appear once that week's leaderboard has points.</p>`;
         list.style.minHeight = '';
         return;
     }
@@ -3520,7 +3526,7 @@ async function renderRankingRewards(list) {
     head.innerHTML = `
         <div class="text-center">
             <div class="text-xl font-black text-yellow-600 dark:text-yellow-400">🎁</div>
-            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">This week's Top ${maxRank} win prizes</div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">${isThisWeek ? "This week's" : escapeHtml(weekLabel) + ' ·'} Top ${maxRank} win prizes</div>
         </div>
         <div class="text-center">
             <div class="text-lg font-black text-green-600 dark:text-green-400">${configured.length}</div>
@@ -3560,7 +3566,8 @@ async function renderRankingRewards(list) {
 }
 
 // ============================================================
-// LEADERBOARD PERIOD CONTROLS (Daily / Weekly / Monthly / Overall)
+// LEADERBOARD PERIOD CONTROLS (Daily / Weekly / Monthly / Overall / Rewards)
+// Rewards reuses the WEEKLY buckets + the same ◀ ▶ week selector.
 // ============================================================
 window.updateLbPeriodBar = () => {
     const bar = document.getElementById('ranking-period-bar');
@@ -3583,19 +3590,31 @@ window.updateLbPeriodBar = () => {
     });
     const nav = document.getElementById('lb-period-nav');
     const lbl = document.getElementById('lb-period-label');
-    if (scope === 'overall' || scope === 'rewards') {
+    // Rewards are built from the WEEKLY buckets, so the ◀ ▶ week selector is shown
+    // there too (Daily/Weekly/Monthly already had it).
+    const navScope = scope === 'rewards' ? 'weekly' : scope;
+    if (scope === 'overall') {
         if (nav) nav.classList.add('hidden');
         if (lbl) lbl.textContent = '';
     } else {
-        const key = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
+        const key = window.lbPeriodKey || window.lbPeriodKeyFor(navScope);
         if (nav) nav.classList.remove('hidden');
-        if (lbl) lbl.textContent = window.lbPeriodLabel(scope, key);
+        if (lbl) lbl.textContent = (scope === 'rewards' ? '🎁 ' : '') + window.lbPeriodLabel(navScope, key);
     }
 };
 
 window.setLbScope = (scope) => {
+    const prevScope = window.lbScope;
     window.lbScope = scope;
-    window.lbPeriodKey = (scope === 'overall' || scope === 'rewards') ? '' : window.lbPeriodKeyFor(scope);
+    if (scope === 'overall') {
+        window.lbPeriodKey = '';
+    } else if (scope === 'rewards') {
+        // Mirror the Weekly tab: keep the week the admin is already viewing, and only
+        // start at the current week when coming from Daily/Monthly/Overall.
+        if (prevScope !== 'weekly' || !window.lbPeriodKey) window.lbPeriodKey = window.lbPeriodKeyFor('weekly');
+    } else {
+        window.lbPeriodKey = window.lbPeriodKeyFor(scope);
+    }
     window.renderRankings(true);
     window.updateLbPeriodBar();
 };
@@ -3603,8 +3622,10 @@ window.setLbScope = (scope) => {
 window.shiftLbPeriodView = (delta) => {
     const scope = window.lbScope;
     if (!scope || scope === 'overall') return;
-    const cur = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
-    window.lbPeriodKey = window.shiftLbPeriod(scope, cur, delta);
+    // Rewards step through weeks (they read the weekly buckets).
+    const baseScope = scope === 'rewards' ? 'weekly' : scope;
+    const cur = window.lbPeriodKey || window.lbPeriodKeyFor(baseScope);
+    window.lbPeriodKey = window.shiftLbPeriod(baseScope, cur, delta);
     window.renderRankings(true);
     window.updateLbPeriodBar();
 };
