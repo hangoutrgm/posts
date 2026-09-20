@@ -1486,7 +1486,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         ${outcomeHtml}
                     </div>`;
             }
-        } else if (['flags', 'math', 'jumbled_words', 'trivia', 'mythology', 'guess_logo', 'periodic_table'].includes(post.gameType)) {
+        } else if (['flags', 'math', 'jumbled_words', 'trivia', 'mythology', 'guess_logo', 'periodic_table', 'riddle'].includes(post.gameType)) {
             const isHost = window.currentUser && window.currentUser.uid === post.authorId;
             let displayContent = '', gameTitle = '', hostHint = '', answerHint = '';
             let timerHtml = '';
@@ -1549,6 +1549,12 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 gameTitle = 'Mythology Challenge!';
                 if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${post.gameMythologyAnswer}</div>`;
                 answerHint = `<p class="text-xs text-gray-400 mt-1">Type the answer</p>`;
+            } else if (post.gameType === 'riddle') {
+                const isBugtong = post.gameRiddleLang === 'bugtong';
+                displayContent = `<div class="text-base font-semibold text-center text-indigo-800 dark:text-indigo-200 mb-2 max-w-sm whitespace-pre-wrap">${escapeHtml(post.gameRiddleQuestion || '')}</div>`;
+                gameTitle = isBugtong ? '🇵🇭 Bugtong Time!' : '🧩 Riddle Time!';
+                if (isHost && window.hostAnswerVisible(post)) hostHint = `<div class="text-xs text-yellow-600 dark:text-yellow-400 font-bold mt-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full">🔑 Answer: ${escapeHtml(post.gameRiddleAnswer || '')}</div>`;
+                answerHint = `<p class="text-xs text-gray-400 mt-1">Type your answer</p>`;
             } else if (post.gameType === 'guess_logo') {
                 const logoImg = post.gameLogoUrl
                     ? `<div class="flex items-center justify-center bg-white dark:bg-white rounded-2xl px-5 py-3 shadow-sm"><img src="${post.gameLogoUrl}" alt="Logo" class="h-14 w-auto select-none" draggable="false"></div>`
@@ -1596,6 +1602,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 else if (post.gameType === 'jumbled_words') answerReveal = `<div class="text-lg mb-1">${post.gameJumbledScrambled} ➔ <strong>${post.gameJumbledOriginal}</strong></div>`;
                 else if (post.gameType === 'trivia') answerReveal = `<div class="text-sm mb-1">${post.gameTriviaQuestion}<br>➔ <strong>${post.gameTriviaAnswer}</strong></div>`;
                 else if (post.gameType === 'mythology') answerReveal = `<div class="text-sm mb-1">${post.gameMythologyQuestion}<br>➔ <strong>${post.gameMythologyAnswer}</strong></div>`;
+                else if (post.gameType === 'riddle') answerReveal = `<div class="text-sm mb-1 whitespace-pre-wrap">${escapeHtml(post.gameRiddleQuestion || '')}<br>➔ <strong>${escapeHtml(post.gameRiddleAnswer || '')}</strong></div>`;
                 else if (post.gameType === 'guess_logo') answerReveal = `<div class="flex flex-col items-center mb-1">${post.gameLogoUrl ? `<div class="flex items-center justify-center bg-white dark:bg-white rounded-xl px-4 py-2 shadow-sm"><img src="${post.gameLogoUrl}" alt="Logo" class="h-10 w-auto select-none" draggable="false"></div>` : ''}<span class="font-bold">${post.gameLogoName}</span></div>`;
 
                 gameHtml = `
@@ -2654,6 +2661,108 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         <div class="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 font-bold px-4 py-2 rounded-xl text-sm my-1">
                             ${catInfo.name}: <span class="font-black">${post.emojiRiddleAnswer || ''}</span>
                         </div>
+                        ${outcomeHtml}
+                    </div>`;
+            }
+        } else if (post.gameType === 'vault' || post.gameType === 'guess_number') {
+            const isVault = post.gameType === 'vault';
+            const isHost = window.currentUser && window.currentUser.uid === post.authorId;
+            const attemptsRaw = isVault ? post.vaultAttempts : post.guessNumberAttempts;
+            const attempts = Array.isArray(attemptsRaw) ? attemptsRaw : [];
+            const secretCode = String(post.vaultCode || '').padStart(3, '0');
+            const secretNumber = (post.guessNumberAnswer === undefined || post.guessNumberAnswer === null) ? '—' : Number(post.guessNumberAnswer);
+            const rangeMin = Number(post.guessNumberMin ?? 1);
+            const rangeMax = Number(post.guessNumberMax ?? 100);
+
+            // Vault clue chips: 🟩 right digit + right place, 🟨 right digit + wrong place, ⬜ not in the code
+            const digitChip = (digit, state) => {
+                const cls = state === 'exact'
+                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                    : state === 'partial'
+                        ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                        : 'bg-gray-200/70 dark:bg-slate-700 text-gray-400 dark:text-gray-500 border-gray-300 dark:border-slate-600';
+                return `<span class="inline-flex items-center justify-center w-6 h-7 rounded-md border font-mono font-black text-sm ${cls}">${digit}</span>`;
+            };
+            const whoOf = (a) => escapeHtml(a.name || window.globalUsersCache?.[a.uid]?.name || 'Player');
+            const rowShell = (who, body) => `<div class="flex items-center justify-between gap-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                <span class="text-[10px] font-bold text-gray-500 dark:text-gray-400 truncate max-w-[38%]">${who}</span>${body}
+            </div>`;
+            const vaultRow = (a) => {
+                const guess = String(a.code || '').padStart(3, '0');
+                const left = secretCode.split('');
+                const states = guess.split('').map(() => 'none');
+                guess.split('').forEach((d, i) => { if (d === secretCode[i]) { states[i] = 'exact'; left[i] = null; } });
+                guess.split('').forEach((d, i) => {
+                    if (states[i] === 'exact') return;
+                    const idx = left.indexOf(d);
+                    if (idx > -1) { states[i] = 'partial'; left[idx] = null; }
+                });
+                return rowShell(whoOf(a), `<span class="flex items-center gap-1">${guess.split('').map((d, i) => digitChip(d, states[i])).join('')}</span>`);
+            };
+            const numberRow = (a) => {
+                const isHit = a.hint === 'correct';
+                const up = a.hint === 'higher';
+                const hintCls = isHit
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : (up ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400');
+                return rowShell(whoOf(a), `<span class="flex items-center gap-2">
+                    <span class="font-mono font-black text-sm text-gray-800 dark:text-gray-200">${Number(a.value)}</span>
+                    <span class="text-[10px] font-black ${hintCls}">${isHit ? '🎯 Hit!' : (up ? '⬆️ Higher' : '⬇️ Lower')}</span>
+                </span>`);
+            };
+
+            // Guess the Number — every clue shrinks the still-possible range
+            let low = rangeMin, high = rangeMax;
+            if (!isVault) {
+                attempts.forEach(a => {
+                    const v = Number(a.value);
+                    if (a.hint === 'higher' && v >= low) low = Math.min(high, v + 1);
+                    if (a.hint === 'lower' && v <= high) high = Math.max(low, v - 1);
+                });
+            }
+
+            const shownAttempts = attempts.slice(-8).reverse();
+            const trailHtml = shownAttempts.length
+                ? `<div class="w-full max-w-sm flex flex-col gap-1 my-2">${shownAttempts.map(isVault ? vaultRow : numberRow).join('')}</div>`
+                : `<p class="text-[11px] text-gray-400 mt-1">No attempts yet — be the first!</p>`;
+            const legend = isVault
+                ? `<p class="text-[10px] text-gray-400 mt-1">🟩 right place · 🟨 wrong place · ⬜ not in the code</p>`
+                : '';
+
+            if (post.gameStatus === 'active') {
+                const timerHtml = post.gameEndTime
+                    ? `<div class="text-center font-mono text-xl font-black mt-2 game-timer ${isVault ? 'text-emerald-600 dark:text-emerald-400' : 'text-sky-600 dark:text-sky-400'}" data-endtime="${post.gameEndTime}">00:00</div>`
+                    : '';
+                const hostCard = isHost
+                    ? (window.hostAnswerVisible(post)
+                        ? `<div class="mt-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — ${isVault ? 'Code' : 'Secret number'}: <span class="font-black font-mono">${isVault ? secretCode : secretNumber}</span></div>`
+                        : `<div class="mt-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">You are the host — answer hidden while the game is live</div>`)
+                    : `<button onclick="window.openNumberGuessModal('${post.id}', '${post.gameType}', ${rangeMin}, ${rangeMax})" class="mt-3 ${isVault ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-sky-600 hover:bg-sky-500'} text-white font-bold py-2 px-6 rounded-full shadow transition">${isVault ? '🔐 Try a Code' : '🔢 Guess'}</button>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 rounded-xl border-2 flex flex-col items-center ${isVault ? 'bg-emerald-50 dark:bg-slate-800 border-emerald-200 dark:border-emerald-900/50' : 'bg-sky-50 dark:bg-slate-800 border-sky-200 dark:border-sky-900/50'}">
+                        ${prizeStr}
+                        <h4 class="font-black text-base mb-1 ${isVault ? 'text-emerald-800 dark:text-emerald-200' : 'text-sky-800 dark:text-sky-200'}">${isVault ? '🔐 The Vault' : '🔢 Guess the Number'}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">${isVault ? 'Crack the secret 3-digit code (000–999).' : `I'm thinking of a number between ${rangeMin} and ${rangeMax}.`}</p>
+                        ${isVault ? '' : `<span class="mt-2 text-[11px] font-black bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 px-3 py-1 rounded-full">Still possible: ${low} – ${high}</span>`}
+                        ${legend}
+                        ${trailHtml}
+                        ${timerHtml}
+                        ${hostCard}
+                    </div>`;
+            } else {
+                const outcomeHtml = post.gameWinner && post.gameWinner !== 'none'
+                    ? `<div class="inline-flex items-center gap-2 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-trophy text-amber-400"></i> <span>${escapeHtml(window.globalUsersCache[post.gameWinner]?.name || post.gameWinner)} ${isVault ? 'cracked the vault' : 'guessed it'}!</span></div>`
+                    : `<div class="inline-flex items-center gap-1.5 bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold px-4 py-1.5 rounded-full text-xs text-center shadow-sm mt-2"><i class="fa-solid fa-xmark"></i> Game ended! No one got it.</div>`;
+
+                gameHtml = `
+                    <div class="mt-3 mb-2 p-4 bg-gray-50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col items-center opacity-90 text-center">
+                        ${prizeStr}
+                        <h4 class="font-black text-gray-700 dark:text-gray-300 text-base mb-1">${isVault ? '🔐 The Vault Ended' : '🔢 Guess the Number Ended'}</h4>
+                        <div class="font-bold px-4 py-2 rounded-xl text-sm my-1 font-mono ${isVault ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300' : 'bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300'}">
+                            ${isVault ? `Code: <span class="font-black">${secretCode}</span>` : `Number: <span class="font-black">${secretNumber}</span>`}
+                        </div>
+                        ${trailHtml}
                         ${outcomeHtml}
                     </div>`;
             }

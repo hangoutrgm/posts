@@ -455,6 +455,9 @@ window.gameTypeLabel = (type) => {
         'hangman': 'Hangman',
         'gibberish': 'Guess the Gibberish',
         'emoji_riddle': 'Emoji Riddle',
+        'riddle': 'Riddle / Bugtong',
+        'vault': 'The Vault',
+        'guess_number': 'Guess the Number',
         'bingo': 'Bingo',
         'spin_names': 'Spin the Names',
         'ncl': 'NCL Reward'
@@ -472,6 +475,7 @@ window.mythologyData = [];
 window.triviaData = [];
 window.jumbledData = [];
 window.logosData = [];
+window.riddleData = [];
 
 (async function loadFlagsJSON() {
     try {
@@ -547,6 +551,16 @@ window.logosData = [];
             if (Array.isArray(parsed) && parsed.length > 0) window.logosData = parsed;
         }
     } catch(e) { console.debug('Could not load config/logos.json'); }
+})();
+
+(async function loadRiddleJSON() {
+    try {
+        const res = await fetch('config/riddle.json');
+        if (res.ok) {
+            const parsed = await res.json();
+            if (Array.isArray(parsed) && parsed.length > 0) window.riddleData = parsed;
+        }
+    } catch(e) { console.debug('Could not load config/riddle.json'); }
 })();
 
 window.updateElementHint = () => {
@@ -687,6 +701,23 @@ window.openPostGameModal = () => {
     if (typeof window.updateEmojiRiddlePresetsUI === 'function') {
         window.updateEmojiRiddlePresetsUI();
     }
+    // Riddle / Bugtong
+    const riddleLang = document.getElementById('game-riddle-lang');
+    if (riddleLang) riddleLang.value = 'all';
+    const riddleQuestion = document.getElementById('game-riddle-question');
+    if (riddleQuestion) riddleQuestion.value = '';
+    const riddleAnswers = document.getElementById('game-riddle-answers');
+    if (riddleAnswers) riddleAnswers.value = '';
+    // The Vault
+    const vaultCode = document.getElementById('game-vault-code');
+    if (vaultCode) vaultCode.value = '';
+    // Guess the Number
+    const numMin = document.getElementById('game-number-min');
+    if (numMin) numMin.value = '1';
+    const numMax = document.getElementById('game-number-max');
+    if (numMax) numMax.value = '100';
+    const numAnswer = document.getElementById('game-number-answer');
+    if (numAnswer) numAnswer.value = '';
     const elemMode = document.getElementById('game-element-mode');
     if (elemMode) elemMode.value = 'name';
     const elemInput = document.getElementById('game-element-input');
@@ -842,6 +873,47 @@ window.randomJumbledWord = () => {
     window.scrambleWord();
 };
 
+// Riddle / Bugtong — pick a random riddle from config/riddle.json.
+// The language filter ('all' | 'english' | 'bugtong') lets the host restrict the draw.
+window.randomRiddle = () => {
+    const lang = document.getElementById('game-riddle-lang')?.value || 'all';
+    const all = window.riddleData || [];
+    const list = lang === 'all' ? all : all.filter(r => (r.lang || 'english') === lang);
+    if (!list.length) {
+        return window.showAlert("Riddles are still loading — please try again in a moment.");
+    }
+    const item = list[Math.floor(Math.random() * list.length)];
+    const qInput = document.getElementById('game-riddle-question');
+    const aInput = document.getElementById('game-riddle-answers');
+    if (qInput && item.q) qInput.value = item.q;
+    if (aInput && Array.isArray(item.a)) aInput.value = item.a.join(', ');
+};
+
+// The Vault — random 3-digit code (000–999).
+window.randomVaultCode = () => {
+    const input = document.getElementById('game-vault-code');
+    if (!input) return;
+    input.value = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+};
+
+// Guess the Number — random secret inside the host's range.
+window.randomGuessNumber = () => {
+    const minInput = document.getElementById('game-number-min');
+    const maxInput = document.getElementById('game-number-max');
+    const answerInput = document.getElementById('game-number-answer');
+    if (!minInput || !maxInput || !answerInput) return;
+
+    let min = parseInt(minInput.value, 10);
+    let max = parseInt(maxInput.value, 10);
+    if (isNaN(min)) min = 1;
+    if (isNaN(max)) max = 100;
+    if (max < min) { const t = min; min = max; max = t; }
+    minInput.value = min;
+    maxInput.value = max;
+
+    answerInput.value = Math.floor(Math.random() * (max - min + 1)) + min;
+};
+
 window.generateDotsPuzzle = () => {
     const countInput = document.getElementById('game-dots-count');
     let count = parseInt(countInput.value, 10);
@@ -900,6 +972,9 @@ window.toggleGameSettings = () => {
     const hangmanContainer = document.getElementById('game-hangman-container');
     const gibberishContainer = document.getElementById('game-gibberish-container');
     const emojiRiddleContainer = document.getElementById('game-emoji-riddle-container');
+    const riddleContainer = document.getElementById('game-riddle-container');
+    const vaultContainer = document.getElementById('game-vault-container');
+    const guessNumberContainer = document.getElementById('game-guess-number-container');
     const defaultRewardsContainer = document.getElementById('game-default-rewards-container');
     
     // Default rewards container (Prize PHP, LB Points, Bonus prize)
@@ -911,8 +986,8 @@ window.toggleGameSettings = () => {
         }
     }
 
-    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, guess_logo, mythology, bingo, spin_names, count_dots, hangman, gibberish, emoji_riddle, periodic_table, first_to_mine, guess_emoji, bring_me_emoji, flags, jumbled_words
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'guess_logo', 'mythology', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle', 'periodic_table', 'first_to_mine', 'guess_emoji', 'bring_me_emoji', 'flags', 'jumbled_words'].includes(type)) {
+    // Timer setting is shown for last_comment, challenge, quick_challenge, math, trivia, guess_logo, mythology, bingo, spin_names, count_dots, hangman, gibberish, emoji_riddle, periodic_table, first_to_mine, guess_emoji, bring_me_emoji, flags, jumbled_words, riddle, vault, guess_number
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'guess_logo', 'mythology', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle', 'periodic_table', 'first_to_mine', 'guess_emoji', 'bring_me_emoji', 'flags', 'jumbled_words', 'riddle', 'vault', 'guess_number'].includes(type)) {
         settingsDiv.classList.remove('hidden');
         window.toggleTimerSettings();
     } else {
@@ -1036,6 +1111,31 @@ window.toggleGameSettings = () => {
         }
     } else {
         if (emojiRiddleContainer) emojiRiddleContainer.classList.add('hidden');
+    }
+
+    if (type === 'riddle') {
+        if (riddleContainer) riddleContainer.classList.remove('hidden');
+        // Auto-pick a random riddle the first time the host selects Riddle / Bugtong
+        const rq = document.getElementById('game-riddle-question');
+        if (rq && !rq.value.trim()) window.randomRiddle();
+    } else {
+        if (riddleContainer) riddleContainer.classList.add('hidden');
+    }
+
+    if (type === 'vault') {
+        if (vaultContainer) vaultContainer.classList.remove('hidden');
+        const vc = document.getElementById('game-vault-code');
+        if (vc && !vc.value.trim()) window.randomVaultCode();
+    } else {
+        if (vaultContainer) vaultContainer.classList.add('hidden');
+    }
+
+    if (type === 'guess_number') {
+        if (guessNumberContainer) guessNumberContainer.classList.remove('hidden');
+        const na = document.getElementById('game-number-answer');
+        if (na && !na.value.trim()) window.randomGuessNumber();
+    } else {
+        if (guessNumberContainer) guessNumberContainer.classList.add('hidden');
     }
 
     // Hide LB Points field for NCL (disabled for now)
@@ -1368,6 +1468,14 @@ window.submitGame = async () => {
     let elementClue = null;
     let fourPlayerCount = 2;
     let dropFourPlayerCount = 2;
+    let riddleQuestion = null;
+    let riddleAnswers = [];
+    let riddleAnswer = null;
+    let riddleLang = 'english';
+    let vaultCode = null;
+    let guessNumberMin = 1;
+    let guessNumberMax = 100;
+    let guessNumberAnswer = null;
 
     if (type === 'challenge' || type === 'quick_challenge' || type === 'ncl' || ((type === 'tictactoe' || type === 'four_in_a_row' || type === 'drop_four' || type === 'connect4_pro_max') && document.getElementById('game-target-user').value.trim())) {
         const targetNameInput = document.getElementById('game-target-user').value.trim();
@@ -1476,6 +1584,34 @@ window.submitGame = async () => {
         emojiRiddleEmojis = document.getElementById('game-emoji-riddle-emojis')?.value.trim();
         emojiRiddleAnswer = document.getElementById('game-emoji-riddle-answer')?.value.trim();
         if (!emojiRiddleEmojis || !emojiRiddleAnswer) return window.showAlert("Please provide both the emojis and the answer for the riddle.");
+    }
+
+    if (type === 'riddle') {
+        riddleLang = document.getElementById('game-riddle-lang')?.value === 'bugtong' ? 'bugtong' : 'english';
+        riddleQuestion = document.getElementById('game-riddle-question')?.value.trim();
+        const rawRiddleAnswers = (document.getElementById('game-riddle-answers')?.value || '').trim();
+        riddleAnswers = rawRiddleAnswers.split(',').map(s => s.trim()).filter(Boolean);
+        if (!riddleQuestion) return window.showAlert("Please write the riddle or click 🎲 Random.");
+        if (!riddleAnswers.length) return window.showAlert("Please provide the answer (or click 🎲 Random).");
+        riddleAnswer = riddleAnswers[0];
+    }
+
+    if (type === 'vault') {
+        const rawCode = (document.getElementById('game-vault-code')?.value || '').trim();
+        if (!/^\d{3}$/.test(rawCode)) return window.showAlert("Please enter a 3-digit secret code (000–999) or click 🎲 Random Code.");
+        vaultCode = rawCode;
+    }
+
+    if (type === 'guess_number') {
+        guessNumberMin = parseInt(document.getElementById('game-number-min')?.value, 10);
+        guessNumberMax = parseInt(document.getElementById('game-number-max')?.value, 10);
+        guessNumberAnswer = parseInt(document.getElementById('game-number-answer')?.value, 10);
+        if (isNaN(guessNumberMin) || isNaN(guessNumberMax)) return window.showAlert("Please enter a valid lowest and highest number.");
+        if (guessNumberMin >= guessNumberMax) return window.showAlert("The highest number must be greater than the lowest number.");
+        if (isNaN(guessNumberAnswer)) return window.showAlert("Please enter the secret number (or click 🎲 Random).");
+        if (guessNumberAnswer < guessNumberMin || guessNumberAnswer > guessNumberMax) {
+            return window.showAlert(`The secret number must be between ${guessNumberMin} and ${guessNumberMax}.`);
+        }
     }
 
     if (type === 'guess_emoji' || type === 'bring_me_emoji') {
@@ -1620,7 +1756,7 @@ window.submitGame = async () => {
         }
     }
 
-    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'guess_logo', 'mythology', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle', 'first_to_mine', 'guess_emoji', 'bring_me_emoji', 'flags', 'jumbled_words'].includes(type)) {
+    if (['last_comment', 'challenge', 'quick_challenge', 'math', 'trivia', 'guess_logo', 'mythology', 'bingo', 'spin_names', 'count_dots', 'hangman', 'gibberish', 'emoji_riddle', 'first_to_mine', 'guess_emoji', 'bring_me_emoji', 'flags', 'jumbled_words', 'riddle', 'vault', 'guess_number'].includes(type)) {
         const timerMode = document.querySelector('input[name="game-timer"]:checked').value;
         if (timerMode === 'auto') {
             const secs = parseInt(document.getElementById('game-duration').value);
@@ -1657,6 +1793,9 @@ window.submitGame = async () => {
         const icon = emojiRiddleCategory === 'movies' ? '🎬' : emojiRiddleCategory === 'songs' ? '🎵' : emojiRiddleCategory === 'idioms' ? '💬' : '✨';
         text = `${icon} Guess the ${catLabel} from these emojis: ${emojiRiddleEmojis}`;
     }
+    else if (type === 'riddle') text = `${riddleLang === 'bugtong' ? '🇵🇭 Bugtong' : '🧩 Riddle'} Time! ${riddleQuestion}`;
+    else if (type === 'vault') text = `🔐 The Vault! Crack the secret 3-digit code (000–999) — every attempt reveals clues. First to open it wins!`;
+    else if (type === 'guess_number') text = `🔢 Guess the Number! I'm thinking of a number between ${guessNumberMin} and ${guessNumberMax}. Every guess gives you a "Higher" or "Lower" clue!`;
     else if (type === 'count_dots') text = `🔢 Count the Dots! How many dots (●) can you find? First correct guess wins!`;
     else if (type === 'tictactoe') text = targetUserName ? `⚔️ Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) match challenge against @${targetUserName}!` : `⚔️ Open Tic Tac Toe (${tictactoeGridSize}x${tictactoeGridSize}) Challenge! First person to accept plays against @${window.currentUser.name}!`;
     else if (type === 'four_in_a_row') {
@@ -1772,6 +1911,22 @@ window.submitGame = async () => {
         postData.emojiRiddleCategory = emojiRiddleCategory;
         postData.emojiRiddleEmojis = emojiRiddleEmojis;
         postData.emojiRiddleAnswer = emojiRiddleAnswer;
+    }
+    if (type === 'riddle') {
+        postData.gameRiddleQuestion = riddleQuestion;
+        postData.gameRiddleAnswer = riddleAnswer;
+        postData.gameRiddleAnswers = riddleAnswers;
+        postData.gameRiddleLang = riddleLang;
+    }
+    if (type === 'vault') {
+        postData.vaultCode = vaultCode;
+        postData.vaultAttempts = [];
+    }
+    if (type === 'guess_number') {
+        postData.guessNumberMin = guessNumberMin;
+        postData.guessNumberMax = guessNumberMax;
+        postData.guessNumberAnswer = guessNumberAnswer;
+        postData.guessNumberAttempts = [];
     }
     if (type === 'count_dots') {
         postData.gameDotsCount = dotsCount;
@@ -2271,6 +2426,12 @@ window.answerGame = async (postId, answer) => {
             const accepted = Array.isArray(post.gameMythologyAnswers) && post.gameMythologyAnswers.length
                 ? post.gameMythologyAnswers
                 : [post.gameMythologyAnswer || ''];
+            const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            isCorrect = accepted.some(a => a && (a.toLowerCase() === answerLower || clean(a) === clean(answer)));
+        } else if (post.gameType === 'riddle') {
+            const accepted = Array.isArray(post.gameRiddleAnswers) && post.gameRiddleAnswers.length
+                ? post.gameRiddleAnswers
+                : [post.gameRiddleAnswer || ''];
             const clean = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             isCorrect = accepted.some(a => a && (a.toLowerCase() === answerLower || clean(a) === clean(answer)));
         } else if (post.gameType === 'guess_logo') {
@@ -4162,6 +4323,187 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
         }
     } catch(e) {
         console.error("Hangman guess error:", e);
+        window.showAlert("Error submitting guess: " + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
+    }
+};
+
+// ============================================================
+// THE VAULT & GUESS THE NUMBER — shared number-guess prompt
+// Both collect a NUMBER from the player:
+//   vault        → 3-digit code (000–999)
+//   guess_number → a number inside the host's range
+// Every attempt is appended to the post document so the feed card can show
+// the clue trail (digit hits for the Vault, Higher/Lower for the numbers).
+// ============================================================
+
+// Mastermind-style feedback: how many digits are exactly right (correct place)
+// and how many are in the code but in the wrong place.
+const vaultFeedback = (guess, code) => {
+    const g = String(guess || '').split('');
+    const c = String(code || '').split('');
+    let exact = 0;
+    const gLeft = [], cLeft = [];
+    for (let i = 0; i < c.length; i++) {
+        if (g[i] === c[i]) exact++;
+        else { gLeft.push(g[i]); cLeft.push(c[i]); }
+    }
+    let partial = 0;
+    cLeft.forEach(d => {
+        const idx = gLeft.indexOf(d);
+        if (idx > -1) { partial++; gLeft.splice(idx, 1); }
+    });
+    return { exact, partial };
+};
+
+// Prize + LB payout for a guessing-game winner — same rules as answerGame.
+const payGuessGameWinner = async (post, postId, uid, label) => {
+    const lbPoints = window.winnerLbFor(post.authorId, uid, post.gameLbPoints !== undefined ? post.gameLbPoints : 5);
+    const prizeLogged = window.formatPrizeForLog(post.gamePrize, post.gameBonusPrize);
+    if (lbPoints > 0) set(ref(db, `users/${uid}/lbPoints`), increment(lbPoints));
+    window.logEarnings(uid, postId, label, prizeLogged, lbPoints);
+    if (post.authorId && post.authorId !== uid) {
+        const winnerName = window.globalUsersCache?.[uid]?.name || 'Someone';
+        window.logHostedGame(post.authorId, postId, label, prizeLogged, uid, winnerName);
+    }
+    const hostLbReward = window.siteSettings.gameHostLbReward ?? 0;
+    if (hostLbReward > 0 && post.authorId && post.authorId !== uid) {
+        window.awardHostBonus(post.authorId, hostLbReward, uid);
+    }
+    return { lbPoints, prizeLogged };
+};
+
+window.openNumberGuessModal = (postId, mode, min = null, max = null) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const titleEl = document.getElementById('number-guess-title');
+    const labelEl = document.getElementById('number-guess-label');
+    const tipEl = document.getElementById('number-guess-tip');
+    const input = document.getElementById('number-guess-input');
+    const submitBtn = document.getElementById('number-guess-submit-btn');
+
+    document.getElementById('number-guess-postid').value = postId;
+    document.getElementById('number-guess-mode').value = mode;
+    input.value = '';
+
+    if (mode === 'vault') {
+        titleEl.innerHTML = `<i class="fa-solid fa-lock mr-2"></i>The Vault`;
+        labelEl.innerText = "Enter a 3-digit code (000-999)";
+        input.placeholder = "e.g. 482";
+        input.maxLength = 3;
+        input.classList.add('uppercase');
+        tipEl.innerText = "🟩 right digit in the right place · 🟨 right digit in the wrong place · ⬜ not in the code";
+        if (submitBtn) submitBtn.className = 'w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg shadow-sm transition';
+    } else {
+        const lo = Number.isFinite(Number(min)) ? Number(min) : 1;
+        const hi = Number.isFinite(Number(max)) ? Number(max) : 100;
+        titleEl.innerHTML = `<i class="fa-solid fa-hashtag mr-2"></i>Guess the Number`;
+        labelEl.innerText = `Enter a number between ${lo} and ${hi}`;
+        input.placeholder = `e.g. ${lo}`;
+        input.removeAttribute('maxLength');
+        tipEl.innerText = "⬆️ Higher means the secret number is bigger. ⬇️ Lower means it is smaller.";
+        if (submitBtn) submitBtn.className = 'w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg shadow-sm transition';
+    }
+
+    document.getElementById('number-guess-modal').classList.remove('hidden');
+    input.focus();
+};
+
+// Handles BOTH new games: vault (3-digit code) and guess_number (range + Higher/Lower).
+// A wrong guess is written straight to the post (bounded to the newest 30 attempts);
+// a correct guess goes through the atomic claimGame win so only one player can win.
+window.submitNumberGuess = async (postId, inputVal) => {
+    if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    const mode = document.getElementById('number-guess-mode').value;
+    const raw = String(inputVal || '').trim();
+    if (!raw) return window.showAlert("Please enter your guess.");
+
+    const postRef = getPostDocRef(postId);
+    const submitBtn = document.getElementById('number-guess-submit-btn');
+    const originalBtnText = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>Submitting...`;
+    }
+
+    try {
+        const snap = await getDoc(postRef);
+        if (!snap.exists()) return window.showAlert("Game not found.");
+        const post = snap.data();
+
+        if (post.gameStatus !== 'active') return window.showAlert("This game has already ended.");
+        if (post.gameEndTime && Date.now() >= post.gameEndTime) return window.showAlert("Time's up! The game is over.");
+        if (post.authorId === window.currentUser.uid) return window.showAlert("You cannot guess on your own game!");
+        if (post.gameType !== mode) return window.showAlert("This guess does not match the game type.");
+
+        const uid = window.currentUser.uid;
+        const myName = window.globalUsersCache?.[uid]?.name || window.currentUser.name || 'Player';
+        const entry = { uid, name: myName, at: Date.now() };
+
+        if (mode === 'vault') {
+            if (!/^\d{3}$/.test(raw)) return window.showAlert("Please enter exactly 3 digits (000-999).");
+            const code = String(post.vaultCode || '').padStart(3, '0');
+            const attempt = { ...entry, code: raw };
+
+            if (raw === code) {
+                // Win — merge the winning attempt with fresh in-transaction state
+                const claimed = await window.claimGame(postRef, uid, (fresh) => ({
+                    vaultAttempts: [...(fresh.vaultAttempts || []), attempt].slice(-30)
+                }));
+                if (!claimed) {
+                    document.getElementById('number-guess-modal').classList.add('hidden');
+                    return window.showAlert("Too late! Someone else already cracked the vault.");
+                }
+                const { lbPoints, prizeLogged } = await payGuessGameWinner(post, postId, uid, 'The Vault');
+                document.getElementById('number-guess-modal').classList.add('hidden');
+                let winMsg = `🔓 Vault cracked! The code ${code} is correct — you WON! 🎉`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
+            } else {
+                await updateDoc(postRef, { vaultAttempts: [...(post.vaultAttempts || []), attempt].slice(-30) });
+                const fb = vaultFeedback(raw, code);
+                document.getElementById('number-guess-modal').classList.add('hidden');
+                window.showAlert(`❌ ${raw} is not the code. 🟩 ${fb.exact} correct place · 🟨 ${fb.partial} wrong place. Try again!`);
+            }
+        } else {
+            const min = Number(post.guessNumberMin ?? 1);
+            const max = Number(post.guessNumberMax ?? 100);
+            const value = parseInt(raw, 10);
+            if (isNaN(value)) return window.showAlert("Please enter a valid number.");
+            if (value < min || value > max) return window.showAlert(`Please guess a number between ${min} and ${max}.`);
+
+            const secret = Number(post.guessNumberAnswer);
+            const hint = value === secret ? 'correct' : (secret > value ? 'higher' : 'lower');
+            const attempt = { ...entry, value, hint };
+
+            if (hint === 'correct') {
+                const claimed = await window.claimGame(postRef, uid, (fresh) => ({
+                    guessNumberAttempts: [...(fresh.guessNumberAttempts || []), attempt].slice(-30)
+                }));
+                if (!claimed) {
+                    document.getElementById('number-guess-modal').classList.add('hidden');
+                    return window.showAlert("Too late! Someone else already guessed the number.");
+                }
+                const { lbPoints, prizeLogged } = await payGuessGameWinner(post, postId, uid, 'Guess the Number');
+                document.getElementById('number-guess-modal').classList.add('hidden');
+                let winMsg = `🎯 Correct! The number was ${secret} — you WON! 🎉`;
+                if (prizeLogged) winMsg += ` Prize: ${prizeLogged}`;
+                if (lbPoints > 0) winMsg += ` +${lbPoints} LB points!`;
+                window.showAlert(winMsg);
+            } else {
+                await updateDoc(postRef, { guessNumberAttempts: [...(post.guessNumberAttempts || []), attempt].slice(-30) });
+                document.getElementById('number-guess-modal').classList.add('hidden');
+                window.showAlert(hint === 'higher'
+                    ? `⬆️ Higher! ${value} is too low.`
+                    : `⬇️ Lower! ${value} is too high.`);
+            }
+        }
+    } catch(e) {
+        console.error("Number guess error:", e);
         window.showAlert("Error submitting guess: " + e.message);
     } finally {
         if (submitBtn) {
