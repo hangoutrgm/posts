@@ -2217,11 +2217,14 @@ onAuthStateChanged(auth, (user) => {
         if (window._startNotifListener) window._startNotifListener(user.uid);
 
         // Auto-cleanup: keep only the latest 50 notifications in the database.
-        // Stored as a named timer so logout can cancel it (prevents a read that
-        // lands after signOut and shows "Permission denied").
+        // Runs at most once every 24h per user to avoid downloading all notifications on every visit.
         window._notifPruneTimer = setTimeout(() => {
             if (!auth.currentUser || auth.currentUser.uid !== user.uid) return; // user signed out meanwhile
+            const pruneKey = `hangout_notif_prune_${user.uid}`;
+            const lastPrune = Number(localStorage.getItem(pruneKey) || 0);
+            if (Date.now() - lastPrune < 24 * 60 * 60 * 1000) return;
             get(ref(db, `notifications/${user.uid}`)).then(snap => {
+                localStorage.setItem(pruneKey, Date.now());
                 const allNotifs = snap.val();
                 if (allNotifs) {
                     const keys = Object.keys(allNotifs);
@@ -2235,7 +2238,7 @@ onAuthStateChanged(auth, (user) => {
                     }
                 }
             }).catch(e => console.warn("Failed to fetch notifications for pruning", e));
-        }, 5000); // Wait 5 seconds after load to not block initial rendering
+        }, 15000);
 
         if (window.chatInboxUnsubscribe) window.chatInboxUnsubscribe();
         window.chatInboxUnsubscribe = onValue(ref(db, `chatInboxes/${user.uid}`), (snap) => {

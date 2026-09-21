@@ -2743,6 +2743,11 @@ async function loadAllStreaks() {
   if (!state.user) return;
   restoreStreaksCache(); // instant paint from cache…
   renderConversations();
+  const streakFetchedKey = `hangout-streaks-fetched-${state.user.uid}`;
+  const lastFetched = Number(localStorage.getItem(streakFetchedKey) || 0);
+  if (Date.now() - lastFetched < 60 * 60 * 1000 && Object.keys(state.streaks).length > 0) {
+    return; // Fresh enough from cache — active thread will listen live when opened
+  }
   const threadIds = Object.keys(state.inbox);
   const results = await Promise.all(
     threadIds.map(tid => {
@@ -3031,15 +3036,15 @@ onAuthStateChanged(auth, async (user) => {
     state.stopClears = onValue(ref(db, `chatClears/${user.uid}`), (snapshot) => { state.clears = snapshot.val() || {}; if (state.activeThreadId) renderMessages(undefined, false); }, (error) => reportRealtimeError('message clears', error));
     // Notes (Messenger-style) — stored in the 2nd RTDB so the main DB stays lean.
     state.stopNotes = onValue(ref(db2, 'notes'), (snap) => { state.notes = snap.val() || {}; cacheNotes(); renderNotes(); if (state.activeThreadId) updateChatHeader(); }, (e) => reportRealtimeError('notes', e));
-    // Mirror Hangout Posts notification badge on the back button (limited to latest 50)
-    state.stopPostsNotif = onValue(query(ref(db, `notifications/${user.uid}`), limitToLast(50)), (snapshot) => {
-      const notifs = snapshot.val() || {};
-      const unread = Object.values(notifs).filter(n => !n.read).length;
+    // Mirror Hangout Posts notification badge on the back button from shared session
+    try {
+      const cachedUnread = Number(sessionStorage.getItem('hangout_unread_notifs') || 0);
       const badge = $('back-notif-badge');
-      if (!badge) return;
-      if (unread > 0) { badge.textContent = unread > 99 ? '99+' : unread; badge.classList.remove('hidden'); }
-      else { badge.classList.add('hidden'); }
-    });
+      if (badge) {
+        if (cachedUnread > 0) { badge.textContent = cachedUnread > 99 ? '99+' : cachedUnread; badge.classList.remove('hidden'); }
+        else { badge.classList.add('hidden'); }
+      }
+    } catch (_) {}
     // Deep link from Hangout Posts profile "Message" button: chat/?dm=<peerUid>
     if (!checkedDmParam) {
       const dmPeer = new URLSearchParams(window.location.search).get('dm');
@@ -3680,13 +3685,6 @@ function handleForegroundResume() {
           }
         }, 300);
       }
-
-      // Also refresh inbox state
-      get(ref(db, `chatInboxes/${state.user.uid}`)).then((snap) => {
-        if (snap.exists()) {
-          handleInbox(snap);
-        }
-      }).catch(() => {});
     }
   }
 }

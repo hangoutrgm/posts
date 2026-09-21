@@ -43,6 +43,7 @@ window.updateNotifBadge = () => {
     if(!window.currentUser) return;
     const myNotifs = window.myNotifications || {};
     let unreadCount = Object.values(myNotifs).filter(n => !n.read).length;
+    try { sessionStorage.setItem('hangout_unread_notifs', String(unreadCount)); } catch (_) {}
     const badge = document.getElementById('notif-badge');
     
     if (unreadCount > 0) {
