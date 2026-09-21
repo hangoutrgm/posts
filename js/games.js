@@ -23,9 +23,16 @@ const isGameAdmin = () => {
 // ============================================================
 window.getGameMaxLb = (type) => {
     if (isGameAdmin()) return 999;
-    const perGame = Number(window.siteSettings?.gameLbRewards?.[type]);
+    const s = window.siteSettings || {};
+    const perGame = Number(s.gameLbRewards?.[type]);
     if (perGame > 0) return perGame;
-    return window.siteSettings?.maxLbPointsPrize ?? 5;
+    // The hardcoded siteSettings defaults (maxLbPointsPrize: 100) are in effect until the
+    // admin's /settings snapshot arrives. Returning 100 during that window is how hosts saw
+    // "Max 100" — and could award up to 100 LB — instead of the configured cap. Until the
+    // real settings are known, fall back to the conservative 5 (same sentinel used when no
+    // cap is configured at all); the modal label refreshes as soon as settings land.
+    if (!window.siteSettingsLoaded) return 5;
+    return s.maxLbPointsPrize ?? 5;
 };
 
 // ============================================================
@@ -744,18 +751,10 @@ window.openPostGameModal = () => {
 
     document.getElementById('game-type').value = 'first_to_mine';
     
-    const maxLb = window.getGameMaxLb('first_to_mine');
-    document.getElementById('game-lb-points').max = maxLb;
-    document.getElementById('game-lb-points-label').innerText = `🏆 LB Points (Max ${maxLb})`;
-
-    // Spin the Names prizes use the spin_names LB cap (it may differ from other games)
-    const spinMaxLb = window.getGameMaxLb('spin_names');
-    for (let i = 1; i <= 3; i++) {
-        const lbInp = document.getElementById(`spin-lb-${i}`);
-        if (lbInp) lbInp.max = spinMaxLb;
-        const lbLbl = document.getElementById(`spin-lb-label-${i}`);
-        if (lbLbl) lbLbl.innerText = `🏆 LB (Max ${spinMaxLb})`;
-    }
+    // LB caps follow the admin's settings (per-game cap, else the global LB max).
+    // refreshGameLbCapUi() also re-runs whenever /settings arrive, so this can never
+    // sit on a stale pre-load default.
+    window.refreshGameLbCapUi();
 
     const prizeLabel = document.getElementById('game-prize-label');
     if(prizeLabel) prizeLabel.innerText = `🎁 Prize (PHP)`;
@@ -947,6 +946,30 @@ window.generateDotsPuzzle = () => {
 
     document.getElementById('game-dots-preview').value = puzzle;
     document.getElementById('game-dots-scrambled').value = puzzle;
+};
+
+// Refresh the LB cap shown for the currently selected game type — the host input's
+// `max` + the "🏆 LB Points (Max N)" label, plus the Spin the Names per-winner caps.
+// Called when the modal opens, when the type changes, and again whenever the admin's
+// /settings arrive or change (see main.js), so the label can never sit on a stale or
+// pre-load default cap.
+window.refreshGameLbCapUi = () => {
+    const type = document.getElementById('game-type')?.value;
+    if (!type) return;
+    const maxLb = window.getGameMaxLb(type);
+    const lbInput = document.getElementById('game-lb-points');
+    if (lbInput) lbInput.max = maxLb;
+    const lbLabel = document.getElementById('game-lb-points-label');
+    if (lbLabel) lbLabel.innerText = `🏆 LB Points (Max ${maxLb})`;
+
+    // Spin the Names prizes use the spin_names cap (it may differ from other games)
+    const spinMaxLb = window.getGameMaxLb('spin_names');
+    for (let i = 1; i <= 3; i++) {
+        const spinInp = document.getElementById(`spin-lb-${i}`);
+        if (spinInp) spinInp.max = spinMaxLb;
+        const spinLbl = document.getElementById(`spin-lb-label-${i}`);
+        if (spinLbl) spinLbl.innerText = `🏆 LB (Max ${spinMaxLb})`;
+    }
 };
 
 window.toggleGameSettings = () => {
@@ -1149,16 +1172,7 @@ window.toggleGameSettings = () => {
     }
 
     // Refresh the LB max label for the newly selected game type (per-game cap from /config)
-    const maxLb = window.getGameMaxLb(type);
-    if (lbPointsInput) lbPointsInput.max = maxLb;
-    if (lbPointsLabel) lbPointsLabel.innerText = `🏆 LB Points (Max ${maxLb})`;
-    const spinMaxLb = window.getGameMaxLb('spin_names');
-    for (let i = 1; i <= 3; i++) {
-        const spinInp = document.getElementById(`spin-lb-${i}`);
-        if (spinInp) spinInp.max = spinMaxLb;
-        const spinLbl = document.getElementById(`spin-lb-label-${i}`);
-        if (spinLbl) spinLbl.innerText = `🏆 LB (Max ${spinMaxLb})`;
-    }
+    window.refreshGameLbCapUi();
 
     // Refresh the daily limit indicator for the newly selected game type
     if (typeof window.updateGameLimitIndicator === 'function') window.updateGameLimitIndicator();

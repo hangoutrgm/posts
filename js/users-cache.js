@@ -10,7 +10,7 @@
 // ============================================================
 (function () {
   var KEY = 'hangout-users-cache-v2';
-  var TTL_MS = 1200000; // 20 minutes (optimized for RTDB bandwidth conservation)
+  var TTL_MS = 12 * 60 * 60 * 1000; // 12 hours (optimized for RTDB bandwidth conservation)
 
   // Clean up legacy or corrupted v1 cache from clients
   try { localStorage.removeItem('hangout-users-cache'); } catch (e) {}

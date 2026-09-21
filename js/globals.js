@@ -84,3 +84,6 @@ window.siteSettings = {
     gameLimits: {},
     minGamePlayers: 5 // /config → minimum players required to start Bingo / Spin the Names draw (0 = no minimum)
 };
+
+// Keep in sync with helpers.js: false until the live /settings snapshot is applied.
+window.siteSettingsLoaded = false;

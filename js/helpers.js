@@ -151,6 +151,12 @@ window.siteSettings = {
     minGamePlayers: 5 // /config → minimum players required to start Bingo / Spin the Names draw (0 = no minimum)
 };
 
+// False until main.js applies the live /settings snapshot. While it is false, checks
+// that depend on admin settings (e.g. the per-game max LB reward cap) must NOT use the
+// hardcoded "unset" defaults above — maxLbPointsPrize defaults to 100 here, which is
+// far more permissive than any admin-configured cap. See games.js getGameMaxLb().
+window.siteSettingsLoaded = false;
+
 // ==========================================
 // GAME TYPES — master list shared with the
 // admin config page (for per-user limits)

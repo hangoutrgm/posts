@@ -5,8 +5,12 @@ import { ref, push, onValue, get, set, update, remove, increment, runTransaction
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
-import "./helpers.js";
-import "./renderers.js";
+// Local imports MUST carry the same ?v= as index.html's <script> tags. A query string
+// makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
+// evaluated a second time alongside index.html's "js/helpers.js?v=62" (same for
+// renderers.js, ~257 KB). Keep these versions in lockstep with index.html.
+import "./helpers.js?v=62";
+import "./renderers.js?v=64";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -418,9 +422,17 @@ onValue(ref(db, '.info/connected'), (snap) => {
 });
 
 onValue(ref(db, 'settings'), (snap) => {
+    // The server has answered, so the settings are now known — whether it returned data
+    // or nothing (in which case the hardcoded defaults are legitimately authoritative).
+    // Until this point they are NOT: see helpers.js / globals.js siteSettingsLoaded note
+    // and games.js getGameMaxLb(), which uses a conservative fallback in the meantime.
+    window.siteSettingsLoaded = true;
     if (snap.exists()) {
         const prevHideAnswers = window.siteSettings.hideHostGameAnswers;
         window.siteSettings = { ...window.siteSettings, ...snap.val() };
+        // Keep the Post-a-Game LB cap label/input in sync (covers both "settings arrived
+        // after the modal was opened" and "admin changed the cap mid-session").
+        if (typeof window.refreshGameLbCapUi === 'function') window.refreshGameLbCapUi();
         // Site Control → "Hide Host Game Answers" toggled in /config: re-render
         // immediately so hosts see the change without a refresh.
         if (window.siteSettings.hideHostGameAnswers !== prevHideAnswers) {

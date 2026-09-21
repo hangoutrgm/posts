@@ -3,8 +3,8 @@ import { app, auth, db, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=3";
-import "../js/helpers.js?v=61";
+import "../js/globals.js?v=4";
+import "../js/helpers.js?v=62";
 
 const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
