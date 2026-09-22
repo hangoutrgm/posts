@@ -3,8 +3,8 @@ import { app, auth, db, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=4";
-import "../js/helpers.js?v=62";
+import "../js/globals.js?v=5";
+import "../js/helpers.js?v=63";
 
 const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
@@ -208,6 +208,8 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = settings.chatVideoLimit ?? '';
             document.getElementById('set-chatVoiceLimit').value = settings.chatVoiceLimit ?? '';
             document.getElementById('set-chatVideoSizeLimitMB').value = settings.chatVideoSizeLimitMB ?? '';
+            // Pre-filled with 7000 when unset so a blank box can't silently disable the minimum
+            document.getElementById('set-minLbPointsForRewards').value = settings.minLbPointsForRewards ?? 7000;
             const lbRew = settings.leaderboardRewards || {};
             for (let i = 1; i <= 10; i++) {
                 const el = document.getElementById('set-rankReward' + i);
@@ -246,6 +248,7 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = '';
             document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
+            document.getElementById('set-minLbPointsForRewards').value = '';
             for (let i = 1; i <= 10; i++) {
                 const el = document.getElementById('set-rankReward' + i);
                 if (el) el.value = '';
@@ -271,6 +274,7 @@ function initAdminDashboard() {
         document.getElementById('set-starsPerFollow').placeholder = window.siteSettings.starsPerFollow ?? '5';
         document.getElementById('set-maxStarsPrize').placeholder = window.siteSettings.maxStarsPrize || '100';
         document.getElementById('set-maxLbPointsPrize').placeholder = window.siteSettings.maxLbPointsPrize;
+        document.getElementById('set-minLbPointsForRewards').placeholder = window.siteSettings.minLbPointsForRewards ?? 7000;
         document.getElementById('set-gameHostLbReward').placeholder = window.siteSettings.gameHostLbReward || '0';
         document.getElementById('set-chatGameLbReward').placeholder = window.siteSettings.chatGameLbReward ?? '5';
         document.getElementById('set-chatGameHostLbReward').placeholder = window.siteSettings.chatGameHostLbReward ?? '0';
@@ -306,6 +310,7 @@ function initAdminDashboard() {
             starsPerFollow: parseInt(document.getElementById('set-starsPerFollow').value) || 0,
             maxStarsPrize: parseInt(document.getElementById('set-maxStarsPrize').value) || 0,
             maxLbPointsPrize: parseInt(document.getElementById('set-maxLbPointsPrize').value) || 0,
+            minLbPointsForRewards: parseInt(document.getElementById('set-minLbPointsForRewards').value) || 0,
             gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
             chatGameLbReward: parseInt(document.getElementById('set-chatGameLbReward').value) || 0,
             chatGameHostLbReward: parseInt(document.getElementById('set-chatGameHostLbReward').value) || 0,

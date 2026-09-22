@@ -125,6 +125,7 @@ window.siteSettings = {
     pokeLimit: 3,
     gameHostLbReward: 0,
     maxLbPointsPrize: 100,
+    minLbPointsForRewards: 7000, // /config → Leaderboard Rewards: weekly LB points a player must reach to be eligible for the rank prizes shown in the Rewards tab (0 = no minimum)
     lbBoostMultiplier: 1,   // LB game-night boost: winner+host LB rewards are multiplied by this inside the window (1 = off)
     lbBoostStart: '22:00',  // boost window start (HH:MM, 24h)
     lbBoostEnd: '00:00',    // boost window end (HH:MM, 24h; if <= start it crosses midnight)

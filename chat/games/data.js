@@ -2,7 +2,7 @@
 // chat/games/data.js — static content + round generators
 // (Trivia / Flags / Emoji Riddles / Elements load from ../config/*.json)
 // ============================================================
-import { pick, randInt, shuffle } from './helpers.js?v=5';
+import { pick, randInt, shuffle } from './helpers.js?v=6';
 
 // ── Math duel — difficulty ramps with round index ──
 export const mathRound = (roundIdx) => {

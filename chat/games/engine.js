@@ -3,11 +3,11 @@
 // ============================================================
 import { ref, push, get, set, update, runTransaction, increment } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { db, db2 } from '../../js/firebase-config.js';
+import { db, db2 } from '../../js/firebase-config.js?v=2';
 import { GAME_META, pick, shuffle } from './helpers.js?v=6';
 import {
   mathRound, countEmojiRound, jumbledRound, triviaRound, ROUNDS_PER_GAME,
-} from './data.js?v=6';
+} from './data.js?v=7';
 
 let _getThreadId = () => null;
 export const setThreadGetter = (fn) => { _getThreadId = fn; };

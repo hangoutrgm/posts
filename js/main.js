@@ -7,10 +7,10 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
 // Local imports MUST carry the same ?v= as index.html's <script> tags. A query string
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
-// evaluated a second time alongside index.html's "js/helpers.js?v=62" (same for
+// evaluated a second time alongside index.html's "js/helpers.js?v=63" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html.
-import "./helpers.js?v=62";
-import "./renderers.js?v=64";
+import "./helpers.js?v=63";
+import "./renderers.js?v=66";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;

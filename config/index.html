@@ -294,6 +294,11 @@
                         <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50">
                             <p class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1"><i class="fa-solid fa-trophy mr-1 text-amber-500"></i> Leaderboard Rewards (Top 1–10)</p>
                             <p class="text-[10px] text-slate-400 dark:text-slate-500 mb-3">Prize (₱) for each leaderboard rank. Leave a box empty — or all boxes after it — to stop there. Example: prizes only on ranks 1–5 means only the Top 5 get rewarded.</p>
+                            <div class="mb-3">
+                                <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Min LB Points to Qualify</label>
+                                <input type="number" id="set-minLbPointsForRewards" min="0" placeholder="7000" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Weekly LB points a player must reach to be eligible for the prizes below (Rewards tab). 0 = no minimum.</p>
+                            </div>
                             <div class="grid gap-3">
                                 <div><label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">1st</label><input type="number" id="set-rankReward1" min="0" step="0.01" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition"></div>
                                 <div><label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">2nd</label><input type="number" id="set-rankReward2" min="0" step="0.01" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition"></div>
@@ -489,6 +494,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=31"></script>
+    <script type="module" src="admin.js?v=32"></script>
 </body>
 </html>

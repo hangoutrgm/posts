@@ -3499,17 +3499,25 @@ async function renderRankingRewards(list) {
         return;
     }
 
-    // Rank by THIS week's LB points (users with 0 weekly points are excluded)
+    // Eligibility gate (/config → Leaderboard Rewards → "Min LB Points to Qualify"):
+    // a player must have at least this many LB points THIS week to win a prize.
+    // 0 = no minimum. Only eligible players are listed (ranked 1..N by points).
+    const minLb = Math.max(0, parseInt(window.siteSettings?.minLbPointsForRewards ?? 0, 10) || 0);
+
+    // Rank by THIS week's LB points (0-point players and anyone below the minimum are excluded)
     const pool = Object.entries(weekly)
         .map(([uid, pts]) => {
             const u = window.globalUsersCache[uid] || {};
             return { uid, name: u.name, pic: u.pic, pts: Number(pts) || 0, isInactive: u.isInactive === true };
         })
-        .filter(u => u.name && !u.isInactive && u.pts > 0)
+        .filter(u => u.name && !u.isInactive && u.pts > 0 && u.pts >= minLb)
         .sort((a, b) => b.pts - a.pts)
         .slice(0, Math.max(...configured));
     if (!pool.length) {
-        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">No LB points recorded for ${isThisWeek ? 'this week' : escapeHtml(weekLabel)} yet — rewards appear once that week's leaderboard has points.</p>`;
+        const when = isThisWeek ? 'for this week' : `in ${escapeHtml(weekLabel)}`;
+        list.innerHTML = minLb > 0
+            ? `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🏆 No one has reached the minimum ${minLb.toLocaleString()} LB points ${when} yet.</p>`
+            : `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">No LB points recorded ${when} yet — rewards appear once that week's leaderboard has points.</p>`;
         list.style.minHeight = '';
         return;
     }
@@ -3532,7 +3540,11 @@ async function renderRankingRewards(list) {
         <div class="text-center">
             <div class="text-lg font-black text-green-600 dark:text-green-400">${configured.length}</div>
             <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Prized ranks</div>
-        </div>`;
+        </div>${minLb > 0 ? `
+        <div class="text-center">
+            <div class="text-lg font-black text-indigo-600 dark:text-indigo-300">🏅</div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Min ${minLb.toLocaleString()} LB</div>
+        </div>` : ''}`;
     list.appendChild(head);
 
     const fragment = document.createDocumentFragment();

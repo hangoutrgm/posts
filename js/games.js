@@ -913,10 +913,21 @@ window.randomGuessNumber = () => {
     answerInput.value = Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
+// Count the Dots — random dot count (12–30) + a freshly generated puzzle for that
+// count. Called every time the host selects the game so posts never reuse the same
+// predictable number (same idea as the Vault's random code).
+window.randomDotsCount = () => {
+    const countInput = document.getElementById('game-dots-count');
+    if (!countInput) return;
+    countInput.value = 12 + Math.floor(Math.random() * 19); // 12–30
+    window.generateDotsPuzzle();
+};
+
 window.generateDotsPuzzle = () => {
     const countInput = document.getElementById('game-dots-count');
     let count = parseInt(countInput.value, 10);
-    if (isNaN(count) || count < 1) count = 13;
+    // No fixed fallback (was 13): a blank/invalid box gets a random count too.
+    if (isNaN(count) || count < 1) count = 12 + Math.floor(Math.random() * 19); // 12–30
     if (count > 100) count = 100;
     countInput.value = count;
 
@@ -1093,6 +1104,9 @@ window.toggleGameSettings = () => {
 
     if (type === 'count_dots') {
         countDotsContainer.classList.remove('hidden');
+        // Fresh random count + puzzle every time the host selects this game (same idea as
+        // the Vault's random code) so posters can't rely on a fixed, predictable number.
+        if (typeof window.randomDotsCount === 'function') window.randomDotsCount();
     } else {
         countDotsContainer.classList.add('hidden');
     }

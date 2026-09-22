@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v176';
+const CACHE_NAME = 'hangout-v178';
 
 // All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
@@ -8,13 +8,13 @@ const PRECACHE_ASSETS = [
   './css/tailwind.min.css?v=3',
   './css/styles.css?v=10',
   './chat/css/styles.css?v=43',
-  './js/renderers.js?v=65',
-  './js/helpers.js?v=62',
-  './js/games.js?v=56',
-  './js/main.js?v=60',
+  './js/renderers.js?v=66',
+  './js/helpers.js?v=63',
+  './js/games.js?v=57',
+  './js/main.js?v=61',
   './js/myday.js?v=14',
   './js/voice-recorder.js?v=1',
-  './chat/js/app.js?v=86',
+  './chat/js/app.js?v=87',
   './js/users-cache.js?v=4',
   './config/emoji_riddles.json',
   './config/flags.json',
