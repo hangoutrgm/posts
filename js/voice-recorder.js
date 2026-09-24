@@ -34,6 +34,65 @@ let fileInput = null;
 
 const $ = (id) => document.getElementById(id);
 
+// ── Capture quality ──────────────────────────────────────────────
+// `getUserMedia({ audio: true })` switches on every WebRTC speech
+// enhancement the browser has (echo cancellation, noise suppression,
+// auto gain). They are tuned for realtime calls, not for recordings,
+// and they audibly colour the result: muffled / "underwater" sibilants,
+// a pumping noise floor between phrases and a weak low end. Ask for a
+// clean 48 kHz mono capture instead and pin the Opus bitrate so every
+// browser produces the same, much cleaner result.
+const AUDIO_CONSTRAINTS = {
+    channelCount: 1,
+    sampleRate: 48000,
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: true // keeps the level consistent between devices
+};
+
+// Opus first (best speech quality per byte), AAC/mp4 for Safari.
+const MIME_CANDIDATES = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus'
+];
+
+function pickMimeType() {
+    for (const type of MIME_CANDIDATES) {
+        try { if (MediaRecorder.isTypeSupported?.(type)) return type; } catch (_) { /* ignore */ }
+    }
+    return '';
+}
+
+// Opens the mic with the quality profile above, silently retrying with
+// the browser defaults if the device refuses the requested profile.
+async function openVoiceStream() {
+    if (navigator.mediaDevices?.getUserMedia) {
+        try {
+            return await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+        } catch (err) {
+            if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) throw err;
+            return navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+    }
+    const legacy = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia).bind(navigator);
+    return new Promise((resolve, reject) => legacy({ audio: AUDIO_CONSTRAINTS }, resolve, reject));
+}
+
+// 128 kbps Opus (the bitrate Chrome uses by default) with the best
+// container the browser supports.
+function createRecorder(stream) {
+    const mimeType = pickMimeType();
+    const options = { audioBitsPerSecond: 128000 };
+    if (mimeType) options.mimeType = mimeType;
+    try {
+        return new MediaRecorder(stream, options);
+    } catch (_) {
+        return new MediaRecorder(stream); // very old builds reject unknown option keys
+    }
+}
+
 function resetUi() {
     if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
     const bar = $(cfg.barId);
@@ -88,27 +147,16 @@ export function startVoiceRecording() {
         return;
     }
 
-    if (navigator.mediaDevices?.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(beginRecording)
-            .catch(() => ensureFileFallback().click());
-    } else {
-        const legacy = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia).bind(navigator);
-        legacy({ audio: true }, beginRecording, () => ensureFileFallback().click());
-    }
+    openVoiceStream()
+        .then(beginRecording)
+        .catch(() => ensureFileFallback().click());
 }
 
 function beginRecording(stream) {
     recStream = stream;
     audioChunks = [];
 
-    let options = {};
-    if (MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')) options = { mimeType: 'audio/webm;codecs=opus' };
-    else if (MediaRecorder.isTypeSupported?.('audio/webm')) options = { mimeType: 'audio/webm' };
-    else if (MediaRecorder.isTypeSupported?.('audio/mp4')) options = { mimeType: 'audio/mp4' };
-    else if (MediaRecorder.isTypeSupported?.('audio/ogg;codecs=opus')) options = { mimeType: 'audio/ogg;codecs=opus' };
-
-    const recorder = new MediaRecorder(stream, options);
+    const recorder = createRecorder(stream);
     mediaRecorder = recorder;
 
     recorder.ondataavailable = (e) => {
