@@ -27,6 +27,8 @@ let cfg = {
 let mediaRecorder = null;
 let recStream = null;
 let audioChunks = [];
+let discarding = false; // true while a cancel is in flight — see cancelVoiceRecording()
+let session = 0;        // bumped per recording so older handlers stand down
 let recStartTime = 0;
 let recSeconds = 0;
 let recTimerInterval = null;
@@ -155,22 +157,35 @@ export function startVoiceRecording() {
 function beginRecording(stream) {
     recStream = stream;
     audioChunks = [];
+    discarding = false; // a stale cancel flag must never leak into a new recording
+    const mySession = ++session; // older recorders must stand down once this one starts
 
     const recorder = createRecorder(stream);
     mediaRecorder = recorder;
 
     recorder.ondataavailable = (e) => {
+        if (mySession !== session) return; // superseded — never touch the new recording's chunks
+        if (discarding) return; // cancel in flight — drop the tail chunk that stop() flushes
         if (e.data && e.data.size > 0) audioChunks.push(e.data);
     };
 
     recorder.onstop = async () => {
+        if (mySession !== session) {
+            // A newer recording already took over: only release this mic stream.
+            stream.getTracks().forEach((t) => t.stop());
+            if (recStream === stream) recStream = null;
+            return;
+        }
+        const wasCanceled = discarding;
+        discarding = false;
         const durationMs = Date.now() - recStartTime;
         const mimeType = recorder.mimeType || 'audio/webm';
         mediaRecorder = null; // allow the next recording to start
         stopAllTracks();
         resetUi();
 
-        if (audioChunks.length === 0 || durationMs < 600) {
+        // Canceled, empty or too short: never hand a blob to the host page.
+        if (wasCanceled || audioChunks.length === 0 || durationMs < 600) {
             audioChunks = [];
             if (cfg.onCancel) cfg.onCancel();
             return;
@@ -209,10 +224,20 @@ export function stopVoiceRecording() {
 }
 
 export function cancelVoiceRecording() {
-    audioChunks = [];
     if (isRecording()) {
-        mediaRecorder.stop(); // onstop sees empty chunks -> resets UI + onCancel
-    } else {
+        audioChunks = [];
+        // MediaRecorder.stop() fires one last `dataavailable` before `onstop`.
+        // Without this flag the discarded tail was re-assembled into a
+        // headerless blob and delivered to the host page (i.e. "cancel" still
+        // posted/sent a broken voice message).
+        discarding = true;
+        mediaRecorder.stop(); // onstop resets the UI + fires onCancel
+        return;
+    }
+
+    // Recorder already stopped (e.g. a second click on ✕): the pending onstop
+    // owns the cleanup, so onCancel is still only fired once.
+    if (!discarding) {
         stopAllTracks();
         resetUi();
         if (cfg.onCancel) cfg.onCancel();

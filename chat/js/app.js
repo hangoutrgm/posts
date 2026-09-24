@@ -1636,6 +1636,13 @@ function createVoiceRecorder(stream) {
   }
 }
 
+// Set while a recording is being cancelled. MediaRecorder.stop() fires one
+// final `dataavailable` chunk before `onstop`; without this flag the discarded
+// tail was re-assembled into a headerless blob and sent as a broken / silent
+// voice message instead of being cancelled.
+let voiceCancelPending = false;
+let voiceSession = 0; // bumped per recording so older handlers stand down
+
 function resetVoiceRecorderUi() {
   if (state.recTimerInterval) {
     clearInterval(state.recTimerInterval);
@@ -1681,15 +1688,28 @@ async function startVoiceRecording() {
     const stream = await openVoiceCaptureStream();
 
     state.audioChunks = [];
+    voiceCancelPending = false; // a stale cancel flag must never leak into a new recording
+    const mySession = ++voiceSession; // older recorders must stand down once this one starts
     state.mediaRecorder = createVoiceRecorder(stream);
     state.mediaRecorder.ondataavailable = (e) => {
+      if (mySession !== voiceSession) return; // superseded — never touch the new recording's chunks
+      if (voiceCancelPending) return; // cancel in flight — drop the tail chunk that stop() flushes
       if (e.data && e.data.size > 0) state.audioChunks.push(e.data);
     };
 
     state.mediaRecorder.onstop = async () => {
-      const durationMs = Date.now() - (state.recStartTime || 0);
       stream.getTracks().forEach(track => track.stop());
+      if (mySession !== voiceSession) return; // a newer recording owns the UI + upload
+      const wasCanceled = voiceCancelPending;
+      voiceCancelPending = false;
+      const durationMs = Date.now() - (state.recStartTime || 0);
       resetVoiceRecorderUi();
+
+      if (wasCanceled) {
+        // User pressed ✕ — discard the recording, never upload a partial clip.
+        state.audioChunks = [];
+        return;
+      }
 
       if (state.audioChunks.length === 0 || durationMs < 600) {
         state.audioChunks = [];
@@ -1736,12 +1756,23 @@ function stopVoiceRecording() {
 }
 
 function cancelVoiceRecording() {
-  state.audioChunks = [];
   if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
-    state.mediaRecorder.stop();
+    state.audioChunks = [];
+    // MediaRecorder.stop() fires one last `dataavailable` before `onstop`;
+    // this flag makes both handlers discard it, so cancelling never uploads.
+    voiceCancelPending = true;
+    state.mediaRecorder.stop(); // onstop releases the mic
+    resetVoiceRecorderUi();
+    showToast('Voice recording canceled.');
+    return;
   }
-  resetVoiceRecorderUi();
-  showToast('Voice recording canceled.');
+
+  // Already stopped (e.g. a second click on ✕) — the pending onstop owns the
+  // cleanup, so the cancel toast is still only shown once.
+  if (!voiceCancelPending) {
+    resetVoiceRecorderUi();
+    showToast('Voice recording canceled.');
+  }
 }
 
 async function sendVoiceMessage(audioBlob) {
