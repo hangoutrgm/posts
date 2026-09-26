@@ -884,7 +884,7 @@ function renderMessages(rawMessages, jumpToLatest = false) {
 
     // Emoji-only messages → bare big emoji, no bubble (Messenger-style)
     let emojiOnly = !isGameCard && !isGameBump && !image && !audioHtml && !message.replyTo && isEmojiOnlyText(message.text);
-    const emojiOnlyCount = emojiOnly ? emojiCountOf(message.text) : 0;
+    const emojiOnlyCount = emojiOnly ? emojiUnitCount(message.text) : 0;
 
     if (!isGameCard && !isGameBump && !messageText && image) {
       messageText = `<div style="font-style:italic; opacity:0.7; font-size:14px; margin-bottom:4px;">Shared a ${isVid ? 'video' : 'photo'}</div>`;
@@ -2329,6 +2329,12 @@ async function checkChatCooldown() {
 // ==========================================
 const PREFERRED_EMOJI_KEY = 'hangout-preferred-emoji';
 const EMOJI_CHOICES = ['😊','😍','🥰','😂','🤣','😎','🥳','🤗','😢','😡','👍','🙏','🎉','❤️','🔥','💯'];
+// Extra basic emojis revealed by the "+" inside the long-press picker below.
+const EXTRA_EMOJIS = [
+  '😁','😅','😉','😇','🙃','😘','😭','😮',
+  '😴','🤩','🤔','😐','🙄','😱','🥺','😤',
+  '👌','👏','💪','🤝','✌️','✨','⭐','💔'
+];
 function getPreferredEmoji() { try { return localStorage.getItem(PREFERRED_EMOJI_KEY) || '😊'; } catch (e) { return '😊'; } }
 function setPreferredEmoji(emoji) { try { localStorage.setItem(PREFERRED_EMOJI_KEY, emoji); } catch (e) {} updateSendMode(); }
 function isEmojiMode() { return $('send-button')?.classList.contains('emoji-mode') === true; }
@@ -2343,43 +2349,163 @@ function updateSendMode() {
   btn.title = label; btn.setAttribute('aria-label', label);
 }
 // Emoji-only messages (like "😂" or "🎉😎") render as big bare emojis with no
-// bubble — Messenger-style. Up to 3 emojis get the large treatment.
+// bubble — Messenger-style. Only up to 3 emojis get the large treatment: the
+// bubble is deliberately nowrap, so a longer run used to stay on one line and
+// run past the chat's right edge (10 emojis = one 37px row out of the border).
+// 4+ emojis now render as a normal bubble, which wraps.
+const EMOJI_ONLY_MAX = 3;
 function isEmojiOnlyText(text) {
   const t = String(text || '').trim();
-  if (!t || t.length > 26) return false;
+  if (!t || t.length > 40) return false; // cheap guard before the regex/segmenter work
   const stripped = t.replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0E\uFE0F\u200D\u20E3\u{1F3FB}-\u{1F3FF}\u{E000}-\u{F8FF}\s]/gu, '');
-  return stripped.length === 0;
+  if (stripped.length !== 0) return false;
+  return emojiUnitCount(t) <= EMOJI_ONLY_MAX;
 }
 function emojiCountOf(text) {
   return ((String(text || '').match(/\p{Extended_Pictographic}/gu)) || []).length;
 }
+// Emoji units = non-whitespace grapheme clusters, so a ZWJ family emoji (👨‍👩‍👧‍👦)
+// counts as ONE emoji instead of four. Falls back to the pictograph count on
+// engines without Intl.Segmenter (older Firefox).
+function emojiUnitCount(text) {
+  const t = String(text || '');
+  try {
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+      const seg = new Intl.Segmenter('en', { granularity: 'grapheme' });
+      let n = 0;
+      for (const part of seg.segment(t)) { if (part.segment.trim()) n++; }
+      return n;
+    }
+  } catch (_) { /* fall through */ }
+  return emojiCountOf(t);
+}
+// Place a fixed popover above its anchor (flips below when there is no room).
+function positionPopover(pop, anchor) {
+  const r = anchor.getBoundingClientRect();
+  pop.classList.remove('hidden');
+  const pw = pop.offsetWidth || 240, ph = pop.offsetHeight || 120;
+  const x = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+  let y = r.top - ph - 8; if (y < 8) y = r.bottom + 8;
+  pop.style.left = `${x}px`;
+  pop.style.top = `${y}px`;
+}
+
+// Tapping inside a popover must not pull focus out of the composer, otherwise the
+// on-screen keyboard drops while you are still picking. Same trick the mention
+// suggestions and the send button already use (mousedown is what steals focus).
+//
+// The composer can also keep DOM focus AFTER its keyboard was dismissed, so focus
+// alone can't tell us whether the keyboard is up. Track the tallest visual viewport
+// we have ever seen (== the keyboard-closed height) and compare against that: it
+// works on every engine, including the ones that also resize window.innerHeight with
+// the keyboard (an innerHeight-based check read "down" while it was up, which is
+// what re-broke the keyboard-drop bug).
+let _vvMaxHeight = 0;
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const rememberTallest = () => { if (vv.height > _vvMaxHeight) _vvMaxHeight = vv.height; };
+  rememberTallest();
+  vv.addEventListener('resize', rememberTallest);
+  vv.addEventListener('scroll', rememberTallest);
+}
+
+let _preferredEmojiKeepFocus = false;   // composer had the keyboard UP when the picker opened
+function keepComposerFocus() {
+  if (!_preferredEmojiKeepFocus) return;
+  const input = $('message-input');
+  if (!input || document.activeElement === input) return;
+  try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+}
+
+// Is the on-screen keyboard actually up? = the composer owns focus AND the viewport
+// is clearly shorter than the tallest we have seen.
+function composerKeyboardUp() {
+  const input = $('message-input');
+  if (!input || document.activeElement !== input) return false;
+  const vk = navigator.virtualKeyboard;                    // Chromium: direct answer
+  if (vk && vk.boundingRect && vk.boundingRect.height > 0) return true;
+  const vv = window.visualViewport;
+  if (!vv || !_vvMaxHeight) return true;                   // can't measure → trust focus
+  return (_vvMaxHeight - vv.height) > 120;                 // keyboard takes a big slice
+}
+
 let _preferredEmojiPop = null;
+let _preferredEmojiAnchor = null;
+let _preferredEmojiExpanded = false;   // "+" toggles the extra basic emojis
+
+// The quick row + the extra emojis + the "+" toggle, rendered ONCE. The extras
+// are only shown/hidden with a class: rebuilding this row on tap would detach the
+// tapped button, and the document handler below would then mistake that same tap
+// for an outside click and close the modal instantly ("+ does nothing").
+function preferredEmojiRowHtml() {
+  const btn = (e) => `<button type="button" data-emoji="${e}">${e}</button>`;
+  return EMOJI_CHOICES.map(btn).join('')
+    + `<span class="emoji-extra-set">${EXTRA_EMOJIS.map(btn).join('')}</span>`
+    + `<button type="button" class="emoji-more-btn" data-more="1" aria-label="More emojis" title="More emojis">+</button>`;
+}
+
+function applyPreferredEmojiExpanded() {
+  if (!_preferredEmojiPop) return;
+  _preferredEmojiPop.classList.toggle('expanded', _preferredEmojiExpanded);
+  const toggle = _preferredEmojiPop.querySelector('.emoji-more-btn');
+  if (!toggle) return;
+  const label = _preferredEmojiExpanded ? 'Show fewer emojis' : 'More emojis';
+  toggle.textContent = _preferredEmojiExpanded ? '−' : '+';
+  toggle.setAttribute('aria-label', label);
+  toggle.title = label;
+}
+
+// Hide the picker and collapse it again, so it always opens as the short row.
+function closePreferredEmojiPicker() {
+  if (!_preferredEmojiPop) return;
+  _preferredEmojiPop.classList.add('hidden');
+  _preferredEmojiExpanded = false;
+  applyPreferredEmojiExpanded();
+}
+
+// Long-press / right-click the emoji button → this modal picks the ONE emoji the
+// button sends. Its "+" reveals the extra basic emojis.
 function openPreferredEmojiPicker(anchor) {
+  _preferredEmojiAnchor = anchor;
+  // Arm the focus restore only while the keyboard is really up; when it is hidden we
+  // simply touch nothing, so it can neither drop nor pop back open over the picker.
+  _preferredEmojiKeepFocus = composerKeyboardUp();
   if (!_preferredEmojiPop) {
     _preferredEmojiPop = document.createElement('div');
     _preferredEmojiPop.className = 'preferred-emoji-pop';
-    _preferredEmojiPop.innerHTML = EMOJI_CHOICES.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
-    document.body.appendChild(_preferredEmojiPop);
+    _preferredEmojiPop.innerHTML = preferredEmojiRowHtml();   // painted once, never rebuilt
+    // Keep focus in the textarea — a mousedown default would blur it (keyboard drops).
+    _preferredEmojiPop.addEventListener('mousedown', (e) => e.preventDefault());
     _preferredEmojiPop.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-emoji]');
+      const btn = e.target.closest('button');
       if (!btn) return;
+      if (btn.dataset.more) {          // "+" / "−" → show or hide the extra emojis
+        _preferredEmojiExpanded = !_preferredEmojiExpanded;
+        applyPreferredEmojiExpanded();
+        positionPopover(_preferredEmojiPop, _preferredEmojiAnchor);
+        keepComposerFocus();           // the keyboard must survive the toggle
+        return;
+      }
+      if (!btn.dataset.emoji) return;
       setPreferredEmoji(btn.dataset.emoji);
-      _preferredEmojiPop.classList.add('hidden');
+      closePreferredEmojiPicker();
+      keepComposerFocus();
       showToast('Preferred emoji updated!');
     });
+    document.body.appendChild(_preferredEmojiPop);
     document.addEventListener('click', (e) => {
       if (_preferredEmojiPop.classList.contains('hidden')) return;
-      if (_preferredEmojiPop.contains(e.target) || e.target.closest('#send-button')) return;
-      _preferredEmojiPop.classList.add('hidden');
+      // composedPath() is captured at dispatch, so a target that a handler removed
+      // from the DOM still counts as "inside" and never closes the picker.
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : null;
+      const inside = path ? path.includes(_preferredEmojiPop) : _preferredEmojiPop.contains(e.target);
+      if (inside || e.target.closest('#send-button')) return;
+      closePreferredEmojiPicker();
     });
   }
-  const r = anchor.getBoundingClientRect();
-  _preferredEmojiPop.classList.remove('hidden');
-  const pw = _preferredEmojiPop.offsetWidth || 240, ph = _preferredEmojiPop.offsetHeight || 100;
-  const x = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
-  let y = r.top - ph - 8; if (y < 8) y = r.bottom + 8;
-  _preferredEmojiPop.style.left = `${x}px`;
-  _preferredEmojiPop.style.top = `${y}px`;
+  _preferredEmojiExpanded = false;   // every open starts as the short row
+  applyPreferredEmojiExpanded();
+  positionPopover(_preferredEmojiPop, anchor);
 }
 
 async function sendMessage(event) {
@@ -3288,7 +3414,11 @@ $('note-view-avatar')?.addEventListener('click', () => window.openUserProfile(wi
 document.addEventListener('click', (e) => {
   const pop = $('note-popover');
   if (!pop || pop.classList.contains('hidden')) return;
-  if (pop.contains(e.target) || e.target.closest('.note-item')) return;
+  // composedPath() is captured at dispatch: reacting re-renders the emoji row, and
+  // the detached button would otherwise look like an outside click and close this.
+  const path = typeof e.composedPath === 'function' ? e.composedPath() : null;
+  const inside = path ? path.includes(pop) : pop.contains(e.target);
+  if (inside || e.target.closest('.note-item')) return;
   closeNotePopover();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNotePopover(); });

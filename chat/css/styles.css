@@ -1028,7 +1028,26 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 }
 .preferred-emoji-pop button:hover { background: var(--surface-2); transform: scale(1.15); }
 
-/* ── Emoji-only messages: bare big emoji, no bubble (Messenger-style) ── */
+/* "+" inside the preferred-emoji picker (long-press modal) → more basic emojis */
+.preferred-emoji-pop .emoji-more-btn {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 18px; font-weight: 800; line-height: 1;
+  color: var(--ink-2);
+  border: 1px dashed var(--line);
+  transition: background var(--transition), transform var(--transition), color var(--transition), border-color var(--transition);
+}
+.preferred-emoji-pop .emoji-more-btn:hover { background: var(--surface-2); color: var(--accent); border-color: var(--accent); transform: scale(1.12); }
+/* The extra emojis ship in the DOM but stay hidden until "+" is tapped */
+.preferred-emoji-pop .emoji-extra-set { display: none; }
+.preferred-emoji-pop.expanded .emoji-extra-set { display: contents; }
+/* Expanded list gets long — keep it on screen */
+.preferred-emoji-pop.expanded { max-height: min(60vh, 320px); overflow-y: auto; }
+
+/* ── Emoji-only messages: bare big emoji, no bubble (Messenger-style) ──
+   Only 1–3 emojis take this path (see isEmojiOnlyText in app.js). The wrap
+   rules below are the safety net: a longer emoji run can never run past the
+   chat's right edge, it wraps inside the message row instead. */
 .message-bubble.emoji-only {
   background: transparent !important;
   color: var(--ink);
@@ -1036,8 +1055,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   padding: 0 4px;
   border-radius: 0;
   line-height: 1.15;
-  overflow-wrap: normal;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 /* ── Reply / media banner ── */
