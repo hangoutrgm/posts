@@ -2539,28 +2539,22 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Reaction chip painted on the note avatar (display only — you react in the
-   note viewer; the same react also shows on My Day). */
+/* Reaction on the note avatar (display only — you react in the note viewer;
+   the same react also shows on My Day). Flat: emoji + count, no chip. */
 .note-reacts {
   position: absolute;
   right: 0;
   bottom: 15px;
   z-index: 3;
-  padding: 1px 5px;
-  border-radius: 10px;
-  font-size: 9px;
+  padding: 0;
+  font-size: 9.5px;
   font-weight: 700;
+  line-height: 1.2;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
   pointer-events: none;
 }
-.note-reacts.mine {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-glow);
-}
+.note-reacts.mine { color: var(--accent); }
 
 /* ═══════════ THEME MENU (paint brush) ═══════════ */
 .theme-btn-wrap { position: relative; }
@@ -2666,11 +2660,11 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* Note reactions (same 6 emojis as message reactions) + Reply */
+/* Note reactions (same 6 emojis as message reactions) + Reply — flat reacts */
 .note-popover .note-react-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
@@ -2679,8 +2673,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   flex: 1 1 0;
   min-width: 0;
   height: 28px;
-  padding: 0 4px;
-  border-radius: 999px;
+  padding: 0;
   font-size: 14px;
   line-height: 1;
   display: inline-flex;
@@ -2688,14 +2681,15 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   justify-content: center;
   gap: 2px;
   color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: none;
+  border: 0;
+  opacity: .78;
   cursor: pointer;
-  transition: transform var(--transition), background var(--transition), border-color var(--transition);
+  transition: transform var(--transition), opacity var(--transition);
 }
-.note-react-btn:hover { transform: scale(1.08); }
+.note-react-btn:hover { opacity: 1; transform: scale(1.12); }
 .note-react-btn b { font-size: 9px; font-weight: 800; color: var(--ink-muted); }
-.note-react-btn.mine { background: var(--accent-glow); border-color: var(--accent); }
+.note-react-btn.mine { opacity: 1; transform: scale(1.06); }
 .note-react-btn.mine b { color: var(--accent); }
 .note-reply-btn {
   display: flex;
