@@ -82,6 +82,16 @@ window.renderNotifications = () => {
             if(n.type === 'react_post') { text = 'reacted to your post.'; icon = window.REACT_EMOJI?.[n.reactType] || '❤️'; }
             else if(n.type === 'react_comment') { text = 'reacted to your comment.'; icon = window.REACT_EMOJI?.[n.reactType] || '❤️'; }
             else if(n.type === 'react_reply') { text = 'reacted to your reply.'; icon = window.REACT_EMOJI?.[n.reactType] || '❤️'; }
+            // My Day / note reactions store the emoji itself in reactType, so fall
+            // back to the raw value when it is not one of the feed's type keys.
+            else if(n.type === 'react_myday') {
+                text = 'reacted to your My Day.'; icon = window.REACT_EMOJI?.[n.reactType] || n.reactType || '❤️';
+                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+            }
+            else if(n.type === 'react_note') {
+                text = 'reacted to your note.'; icon = window.REACT_EMOJI?.[n.reactType] || n.reactType || '❤️';
+                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+            }
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }

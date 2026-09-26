@@ -1,4 +1,4 @@
-import { db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { ref, update, remove, set, push, increment, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp as fsServerTimestamp, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -485,7 +485,7 @@ window.pokeUser = async function(targetUid) {
         }
 
         // Always send a notification
-        push(ref(db, `notifications/${targetUid}`), {
+        push(ref(db2, `notifications/${targetUid}`), {
             type: 'poke', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false
         });
 
@@ -749,7 +749,7 @@ window.notifyMentions = (text, postId) => {
     });
     
     uids.forEach(uid => {
-        push(ref(db, `notifications/${uid}`), { 
+        push(ref(db2, `notifications/${uid}`), { 
             type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
     });
@@ -1079,7 +1079,7 @@ window.toggleFollow = (targetUid) => {
         update(ref(db, `users/${targetUid}`), { points: increment(starsPerFollow) });
         
         if(targetUid !== window.currentUser.uid) {
-            push(ref(db, `notifications/${targetUid}`), { 
+            push(ref(db2, `notifications/${targetUid}`), { 
                 type: 'follow', sourceUid: window.currentUser.uid, timestamp: Date.now(), read: false 
             });
         }
@@ -1096,7 +1096,7 @@ window.toggleFollow = (targetUid) => {
 
 window.markNotifRead = (notifId) => {
     if (!window.currentUser) return;
-    update(ref(db, `notifications/${window.currentUser.uid}/${notifId}`), { read: true });
+    update(ref(db2, `notifications/${window.currentUser.uid}/${notifId}`), { read: true });
 };
 
 window.clearNotifications = () => {
@@ -1106,7 +1106,7 @@ window.clearNotifications = () => {
         if(!myNotifs[key].read) updates[`${key}/read`] = true;
     }
     if(Object.keys(updates).length > 0) {
-        update(ref(db, `notifications/${window.currentUser.uid}`), updates);
+        update(ref(db2, `notifications/${window.currentUser.uid}`), updates);
     }
     document.getElementById('notif-modal').classList.add('hidden');
 };

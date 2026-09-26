@@ -124,6 +124,17 @@ function setLocalReaction(uid, isNote, reactor, emoji) {
     bag.reactions = Object.keys(rx).length ? rx : null;
 }
 
+// Tell the owner they were reacted to. Lands on the same RTDB 2 notification
+// node the posts page listens to, so it shows in the bell list immediately.
+// Never notifies yourself, and never fires for an un-react (toggling off).
+function notifyReaction(targetUid, type, emoji) {
+    const me = myUid();
+    if (!me || !targetUid || targetUid === me) return;
+    push(ref(db2, `notifications/${targetUid}`), {
+        type, sourceUid: me, reactType: emoji, timestamp: Date.now(), read: false
+    }).catch(() => {});
+}
+
 // Force an MP4 / H.264 delivery URL so Mobile Safari (no .webm playback) and
 // Android can always play My Day videos. Cloudinary transcodes on the fly.
 function videoPlayUrl(url) {
@@ -478,14 +489,17 @@ window.MyDay = {
         if (!uid) return;
         const isNote = kind === 'note';
         const current = (isNote ? myNotes[uid]?.reactions?.[me] : storyOf(uid)?.reactions?.[me]) || null;
+        const removing = current === emoji;
         const path = `${isNote ? 'notes' : 'myday'}/${uid}/reactions/${me}`;
         try {
-            if (current === emoji) await remove(ref(db2, path));
+            if (removing) await remove(ref(db2, path));
             else await set(ref(db2, path), emoji);
         } catch (e) {
             window.showToast('Could not react: ' + e.message);
             return;
         }
+        // Notify the owner (skipped for your own cards and for un-reacts).
+        if (!removing) notifyReaction(uid, isNote ? 'react_note' : 'react_myday', emoji);
         // The live db2 listener repaints; update locally first so the tap feels instant.
         setLocalReaction(uid, isNote, me, current === emoji ? null : emoji);
         renderStrip();

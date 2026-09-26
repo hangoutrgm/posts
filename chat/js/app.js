@@ -600,12 +600,18 @@ window.reactNote = async (uid, emoji) => {
   if (!state.user) return showAuth();
   const me = state.user.uid;
   const mine = state.notes[uid]?.reactions?.[me] || null;
+  const removing = mine === emoji;
   try {
     const reactRef = ref(db2, `notes/${uid}/reactions/${me}`);
-    if (mine === emoji) await remove(reactRef); // tapping the same emoji removes it
+    if (removing) await remove(reactRef); // tapping the same emoji removes it
     else await set(reactRef, emoji);
   } catch (e) {
     return showToast(`Could not react: ${e.message.replace('Firebase: ', '')}`);
+  }
+  // Tell the note's author (never yourself, never on an un-react). Reacting from
+  // My Day writes the same type, so the author is notified exactly once either way.
+  if (!removing && uid !== me) {
+    push(ref(db2, `notifications/${uid}`), { type: 'react_note', sourceUid: me, reactType: emoji, timestamp: Date.now(), read: false }).catch(() => {});
   }
   // Update locally first so the tap feels instant — the live listener confirms it.
   const note = state.notes[uid];
@@ -2446,7 +2452,7 @@ async function sendMessage(event) {
 // ==========================================
 // CHAT MENTION NOTIFICATIONS (@name / @everyone / @mods)
 // When a chat message contains a mention, targets get a Hangout Posts
-// notification (notifications/{uid}). Clicking it reopens this chat via
+// notification (notifications/{uid} in RTDB 2). Clicking it reopens this chat via
 // chat/?thread=<id> — see openThreadFromParam below.
 // ==========================================
 async function notifyChatMentions(text, messageId) {
@@ -2496,7 +2502,7 @@ async function notifyChatMentions(text, messageId) {
   const base = { type: 'chat_mention', sourceUid: senderUid, threadId, messageId: messageId || null, timestamp: Date.now(), read: false };
   if (chatName) base.chatName = chatName;
   targets.forEach(uid => {
-    push(ref(db, `notifications/${uid}`), base).catch(() => {});
+    push(ref(db2, `notifications/${uid}`), base).catch(() => {});
   });
   showToast(`Mentioned ${targets.size} member${targets.size > 1 ? 's' : ''}.`);
 }

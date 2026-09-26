@@ -2101,7 +2101,7 @@ window.submitGame = async () => {
         if (targetUserUid) {
             try {
                 const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
-                const notifRef = push(ref(db, `notifications/${targetUserUid}`));
+                const notifRef = push(ref(db2, `notifications/${targetUserUid}`));
                 await set(notifRef, {
                     type: 'game_challenge',
                     fromUid: window.currentUser.uid,

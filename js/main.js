@@ -1,5 +1,5 @@
 // main.js
-import { app, auth, db, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { app, auth, db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, push, onValue, get, set, update, remove, increment, runTransaction, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -7,10 +7,10 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
 // Local imports MUST carry the same ?v= as index.html's <script> tags. A query string
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
-// evaluated a second time alongside index.html's "js/helpers.js?v=63" (same for
+// evaluated a second time alongside index.html's "js/helpers.js?v=64" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html.
-import "./helpers.js?v=63";
-import "./renderers.js?v=66";
+import "./helpers.js?v=64";
+import "./renderers.js?v=67";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -197,7 +197,7 @@ window.notifyMentions = (text, postId) => {
             const u = window.globalUsersCache[uid];
             // Skip self and guests
             if (uid !== window.currentUser.uid && !u.isGuest && !(u.name && u.name.startsWith("Guest_"))) {
-                push(ref(db, `notifications/${uid}`), {
+                push(ref(db2, `notifications/${uid}`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
                 notifiedUids.add(uid);
@@ -210,7 +210,7 @@ window.notifyMentions = (text, postId) => {
         Object.keys(window.globalUsersCache).forEach(uid => {
             // Notify if user is Mod/Admin, not self, and not already notified
             if (uid !== window.currentUser.uid && !notifiedUids.has(uid) && window.getRole(uid).level >= 2) {
-                push(ref(db, `notifications/${uid}`), {
+                push(ref(db2, `notifications/${uid}`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
                 notifiedUids.add(uid);
@@ -225,7 +225,7 @@ window.notifyMentions = (text, postId) => {
             const name = match.substring(1).toLowerCase();
             const targetUser = Object.values(window.globalUsersCache).find(u => u.name && u.name.toLowerCase() === name);
             if(targetUser && targetUser.uid !== window.currentUser.uid && !notifiedUids.has(targetUser.uid)) {
-                push(ref(db, `notifications/${targetUser.uid}`), {
+                push(ref(db2, `notifications/${targetUser.uid}`), {
                     type: 'mention', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false
                 });
                 notifiedUids.add(targetUser.uid);
@@ -625,12 +625,40 @@ if (typeof window.openProfile === 'function') {
     };
 }
 
+// ============================================================
+// NOTIFICATIONS LIVE IN RTDB 2 (hangoutrgm2).
+// Moved off RTDB 1 so the main database stops carrying this ever-growing,
+// per-user node (every reaction / comment / mention / poke / follow / chat
+// mention writes here, and every client reads its own 50 latest on every open).
+//   /notifications/{uid}/{notifId} = { type, sourceUid|fromUid, timestamp, read, ... }
+// ============================================================
+
+// One-time, per account: copy whatever is still on RTDB 1 into RTDB 2, then
+// clear RTDB 1. Runs at most once per device+account (localStorage flag) and is
+// retried on the next visit if the copy failed — the delete only ever happens
+// AFTER a successful copy, and merging the same push keys twice is harmless.
+window._migrateNotifications = async (uid) => {
+    if (!uid) return;
+    const flagKey = `hangout_notif_moved_${uid}`;
+    try { if (localStorage.getItem(flagKey) === '1') return; } catch (e) { /* private mode */ }
+    try {
+        const legacy = await get(ref(db, `notifications/${uid}`));
+        if (legacy.exists()) {
+            await update(ref(db2, `notifications/${uid}`), legacy.val());
+            await remove(ref(db, `notifications/${uid}`));
+        }
+        try { localStorage.setItem(flagKey, '1'); } catch (e) {}
+    } catch (e) {
+        console.warn('Notification move to RTDB 2 failed — retrying on the next visit:', e);
+    }
+};
+
 // Dedicated notifications listener — only for the logged-in user, limited to last 50.
 // Kept separate from /users so that notification changes don't re-download all user profiles.
 window._notifUnsubscribe = null;
 window._startNotifListener = (uid) => {
     if (window._notifUnsubscribe) window._notifUnsubscribe();
-    const notifQuery = dbQuery(ref(db, `notifications/${uid}`), limitToLast(50));
+    const notifQuery = dbQuery(ref(db2, `notifications/${uid}`), limitToLast(50));
     window._notifUnsubscribe = onValue(notifQuery, (snap) => {
         window.myNotifications = snap.val() || {};
         window.updateNotifBadge();
@@ -1570,7 +1598,7 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     
     if(window.currentUser.uid !== postAuthorId && postAuthorId !== "undefined") {
         update(ref(db, `users/${postAuthorId}`), { points: increment(pointsToAdd) });
-        push(ref(db, `notifications/${postAuthorId}`), { 
+        push(ref(db2, `notifications/${postAuthorId}`), { 
             type: 'comment', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
     }
@@ -1600,7 +1628,7 @@ window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
     window.logActivity(`commented on a post by ${commentAuthorName}`);
     
     if(window.currentUser.uid !== commentAuthorId && commentAuthorId !== "undefined") {
-        push(ref(db, `notifications/${commentAuthorId}`), { 
+        push(ref(db2, `notifications/${commentAuthorId}`), { 
             type: 'reply', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false 
         });
     }
@@ -1644,7 +1672,7 @@ window.react = (postId, postAuthorId, type) => {
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
             update(ref(db, `users/${postAuthorId}`), { points: increment(likePoints) });
         }
-            push(ref(db, `notifications/${postAuthorId}`), { 
+            push(ref(db2, `notifications/${postAuthorId}`), { 
                 type: 'react_post', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
         }
@@ -1686,7 +1714,7 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${commentAuthorId}`), { points: increment(likePoints) });
-            push(ref(db, `notifications/${commentAuthorId}`), { 
+            push(ref(db2, `notifications/${commentAuthorId}`), { 
                 type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
         }
@@ -1729,7 +1757,7 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${replyAuthorId}`), { points: increment(likePoints) });
-            push(ref(db, `notifications/${replyAuthorId}`), { 
+            push(ref(db2, `notifications/${replyAuthorId}`), { 
                 type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
         }
@@ -2213,6 +2241,10 @@ onAuthStateChanged(auth, (user) => {
 
         window.updateNotifBadge();
 
+        // One-time move of this account's notification history off RTDB 1
+        // (fire-and-forget; the listener below picks up the copied data).
+        if (window._migrateNotifications) window._migrateNotifications(user.uid);
+
         // Start the dedicated notifications listener for this user
         if (window._startNotifListener) window._startNotifListener(user.uid);
 
@@ -2223,7 +2255,7 @@ onAuthStateChanged(auth, (user) => {
             const pruneKey = `hangout_notif_prune_${user.uid}`;
             const lastPrune = Number(localStorage.getItem(pruneKey) || 0);
             if (Date.now() - lastPrune < 24 * 60 * 60 * 1000) return;
-            get(ref(db, `notifications/${user.uid}`)).then(snap => {
+            get(ref(db2, `notifications/${user.uid}`)).then(snap => {
                 localStorage.setItem(pruneKey, Date.now());
                 const allNotifs = snap.val();
                 if (allNotifs) {
@@ -2234,7 +2266,7 @@ onAuthStateChanged(auth, (user) => {
                         const keysToDelete = keys.slice(0, keys.length - 50);
                         const updates = {};
                         keysToDelete.forEach(k => updates[k] = null);
-                        update(ref(db, `notifications/${user.uid}`), updates).catch(e => console.warn("Failed to prune notifications", e));
+                        update(ref(db2, `notifications/${user.uid}`), updates).catch(e => console.warn("Failed to prune notifications", e));
                     }
                 }
             }).catch(e => console.warn("Failed to fetch notifications for pruning", e));
