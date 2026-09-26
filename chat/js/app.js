@@ -543,7 +543,7 @@ function renderNotes() {
   let html = `
     <button class="note-item me${myNote ? ' has-note' : ''}" onclick="window.openMyNote()" title="${myNote ? 'Edit my note' : 'Add a note'}">
       ${myNote ? `<span class="note-bubble"><span class="note-bubble-text">${escapeHtml(myNote)}</span></span>` : ''}
-      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl({ ...(state.users[me] || {}), uid: me }))}" alt="" title="View profile" onclick="event.stopPropagation(); window.openUserProfile('${me}')"></span>
+      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl({ ...(state.users[me] || {}), uid: me }))}" alt=""></span>
       <span class="note-label">My note</span>
       ${myReacts ? `<span class="note-reacts${state.notes[me]?.reactions?.[me] ? ' mine' : ''}">${escapeHtml(myReacts)}</span>` : ''}
     </button>`;
@@ -553,7 +553,7 @@ function renderNotes() {
     html += `
     <button class="note-item has-note" onclick="window.openNote('${uid}', this)" title="${escapeHtml(n.text)}">
       <span class="note-bubble"><span class="note-bubble-text">${escapeHtml(n.text)}</span></span>
-      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl(u))}" alt="" title="View profile" onclick="event.stopPropagation(); window.openUserProfile('${uid}')"></span>
+      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl(u))}" alt=""></span>
       <span class="note-label">${escapeHtml(u.name || 'Member')}</span>
       ${reacts ? `<span class="note-reacts${n.reactions?.[me] ? ' mine' : ''}">${escapeHtml(reacts)}</span>` : ''}
     </button>`;
