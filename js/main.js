@@ -10,7 +10,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // evaluated a second time alongside index.html's "js/helpers.js?v=64" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html.
 import "./helpers.js?v=64";
-import "./renderers.js?v=67";
+import "./renderers.js?v=68";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -1261,6 +1261,11 @@ window.closeCreateMenu = () => {
     const modal = document.getElementById('create-type-modal');
     if (modal) modal.classList.add('hidden');
 };
+
+// Polls & Events now live in the "Create a post" menu. They reuse the game modal's
+// form (which already carries the poll/event fields) with the type pre-selected.
+window.openCreatePoll = () => { window.closeCreateMenu(); window.openPostGameModal('poll'); };
+window.openCreateEvent = () => { window.closeCreateMenu(); window.openPostGameModal('event'); };
 
 window.clearPendingVoice = () => {
     if (window._pendingVoiceObjectUrl) {

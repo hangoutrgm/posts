@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=12">
+    <link rel="stylesheet" href="css/styles.css?v=13">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -191,6 +191,14 @@
                 <button class="create-type-btn" onclick="window.openCreateComposer('voice')">
                     <span class="create-type-icon bg-rose-100 dark:bg-rose-900/30 text-rose-500"><i class="fa-solid fa-microphone"></i></span>
                     <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Voice message</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Record a voice note</span></span>
+                </button>
+                <button class="create-type-btn" onclick="window.openCreatePoll()">
+                    <span class="create-type-icon bg-indigo-100 dark:bg-indigo-900/30 text-indigo-500"><i class="fa-solid fa-square-poll-vertical"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Poll</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Ask the community to vote</span></span>
+                </button>
+                <button class="create-type-btn" onclick="window.openCreateEvent()">
+                    <span class="create-type-icon bg-orange-100 dark:bg-orange-900/30 text-orange-500"><i class="fa-solid fa-calendar-days"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Event</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Schedule a community event</span></span>
                 </button>
             </div>
         </div>
@@ -467,11 +475,11 @@
     <div id="game-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
         <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-xl shadow-xl overflow-hidden animate-bounce-in">
             <div class="bg-purple-600 p-3 flex justify-between items-center text-white">
-                <h2 class="font-bold text-sm"><i class="fa-solid fa-gamepad mr-2"></i>Post a Game</h2>
+                <h2 id="game-modal-title" class="font-bold text-sm"><i class="fa-solid fa-gamepad mr-2"></i>Post a Game</h2>
                 <button onclick="window.closePostGameModal()" class="hover:text-purple-200"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="p-4 overflow-y-auto max-h-[75vh]">
-                <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Game Type</label>
+                <label id="game-type-label" class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Game Type</label>
                 <select id="game-type" onchange="window.toggleGameSettings()" class="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg p-2 text-sm dark:text-white mb-3 outline-none">
                     <option value="first_to_mine">First to Mine</option>
                     <option value="last_comment">Last Comment</option>
@@ -500,8 +508,11 @@
                     <option value="bingo">Bingo</option>
                     <option value="spin_names">Spin the Names</option>
                     <option value="ncl">ncl</option>
-                    <option value="poll">📊 Poll</option>
-                    <option value="event">📅 Event</option>
+                    <!-- Poll & Event moved to the "Create a post" menu. They stay in the
+                         list (hidden + disabled) so window.openPostGameModal('poll'|'event')
+                         can still select them, but nobody can pick them as a game. -->
+                    <option value="poll" hidden>📊 Poll</option>
+                    <option value="event" hidden>📅 Event</option>
                 </select>
 
                 <div id="game-limit-indicator" class="hidden mb-3 flex items-center gap-2 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
@@ -1048,12 +1059,12 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=4"></script>
-    <script type="module" src="js/renderers.js?v=67"></script>
+    <script type="module" src="js/renderers.js?v=68"></script>
     <script type="module" src="js/helpers.js?v=64"></script>
-    <script type="module" src="js/games.js?v=58"></script>
+    <script type="module" src="js/games.js?v=61"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=17"></script>
-    <script type="module" src="js/main.js?v=63"></script>
+    <script type="module" src="js/main.js?v=64"></script>
     <script>
         if ('serviceWorker' in navigator) {
             // Was this page already controlled by a service worker when it loaded?

@@ -15,6 +15,24 @@ window.turnTimerHtml = (post, gameType, deadlineField) => {
     return `<div class="turn-timer mt-2 inline-flex items-center gap-1.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-[11px] font-bold px-3 py-1 rounded-full" data-deadline="${deadline}" data-postid="${post.id}" data-gametype="${gameType}"><span class="turn-timer-icon">⏱️</span> <span class="turn-timer-secs">${remaining}</span>s</div>`;
 };
 
+// Big live countdown for event posts. Rendered inside a `.game-timer` element with
+// data-countdown="event" + data-endtime="<event start>", so the existing 1-second
+// ticker in games.js (updateGameTimers) keeps it fresh. Styling lives in
+// css/styles.css (.evt-timer*) so it never depends on the compiled Tailwind build.
+window.eventCountdownInner = (msLeft) => {
+    if (!(msLeft > 0)) return `<div class="evt-timer-now">🎉 Happening now!</div>`;
+    const total = Math.floor(msLeft / 1000);
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    const parts = [];
+    if (days > 0) parts.push([days, 'days']);
+    parts.push([hours, 'hours'], [mins, 'mins'], [secs, 'secs']);
+    const unit = ([value, label]) => `<div class="evt-timer-unit"><span class="evt-timer-num">${String(value).padStart(2, '0')}</span><span class="evt-timer-label">${label}</span></div>`;
+    return `<div class="evt-timer-head">Starts in</div><div class="evt-timer-row">${parts.map(unit).join('<span class="evt-timer-sep">:</span>')}</div>`;
+};
+
 window.formatLogPrizeBadges = (prize, lbPoints) => {
     const badges = [];
     if (prize) {
@@ -1894,12 +1912,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             const isInterested = myRsvp === 'interested';
             let statusHtml;
             if (now < start) {
-                const diff = start - now;
-                const d = Math.floor(diff / 86400000);
-                const h = Math.floor((diff % 86400000) / 3600000);
-                const m = Math.floor((diff % 3600000) / 60000);
-                const countdownHtml = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
-                statusHtml = `<div class="inline-flex items-center gap-1.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/25 font-bold px-3.5 py-1.5 rounded-full text-xs shadow-sm"><i class="fa-regular fa-clock"></i> Starts in <span class="font-black tnum">${countdownHtml}</span></div>`;
+                // Upcoming: the big live countdown block below takes this slot.
+                statusHtml = '';
             } else if (now < end) {
                 statusHtml = `<div class="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/25 font-bold px-3.5 py-1.5 rounded-full text-xs shadow-sm animate-pulse"><i class="fa-solid fa-circle animate-pulse text-[8px]"></i> Happening now!</div>`;
             } else {
@@ -1923,6 +1937,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         </div>
                     </div>
                     ${post.eventDescription ? `<p class="text-xs text-slate-500 dark:text-slate-400 mb-2.5 leading-relaxed">${escapeHtml(post.eventDescription)}</p>` : ''}
+                    ${now < start ? `<div class="evt-timer game-timer" data-countdown="event" data-endtime="${start}">${window.eventCountdownInner(start - now)}</div>` : ''}
                     <div class="flex items-center justify-between flex-wrap gap-1.5 mb-2">
                         ${statusHtml}
                         <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500"><i class="fa-regular fa-calendar mr-0.5"></i>${startStr}</span>

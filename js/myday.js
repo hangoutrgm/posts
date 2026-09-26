@@ -426,7 +426,11 @@ function ensureReactPicker() {
     // tap that OPENS the picker never reaches these handlers.
     document.addEventListener('click', (ev) => {
         if (reactPickerEl.classList.contains('hidden')) return;
-        if (reactPickerEl.contains(ev.target)) return;
+        // composedPath() is captured at dispatch, so a target that a handler already
+        // re-rendered away still counts as inside the picker.
+        const path = typeof ev.composedPath === 'function' ? ev.composedPath() : null;
+        const inside = path ? path.includes(reactPickerEl) : reactPickerEl.contains(ev.target);
+        if (inside) return;
         closeReactPicker();
     });
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeReactPicker(); });

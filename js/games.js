@@ -665,7 +665,7 @@ window.updateGameLimitIndicator = async () => {
     }
 };
 
-window.openPostGameModal = () => {
+window.openPostGameModal = (presetType) => {
     if (!window.currentUser) return window.showAlert("Please sign in to host a game.");
     document.getElementById('game-modal').classList.remove('hidden');
     
@@ -749,7 +749,26 @@ window.openPostGameModal = () => {
         window.toggleSpinNamesWinners();
     }
 
-    document.getElementById('game-type').value = 'first_to_mine';
+    // 'poll' / 'event' arrive pre-selected when opened from the "Create a post" menu
+    // (they stay in the list, hidden, so they remain selectable by code). For those the
+    // type is already decided, so the picker itself is hidden.
+    const fixedType = presetType === 'poll' || presetType === 'event';
+    const typeSelect = document.getElementById('game-type');
+    typeSelect.value = presetType || 'first_to_mine';
+    const typeLabel = document.getElementById('game-type-label');
+    if (typeLabel) typeLabel.classList.toggle('hidden', fixedType);
+    if (typeSelect) typeSelect.classList.toggle('hidden', fixedType);
+    const modalTitle = document.getElementById('game-modal-title');
+    if (modalTitle) {
+        modalTitle.innerHTML = presetType === 'poll'
+            ? '<i class="fa-solid fa-square-poll-vertical mr-2"></i>Create a Poll'
+            : presetType === 'event'
+                ? '<i class="fa-solid fa-calendar-days mr-2"></i>Create an Event'
+                : '<i class="fa-solid fa-gamepad mr-2"></i>Post a Game';
+    }
+    // …and the submit button follows: "Create Post" for a poll/event, "Post Game" otherwise.
+    const submitBtn = document.getElementById('post-game-btn');
+    if (submitBtn) submitBtn.textContent = fixedType ? 'Create Post' : 'Post Game';
     
     // LB caps follow the admin's settings (per-game cap, else the global LB max).
     // refreshGameLbCapUi() also re-runs whenever /settings arrive, so this can never
@@ -2329,6 +2348,12 @@ window.updateGameTimers = () => {
     timers.forEach(el => {
         const endTime = parseInt(el.getAttribute('data-endtime'));
         const diff = endTime - now;
+        // Event posts show a big multi-unit countdown to the event START instead of
+        // the MM:SS game clock (markup built by window.eventCountdownInner).
+        if (el.dataset.countdown === 'event') {
+            if (typeof window.eventCountdownInner === 'function') el.innerHTML = window.eventCountdownInner(diff);
+            return;
+        }
         if (diff <= 0) {
             el.innerText = "ENDED";
             el.classList.replace("text-purple-600", "text-red-500");
