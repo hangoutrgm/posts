@@ -2539,6 +2539,28 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Reaction chip painted on the note avatar (display only — you react in the
+   note viewer; the same react also shows on My Day). */
+.note-reacts {
+  position: absolute;
+  right: 0;
+  bottom: 15px;
+  z-index: 3;
+  padding: 1px 5px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+.note-reacts.mine {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
 
 /* ═══════════ THEME MENU (paint brush) ═══════════ */
 .theme-btn-wrap { position: relative; }
@@ -2613,7 +2635,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .note-popover {
   position: fixed;
   z-index: 120;
-  width: 200px;
+  width: 244px;
+  max-width: calc(100vw - 16px);
   padding: 14px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -2625,7 +2648,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   width: 26px; height: 26px;
 }
 .note-popover .note-view-person { display: flex; align-items: center; gap: 10px; padding-right: 24px; }
-.note-popover .note-view-person .avatar { width: 40px; height: 40px; }
+.note-popover .note-view-person .avatar { width: 40px; height: 40px; cursor: pointer; }
 .note-popover .note-view-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .note-popover .note-view-meta strong {
   font-size: 14px; font-weight: 800; color: var(--ink);
@@ -2642,6 +2665,60 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* Note reactions (same 6 emojis as message reactions) + Reply */
+.note-popover .note-react-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.note-react-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: transform var(--transition), background var(--transition), border-color var(--transition);
+}
+.note-react-btn:hover { transform: scale(1.08); }
+.note-react-btn b { font-size: 9px; font-weight: 800; color: var(--ink-muted); }
+.note-react-btn.mine { background: var(--accent-glow); border-color: var(--accent); }
+.note-react-btn.mine b { color: var(--accent); }
+.note-reply-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+.note-reply-btn:hover { transform: translateY(-1px); }
+.note-reply-btn svg {
+  width: 14px; height: 14px;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
 }
 
 /* ═══════════ CHAT HEADER NOTE CHIP ═══════════ */

@@ -5,9 +5,16 @@
 // It shows by default; opening the + composer hides the strip.
 //
 // Data — all in db2 (hangoutrgm2):
-//   /notes/{uid} = { text, updatedAt }           (chat notes — always shown)
-//   /myday/{uid} = { video | pic, createdAt }    (one story per user; 24h TTL)
-//   /myday_collections/{uid}/{id} = { video | pic, createdAt }  (permanent archive — profile section)
+//   /notes/{uid} = { text, updatedAt, reactions? }         (chat notes — always shown)
+//   /myday/{uid} = { video | pic, createdAt, reactions? }  (one story per user; 24h TTL)
+//   /myday_collections/{uid}/{id} = { video | pic, createdAt, hidden? }  (permanent archive — profile section)
+//
+// Reactions: /notes/{uid}/reactions/{reactorUid} = emoji
+//            /myday/{uid}/reactions/{reactorUid} = emoji
+// Chat and My Day render the SAME note node, so a react placed on a chat note
+// appears on My Day (and vice-versa) with no extra wiring.
+// `hidden: true` on a collection entry hides it from everyone except its owner
+// (who still sees it dimmed, with the eye toggle to unhide it).
 //
 // Ordering priority: video stories → pic stories → note-only users.
 // Media opens the main site's shared viewer modal (window.viewImage)
@@ -64,6 +71,59 @@ const $ = (id) => document.getElementById(id);
 
 const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
 
+// ------------------------------------------------------------
+// REACTIONS — shared by My Day stories and notes
+// Same 6 emojis chat uses for message reactions, so both match.
+// ------------------------------------------------------------
+const REACT_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+
+const myUid = () => auth.currentUser?.uid || null;
+
+// [{ emoji, count }] sorted by popularity — powers the card chip.
+function reactTotals(reactions) {
+    const counts = {};
+    Object.values(reactions || {}).forEach((e) => { if (e) counts[e] = (counts[e] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+}
+
+function myReactionOf(reactions) {
+    const me = myUid();
+    return me ? (reactions && reactions[me]) || null : null;
+}
+
+// The story record (video or pic) for a uid — reactions ride along on it.
+function storyOf(uid) { return myVideos[uid] || myPics[uid] || null; }
+
+// Emoji row shown inside the note modal: one button per emoji, each carrying its
+// own count and highlighted when it is MY reaction (tap again to remove).
+function reactRowHtml(target, reactions) {
+    const mine = myReactionOf(reactions);
+    return REACT_EMOJIS.map((e) => {
+        const count = Object.values(reactions || {}).filter((v) => v === e).length;
+        return `<button type="button" class="myday-react-btn${mine === e ? ' mine' : ''}" onclick="window.MyDay.react('${target}','${e}')" title="React ${e}">${e}${count ? `<b>${count}</b>` : ''}</button>`;
+    }).join('');
+}
+
+// Small "👍 3" badge painted on a story / note card — tapping it opens the picker.
+function reactChipHtml(target, reactions) {
+    const totals = reactTotals(reactions);
+    const total = totals.reduce((n, [, c]) => n + c, 0);
+    if (!total) {
+        return `<span class="myday-react-chip empty" onclick="event.stopPropagation(); window.MyDay.openReactPicker('${target}', this)" title="React to this"><i class="fa-regular fa-face-smile"></i></span>`;
+    }
+    const mine = myReactionOf(reactions);
+    return `<span class="myday-react-chip${mine ? ' mine' : ''}" onclick="event.stopPropagation(); window.MyDay.openReactPicker('${target}', this)" title="React to this">${esc(mine || totals[0][0])}${total > 1 ? ` <b>${total}</b>` : ''}</span>`;
+}
+
+// Optimistic local write so a tap repaints before the live listener answers.
+function setLocalReaction(uid, isNote, reactor, emoji) {
+    const bag = isNote ? myNotes[uid] : storyOf(uid);
+    if (!bag) return;
+    const rx = { ...(bag.reactions || {}) };
+    if (emoji) rx[reactor] = emoji; else delete rx[reactor];
+    bag.reactions = Object.keys(rx).length ? rx : null;
+}
+
 // Force an MP4 / H.264 delivery URL so Mobile Safari (no .webm playback) and
 // Android can always play My Day videos. Cloudinary transcodes on the fly.
 function videoPlayUrl(url) {
@@ -106,17 +166,21 @@ function storyType(uid) {
     return 'none';
 }
 
-// A story card for someone else
+// A story card for someone else. Tapping the avatar opens their profile;
+// tapping anywhere else opens the media / note as before.
 function cardHtml(uid) {
     const type = storyType(uid);
     const avatar = esc(avatarOf(uid));
     const name = esc(nameOf(uid));
+    const openProfile = `event.stopPropagation(); window.openProfile('${uid}')`;
+    const avatarTag = `<span class="myday-card-avatar${type === 'video' ? ' video-ring' : ''}" onclick="${openProfile}" title="View profile"><img src="${avatar}" alt=""></span>`;
     if (type === 'video') {
         return `
     <div class="myday-card" onclick="window.viewImage('${esc(videoPlayUrl(myVideos[uid].video))}')" title="Watch My Day video">
         <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
-        <span class="myday-card-avatar video-ring"><img src="${avatar}" alt=""></span>
+        ${avatarTag}
         <span class="myday-play"><i class="fa-solid fa-play"></i></span>
+        ${reactChipHtml(`story:${uid}`, myVideos[uid].reactions)}
         <span class="myday-card-label">${name}</span>
     </div>`;
     }
@@ -124,7 +188,8 @@ function cardHtml(uid) {
         return `
     <div class="myday-card" onclick="window.viewImage('${esc(myPics[uid].pic)}')" title="View My Day photo">
         <img class="myday-card-bg" src="${esc(myPics[uid].pic)}" alt="" loading="lazy">
-        <span class="myday-card-avatar"><img src="${avatar}" alt=""></span>
+        ${avatarTag}
+        ${reactChipHtml(`story:${uid}`, myPics[uid].reactions)}
         <span class="myday-card-label">${name}</span>
     </div>`;
     }
@@ -132,8 +197,9 @@ function cardHtml(uid) {
     return `
     <div class="myday-card" onclick="window.MyDay.openNote('${uid}')" title="${esc('Note: ' + noteText)}">
         <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
-        <span class="myday-card-avatar"><img src="${avatar}" alt=""></span>
+        ${avatarTag}
         <span class="myday-cloud"><span class="myday-cloud-text">${esc(noteText)}</span></span>
+        ${reactChipHtml(`note:${uid}`, myNotes[uid]?.reactions)}
         <span class="myday-card-label">${name}</span>
     </div>`;
 }
@@ -161,7 +227,7 @@ function ownCardHtml(me) {
     const bg = type === 'pic'
         ? `<img class="myday-card-bg" src="${esc(myPics[me].pic)}" alt="" loading="lazy">`
         : (hasContent ? `<img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">` : '');
-    const ring = `<span class="myday-card-avatar ${type === 'video' ? 'video-ring' : ''}"><img src="${avatar}" alt=""></span>`;
+    const ring = `<span class="myday-card-avatar ${type === 'video' ? 'video-ring' : ''}" onclick="event.stopPropagation(); window.openProfile('${me}')" title="View profile"><img src="${avatar}" alt=""></span>`;
     let body = '';
     if (type === 'video') body = '<span class="myday-play"><i class="fa-solid fa-play"></i></span>';
     else if (type === 'note') body = `<span class="myday-cloud"><span class="myday-cloud-text">${esc((myNotes[me]?.text || '').slice(0, 90))}</span></span>`;
@@ -207,30 +273,41 @@ function renderStrip() {
 // ------------------------------------------------------------
 // MY DAY COLLECTIONS — permanent archive of every My Day upload,
 // shown in the user profile (below the Photos section).
-//   /myday_collections/{uid}/{pushId} = { pic | video, createdAt }
+//   /myday_collections/{uid}/{pushId} = { pic | video, createdAt, hidden? }
 // Read ON DEMAND (one get per user, then cached in memory) so the
 // profile never holds a listener on this ever-growing node.
 // ------------------------------------------------------------
-const collectionsCache = {};    // uid -> [ { pic|video, createdAt } ] (newest first)
+const collectionsCache = {};    // uid -> [ { id, pic|video, createdAt, hidden } ] (newest first)
 const collectionsPending = {};  // uid -> in-flight promise (dedupes rapid re-renders)
+let lastCollectionsView = { containerId: null, uid: null }; // re-render target after a hide/unhide
 
-// One archived item — same card look as the feed strip.
-function collectionCardHtml(item, uid) {
+// One archived item — same card look as the feed strip. The avatar opens the
+// owner's profile; when the viewer IS the owner, an eye toggle hides/unhides it.
+function collectionCardHtml(item, uid, isOwner) {
     const avatar = esc(avatarOf(uid));
     const name = esc(nameOf(uid));
+    const profileClick = `event.stopPropagation(); window.openProfile('${uid}')`;
+    const hidden = item.hidden === true;
+    const avatarTag = `<span class="myday-card-avatar${item.video ? ' video-ring' : ''}" onclick="${profileClick}" title="View profile"><img src="${avatar}" alt=""></span>`;
+    const hideTag = isOwner
+        ? `<span class="myday-hide" onclick="event.stopPropagation(); window.MyDay.toggleCollectionHidden('${esc(item.id)}', ${hidden ? 'false' : 'true'})" title="${hidden ? 'Unhide — show it on your profile again' : 'Hide — keep it private'}"><i class="fa-solid ${hidden ? 'fa-eye-slash' : 'fa-eye'}"></i></span>`
+        : '';
+    const cls = `myday-card${hidden ? ' is-hidden' : ''}${isOwner ? ' has-hide' : ''}`;
     if (item.video) {
         return `
-    <div class="myday-card" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(videoPlayUrl(item.video))}')" title="Watch My Day video">
+    <div class="${cls}" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(videoPlayUrl(item.video))}')" title="Watch My Day video">
         <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
-        <span class="myday-card-avatar video-ring"><img src="${avatar}" alt=""></span>
+        ${avatarTag}
         <span class="myday-play"><i class="fa-solid fa-play"></i></span>
+        ${hideTag}
         <span class="myday-card-label">${name}</span>
     </div>`;
     }
     return `
-    <div class="myday-card" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(item.pic)}')" title="View My Day photo">
+    <div class="${cls}" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(item.pic)}')" title="View My Day photo">
         <img class="myday-card-bg" src="${esc(item.pic)}" alt="" loading="lazy">
-        <span class="myday-card-avatar"><img src="${avatar}" alt=""></span>
+        ${avatarTag}
+        ${hideTag}
         <span class="myday-card-label">${name}</span>
     </div>`;
 }
@@ -242,7 +319,7 @@ function fetchCollections(uid) {
         .then((snap) => {
             const raw = snap.val() || {};
             collectionsCache[uid] = Object.keys(raw)
-                .map((k) => raw[k])
+                .map((id) => ({ id, ...raw[id] }))
                 .filter((it) => it && (it.pic || it.video))
                 .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
             return collectionsCache[uid];
@@ -267,8 +344,13 @@ async function renderCollections(containerId, uid) {
     const box = $(containerId);
     if (!box) return;
     const section = box.parentElement;
-    if (!items.length) { box.innerHTML = ''; if (section) section.classList.add('hidden'); return; }
-    box.innerHTML = items.map((it) => collectionCardHtml(it, uid)).join('');
+    lastCollectionsView = { containerId, uid };
+    const isOwner = Boolean(window.currentUser?.uid && window.currentUser.uid === uid);
+    // Hidden entries stay private: only the owner still sees them (dimmed, so
+    // they can be unhidden again).
+    const visible = isOwner ? items : items.filter((it) => it.hidden !== true);
+    if (!visible.length) { box.innerHTML = ''; if (section) section.classList.add('hidden'); return; }
+    box.innerHTML = visible.map((it) => collectionCardHtml(it, uid, isOwner)).join('');
     if (section) section.classList.remove('hidden');
 }
 
@@ -284,24 +366,150 @@ async function archiveMyDay(media) {
 }
 
 // ------------------------------------------------------------
+// NOTE MODAL (tap a note card) — avatar opens the profile + reactions row.
+// The note node is shared with chat, so reacts land on both surfaces.
+// ------------------------------------------------------------
+let currentNoteUid = null;
+
+function fillNoteModal(uid) {
+    const note = myNotes[uid];
+    if (!note || !note.text) return;
+    currentNoteUid = uid;
+    const avEl = $('myday-note-avatar');
+    const nmEl = $('myday-note-name');
+    const txEl = $('myday-note-text');
+    const barEl = $('myday-note-reactbar');
+    if (avEl) { avEl.src = avatarOf(uid); avEl.title = `${nameOf(uid)} — view profile`; }
+    if (nmEl) nmEl.textContent = nameOf(uid);
+    if (txEl) txEl.textContent = note.text;
+    if (barEl) barEl.innerHTML = reactRowHtml(`note:${uid}`, note.reactions);
+}
+
+// ------------------------------------------------------------
+// REACT PICKER — one small floating emoji row, shared by every card chip
+// (the note modal uses the inline row instead).
+// ------------------------------------------------------------
+let reactPickerEl = null;
+let reactPickerTarget = null;
+
+function closeReactPicker() {
+    reactPickerTarget = null;
+    if (reactPickerEl) reactPickerEl.classList.add('hidden');
+}
+
+function ensureReactPicker() {
+    if (reactPickerEl) return reactPickerEl;
+    reactPickerEl = document.createElement('div');
+    reactPickerEl.id = 'myday-react-picker';
+    reactPickerEl.className = 'myday-react-picker hidden';
+    reactPickerEl.innerHTML = REACT_EMOJIS.map((e) => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
+    reactPickerEl.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button[data-emoji]');
+        if (!btn || !reactPickerTarget) return;
+        const target = reactPickerTarget;
+        closeReactPicker();
+        window.MyDay.react(target, btn.dataset.emoji);
+    });
+    document.body.appendChild(reactPickerEl);
+    // Close on any outside click / Escape. The chip stops propagation, so the
+    // tap that OPENS the picker never reaches these handlers.
+    document.addEventListener('click', (ev) => {
+        if (reactPickerEl.classList.contains('hidden')) return;
+        if (reactPickerEl.contains(ev.target)) return;
+        closeReactPicker();
+    });
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeReactPicker(); });
+    return reactPickerEl;
+}
+
+function openReactPicker(targetKey, anchorEl) {
+    const el = ensureReactPicker();
+    // Tapping the same chip again closes the picker.
+    if (reactPickerTarget === targetKey && !el.classList.contains('hidden')) { closeReactPicker(); return; }
+    reactPickerTarget = targetKey;
+    const [kind, uid] = String(targetKey).split(':');
+    const me = myUid();
+    const current = kind === 'note' ? myNotes[uid]?.reactions?.[me] : storyOf(uid)?.reactions?.[me];
+    el.querySelectorAll('button[data-emoji]').forEach((b) => b.classList.toggle('mine', Boolean(current) && b.dataset.emoji === current));
+    el.classList.remove('hidden');
+    const rect = anchorEl && anchorEl.getBoundingClientRect ? anchorEl.getBoundingClientRect() : null;
+    const w = el.offsetWidth || 200;
+    const h = el.offsetHeight || 40;
+    let x = rect ? rect.left + rect.width / 2 - w / 2 : 12;
+    let y = rect ? rect.bottom + 6 : 120;
+    x = Math.max(8, Math.min(x, window.innerWidth - w - 8));
+    if (y + h > window.innerHeight - 8) y = Math.max(8, (rect ? rect.top : 120) - h - 6);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+}
+
+// ------------------------------------------------------------
 // PUBLIC API + MEDIA UPLOAD (own My Day bubble — photo OR video)
 // ------------------------------------------------------------
 window.MyDay = {
     openNote: (uid) => {
-        const note = myNotes[uid];
-        if (!note || !note.text) return;
-        const avEl = $('myday-note-avatar');
-        const nmEl = $('myday-note-name');
-        const txEl = $('myday-note-text');
-        if (avEl) avEl.src = avatarOf(uid);
-        if (nmEl) nmEl.textContent = nameOf(uid);
-        if (txEl) txEl.textContent = note.text;
+        if (!myNotes[uid]?.text) return;
+        fillNoteModal(uid);
         const modal = $('myday-note-modal');
         if (modal) modal.classList.remove('hidden');
     },
     closeNote: () => {
         const modal = $('myday-note-modal');
         if (modal) modal.classList.add('hidden');
+    },
+    // Tapping the note avatar opens that member's profile.
+    openNoteProfile: () => {
+        const uid = currentNoteUid;
+        window.MyDay.closeNote();
+        if (uid && window.openProfile) window.openProfile(uid);
+    },
+    openReactPicker,
+    closeReactPicker,
+    // target = `note:{uid}` (a note) or `story:{uid}` (a My Day photo / video).
+    // Tapping the emoji already picked removes it.
+    react: async (target, emoji) => {
+        const me = myUid();
+        if (!me) {
+            const am = document.getElementById('auth-modal');
+            if (am) am.classList.remove('hidden');
+            return;
+        }
+        const [kind, uid] = String(target || '').split(':');
+        if (!uid) return;
+        const isNote = kind === 'note';
+        const current = (isNote ? myNotes[uid]?.reactions?.[me] : storyOf(uid)?.reactions?.[me]) || null;
+        const path = `${isNote ? 'notes' : 'myday'}/${uid}/reactions/${me}`;
+        try {
+            if (current === emoji) await remove(ref(db2, path));
+            else await set(ref(db2, path), emoji);
+        } catch (e) {
+            window.showToast('Could not react: ' + e.message);
+            return;
+        }
+        // The live db2 listener repaints; update locally first so the tap feels instant.
+        setLocalReaction(uid, isNote, me, current === emoji ? null : emoji);
+        renderStrip();
+        if (isNote && currentNoteUid === uid) fillNoteModal(uid);
+    },
+    // Owner-only: hide / unhide one archived My Day item from the profile.
+    toggleCollectionHidden: async (id, hide) => {
+        const uid = myUid();
+        if (!uid || !id) return;
+        try {
+            const itemRef = ref(db2, `myday_collections/${uid}/${id}/hidden`);
+            if (hide) await set(itemRef, true);
+            else await remove(itemRef);
+        } catch (e) {
+            window.showToast('Could not update that item: ' + e.message);
+            return;
+        }
+        const items = collectionsCache[uid];
+        if (Array.isArray(items)) {
+            const it = items.find((x) => x.id === id);
+            if (it) it.hidden = hide ? true : null;
+        }
+        if (lastCollectionsView.containerId) renderCollections(lastCollectionsView.containerId, lastCollectionsView.uid);
+        window.showToast(hide ? 'Hidden — only you can see it now.' : 'Visible on your profile again.');
     },
     addMedia: () => {
         if (!window.currentUser) {
@@ -401,8 +609,9 @@ function initMyDay() {
         Object.keys(raw).forEach((uid) => {
             const v = raw[uid];
             if (!v || !Number(v.createdAt) || Number(v.createdAt) <= now - STORY_TTL_MS) return;
-            if (v.video) myVideos[uid] = { video: v.video, createdAt: v.createdAt };
-            else if (v.pic) myPics[uid] = { pic: v.pic, createdAt: v.createdAt };
+            const reactions = (v.reactions && typeof v.reactions === 'object') ? v.reactions : null;
+            if (v.video) myVideos[uid] = { video: v.video, createdAt: v.createdAt, reactions };
+            else if (v.pic) myPics[uid] = { pic: v.pic, createdAt: v.createdAt, reactions };
         });
         renderStrip();
         cacheAllData();

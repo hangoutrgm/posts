@@ -227,6 +227,8 @@ function openUserProfile(uid) {
   if (!uid) return;
   window.location.href = `../?profile=${encodeURIComponent(uid)}`;
 }
+// Inline handlers (notes strip avatars, note viewer avatar) call this through window.
+window.openUserProfile = openUserProfile;
 
 const _lastPeerProfileFetch = {};
 async function refreshPeerProfile(peerUid) {
@@ -498,6 +500,32 @@ function restoreNotesCache() {
   } catch (e) {}
 }
 
+// ── Note reactions ──
+// Stored ON the note node (/notes/{uid}/reactions/{reactorUid}) which My Day
+// renders too, so a react here shows up on My Day automatically. Same 6 emojis
+// as message reactions.
+const NOTE_REACT_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+// Compact "👍 3" chip for the notes strip (display only — reacting happens in
+// the note viewer, where the avatar and the card have room for both actions).
+function noteReactsLabel(reactions, me) {
+  const counts = {};
+  Object.values(reactions || {}).forEach((e) => { if (e) counts[e] = (counts[e] || 0) + 1; });
+  const list = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!list.length) return '';
+  const total = list.reduce((n, [, c]) => n + c, 0);
+  const mine = (me && reactions && reactions[me]) || null;
+  return `${mine || list[0][0]}${total > 1 ? ` ${total}` : ''}`;
+}
+// Emoji row inside the note viewer (each button carries its own count and is
+// highlighted when it is MY reaction — tap again to remove it).
+function noteReactRowHtml(uid, reactions) {
+  const me = state.user?.uid;
+  return NOTE_REACT_EMOJIS.map((e) => {
+    const count = Object.values(reactions || {}).filter((v) => v === e).length;
+    return `<button type="button" class="note-react-btn${me && reactions?.[me] === e ? ' mine' : ''}" onclick="window.reactNote('${uid}','${e}')" title="React ${e}">${e}${count ? `<b>${count}</b>` : ''}</button>`;
+  }).join('');
+}
+
 function renderNotes() {
   const strip = $('notes-strip');
   if (!strip) return;
@@ -511,32 +539,43 @@ function renderNotes() {
     .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
 
   const myNote = state.notes[me]?.text;
+  const myReacts = noteReactsLabel(state.notes[me]?.reactions, me);
   let html = `
     <button class="note-item me${myNote ? ' has-note' : ''}" onclick="window.openMyNote()" title="${myNote ? 'Edit my note' : 'Add a note'}">
       ${myNote ? `<span class="note-bubble"><span class="note-bubble-text">${escapeHtml(myNote)}</span></span>` : ''}
-      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl({ ...(state.users[me] || {}), uid: me }))}" alt=""></span>
+      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl({ ...(state.users[me] || {}), uid: me }))}" alt="" title="View profile" onclick="event.stopPropagation(); window.openUserProfile('${me}')"></span>
       <span class="note-label">My note</span>
+      ${myReacts ? `<span class="note-reacts${state.notes[me]?.reactions?.[me] ? ' mine' : ''}">${escapeHtml(myReacts)}</span>` : ''}
     </button>`;
   others.forEach(([uid, n]) => {
     const u = state.users[uid] || {};
+    const reacts = noteReactsLabel(n.reactions, me);
     html += `
     <button class="note-item has-note" onclick="window.openNote('${uid}', this)" title="${escapeHtml(n.text)}">
       <span class="note-bubble"><span class="note-bubble-text">${escapeHtml(n.text)}</span></span>
-      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl(u))}" alt=""></span>
+      <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl(u))}" alt="" title="View profile" onclick="event.stopPropagation(); window.openUserProfile('${uid}')"></span>
       <span class="note-label">${escapeHtml(u.name || 'Member')}</span>
+      ${reacts ? `<span class="note-reacts${n.reactions?.[me] ? ' mine' : ''}">${escapeHtml(reacts)}</span>` : ''}
     </button>`;
   });
   strip.innerHTML = html;
 }
 
-// View someone else's note — tiny popover hovering next to their avatar
+// View someone else's note — tiny popover hovering next to their avatar.
+// Carries the react row + Reply button; the avatar opens their profile.
 window.openNote = (uid, anchorEl) => {
   const note = state.notes[uid];
   if (!note || !note.text) return;
   const u = state.users[uid] || {};
+  window._noteViewUid = uid; // read by the popover's avatar / reply handlers
   $('note-view-avatar').src = avatarUrl(u);
+  $('note-view-avatar').title = `${u.name || 'Member'} — view profile`;
   $('note-view-name').textContent = u.name || 'Member';
   $('note-view-text').textContent = note.text;
+  const reactRow = $('note-react-row');
+  if (reactRow) reactRow.innerHTML = noteReactRowHtml(uid, note.reactions);
+  const replyBtn = $('note-reply-btn');
+  if (replyBtn) replyBtn.classList.toggle('hidden', uid === state.user?.uid); // replying to myself is pointless
   const pop = $('note-popover');
   pop.classList.remove('hidden');
   // Anchor under the clicked avatar, clamped to the viewport (flip above if needed)
@@ -552,6 +591,49 @@ window.openNote = (uid, anchorEl) => {
   } else {
     pop.style.left = '12px';
     pop.style.top = '120px';
+  }
+};
+
+// Toggle my reaction on a note. It is stored on the note node itself, so the
+// very same react shows on My Day (both surfaces render /notes/{uid}).
+window.reactNote = async (uid, emoji) => {
+  if (!state.user) return showAuth();
+  const me = state.user.uid;
+  const mine = state.notes[uid]?.reactions?.[me] || null;
+  try {
+    const reactRef = ref(db2, `notes/${uid}/reactions/${me}`);
+    if (mine === emoji) await remove(reactRef); // tapping the same emoji removes it
+    else await set(reactRef, emoji);
+  } catch (e) {
+    return showToast(`Could not react: ${e.message.replace('Firebase: ', '')}`);
+  }
+  // Update locally first so the tap feels instant — the live listener confirms it.
+  const note = state.notes[uid];
+  if (note) {
+    const rx = { ...(note.reactions || {}) };
+    if (mine === emoji) delete rx[me]; else rx[me] = emoji;
+    note.reactions = Object.keys(rx).length ? rx : null;
+    cacheNotes();
+  }
+  renderNotes();
+  if (!$('note-popover').classList.contains('hidden')) {
+    const reactRow = $('note-react-row');
+    if (reactRow) reactRow.innerHTML = noteReactRowHtml(uid, state.notes[uid]?.reactions);
+  }
+};
+
+// Reply to a note (Messenger-style): open the DM with its author and quote the
+// note in the composer — the reply itself is a normal chat message.
+window.replyToNote = async (uid) => {
+  const note = state.notes[uid];
+  if (!note || !note.text) return;
+  if (!state.user) return showAuth();
+  closeNotePopover();
+  try {
+    if (state.activeThreadId !== threadIdFor(uid)) await startConversation(uid);
+    setReply({ id: `note_${uid}`, senderId: uid, text: note.text });
+  } catch (e) {
+    showToast('Could not open that conversation.');
   }
 };
 
@@ -3194,6 +3276,9 @@ $('search-clear').addEventListener('click', () => {
 // Note viewer — tiny popover (close via X, outside click, or Escape)
 const closeNotePopover = () => $('note-popover')?.classList.add('hidden');
 $('note-view-close').addEventListener('click', closeNotePopover);
+// React (inline row) + Reply (quoted DM) + avatar → profile
+$('note-reply-btn')?.addEventListener('click', () => window.replyToNote(window._noteViewUid));
+$('note-view-avatar')?.addEventListener('click', () => window.openUserProfile(window._noteViewUid));
 document.addEventListener('click', (e) => {
   const pop = $('note-popover');
   if (!pop || pop.classList.contains('hidden')) return;

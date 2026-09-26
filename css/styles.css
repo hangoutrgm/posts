@@ -257,6 +257,105 @@ body {
 .myday-card.own-empty .myday-card-label { position: static; text-align: center; color: #475569; text-shadow: none; }
 .dark .myday-card.own-empty .myday-card-label { color: #cbd5e1; }
 
+/* ── Reactions on My Day cards + note modal ── */
+.myday-react-chip {
+    position: absolute;
+    z-index: 3;
+    top: 6px; right: 6px;
+    min-width: 22px; height: 22px;
+    padding: 0 5px;
+    border-radius: 11px;
+    background: rgba(9, 15, 30, .62);
+    border: 1px solid rgba(255, 255, 255, .45);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+.myday-react-chip b { font-size: 9px; font-weight: 800; }
+.myday-react-chip.mine { background: #2563eb; border-color: rgba(255, 255, 255, .85); }
+.myday-react-chip.empty { background: rgba(9, 15, 30, .42); opacity: .8; font-size: 10px; }
+.myday-react-chip.empty:hover { opacity: 1; }
+/* Floating emoji picker (appended to <body> by myday.js) */
+.myday-react-picker {
+    position: fixed;
+    z-index: 215;
+    display: flex;
+    gap: 2px;
+    padding: 5px 6px;
+    border-radius: 999px;
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+}
+.myday-react-picker button {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    font-size: 16px;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    cursor: pointer;
+    transition: transform .15s, background .15s;
+}
+.myday-react-picker button:hover { background: rgba(255, 255, 255, .12); transform: scale(1.12); }
+.myday-react-picker button.mine { background: rgba(37, 99, 235, .5); }
+/* Inline emoji row inside the My Day note modal */
+.myday-note-reactbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+}
+.dark .myday-note-reactbar { border-top-color: #334155; }
+.myday-react-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 15px;
+    line-height: 1;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: transform .15s, background .15s, border-color .15s;
+}
+.dark .myday-react-btn { background: #1e293b; border-color: #334155; }
+.myday-react-btn:hover { transform: scale(1.08); }
+.myday-react-btn b { font-size: 10px; font-weight: 800; color: #64748b; }
+.dark .myday-react-btn b { color: #94a3b8; }
+.myday-react-btn.mine { background: #dbeafe; border-color: #2563eb; }
+.dark .myday-react-btn.mine { background: rgba(37, 99, 235, .35); border-color: #3b82f6; }
+.myday-react-btn.mine b { color: #2563eb; }
+.dark .myday-react-btn.mine b { color: #93c5fd; }
+/* Owner-only hide / unhide toggle on a My Day collection item */
+.myday-card.has-hide .myday-card-label { right: 28px; }
+.myday-hide {
+    position: absolute;
+    z-index: 3;
+    top: 6px; right: 6px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .45);
+    color: #fff; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(255, 255, 255, .6);
+}
+.myday-card.is-hidden .myday-card-bg { filter: grayscale(1) brightness(.55); }
+.myday-card.is-hidden .myday-card-label { opacity: .75; }
+/* Clickable avatars (My Day cards, note modal) */
+.profile-link { cursor: pointer; }
+
 /* ── Guaranteed stacking for My Day modals ──
    (The full-screen My Day viewer was retired — media now opens the main
    site's shared #image-viewer-modal, which carries its own z-index.) */

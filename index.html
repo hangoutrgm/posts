@@ -31,13 +31,13 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <!-- Prefetch chat page resources for faster navigation -->
     <link rel="prefetch" href="chat/index.html">
-    <link rel="prefetch" href="chat/js/app.js?v=89">
+    <link rel="prefetch" href="chat/js/app.js?v=90">
     <script>
         if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=10">
+    <link rel="stylesheet" href="css/styles.css?v=11">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -203,10 +203,11 @@
                 <button type="button" onclick="window.MyDay.closeNote()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="flex items-center gap-2.5">
-                <img id="myday-note-avatar" class="w-10 h-10 rounded-full object-cover shrink-0" alt="">
+                <img id="myday-note-avatar" class="w-10 h-10 rounded-full object-cover shrink-0 profile-link" alt="" title="View profile" onclick="window.MyDay.openNoteProfile()">
                 <strong id="myday-note-name" class="min-w-0 text-sm font-extrabold text-gray-800 dark:text-white truncate"></strong>
             </div>
             <p id="myday-note-text" class="mt-2.5 text-[13px] leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words"></p>
+            <div id="myday-note-reactbar" class="myday-note-reactbar"></div>
         </div>
     </div>
 
@@ -1051,7 +1052,7 @@
     <script type="module" src="js/helpers.js?v=63"></script>
     <script type="module" src="js/games.js?v=57"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
-    <script type="module" src="js/myday.js?v=14"></script>
+    <script type="module" src="js/myday.js?v=15"></script>
     <script type="module" src="js/main.js?v=61"></script>
     <script>
         if ('serviceWorker' in navigator) {
