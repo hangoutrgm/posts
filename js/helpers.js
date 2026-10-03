@@ -508,7 +508,7 @@ window.viewImage = (src) => {
     if (isVideo && vidEl) {
         if (imgEl) { imgEl.src = ''; imgEl.classList.add('hidden'); }
         vidEl.classList.remove('hidden');
-        vidEl.src = src;
+        vidEl.src = window.optVideo ? window.optVideo(src, 720) : src;
         vidEl.play().catch(() => {});
         downloadBtn.classList.add('hidden');
         downloadBtn.href = '#';
@@ -517,7 +517,7 @@ window.viewImage = (src) => {
     }
 
     if (imgEl) imgEl.classList.remove('hidden');
-    imgEl.src = src;
+    imgEl.src = window.optMedia ? window.optMedia(src, { width: 1440 }) : src;
     if (vidEl) { vidEl.pause(); vidEl.removeAttribute('src'); vidEl.load(); vidEl.classList.add('hidden'); }
     document.getElementById('image-viewer-modal').classList.remove('hidden');
     
@@ -1124,7 +1124,10 @@ window.renderPostMedia = function(post) {
     // Geometry uses inline styles (not utility classes) so the grid shapes are
     // guaranteed: 2 = side-by-side · 3 = big + 2 equal stacked · 4 = 2x2 grid.
     if (imgs.length >= 2) {
-        const imgTag = (u) => `<img src="${u}" loading="lazy" class="cursor-pointer hover:opacity-90 transition" style="width:100%;height:100%;object-fit:cover;min-height:0;" onclick="window.viewImage('${u}')">`;
+        const imgTag = (u) => {
+            const optU = window.optMedia ? window.optMedia(u, { width: 600 }) : u;
+            return `<img src="${optU}" loading="lazy" class="cursor-pointer hover:opacity-90 transition" style="width:100%;height:100%;object-fit:cover;min-height:0;" onclick="window.viewImage('${u}')">`;
+        };
         const wrapStyle = (extra, height) => `style="display:grid;${extra}gap:2px;height:${height}px;border-radius:8px;overflow:hidden;border:1px solid rgba(128,128,128,0.25);margin-top:8px;"`;
         let inner = '';
         if (imgs.length === 2) {
@@ -1152,9 +1155,13 @@ window.renderPostMedia = function(post) {
     const media = post.image;
     if (!media) return '';
     if (isVideoUrl(media)) {
-        return `<video src="${media}" controls class="w-full rounded-lg mb-2 max-h-96 bg-black mt-2"></video>`;
+        const optVid = window.optVideo ? window.optVideo(media, 720) : media;
+        const poster = window.optVideoPoster ? window.optVideoPoster(media, 640) : '';
+        const posterAttr = poster ? ` poster="${poster}"` : '';
+        return `<video src="${optVid}"${posterAttr} preload="none" controls class="w-full rounded-lg mb-2 max-h-96 bg-black mt-2"></video>`;
     }
-    return `<img src="${media}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${media}')">`;
+    const optMediaSrc = window.optMedia ? window.optMedia(media, { width: 1080 }) : media;
+    return `<img src="${optMediaSrc}" loading="lazy" class="w-full rounded-lg mb-2 object-cover max-h-80 border border-gray-100 dark:border-slate-700 shadow-sm mt-2 cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${media}')">`;
 };
 
 // ==========================================

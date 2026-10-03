@@ -606,16 +606,31 @@ window.renderFeed = (resetLimit = true) => {
     // Merge global pinned posts into the display pool so old pinned posts are always available
     const mergedMap = new Map();
     window.allPosts.forEach(p => mergedMap.set(p.id, p));
-    if (window.currentFilter === 'All' || window.currentFilter === 'My Posts') {
+    if (window.currentFilter === 'All' || window.currentFilter === 'My Posts' || window.currentFilter === 'Reels') {
         window.globalPinnedPosts.forEach(p => mergedMap.set(p.id, p));
     } else {
         window.globalPinnedPosts.filter(p => p.category === window.currentFilter).forEach(p => mergedMap.set(p.id, p));
+    }
+
+    // Include all active and historical MyDay uploads when viewing the Reels category
+    if (window.currentFilter === 'Reels' && window.MyDay) {
+        if (typeof window.MyDay.ensureAllCollectionsLoaded === 'function') {
+            window.MyDay.ensureAllCollectionsLoaded();
+        }
+        if (typeof window.MyDay.getAllStoryPosts === 'function') {
+            window.MyDay.getAllStoryPosts().forEach(p => mergedMap.set(p.id, p));
+        }
     }
     const mergedPosts = Array.from(mergedMap.values());
     
     let displayPosts = mergedPosts.filter(p => {
         if (window.currentFilter === "My Posts" && (!window.currentUser || p.authorId !== window.currentUser.uid)) return false;
-        if (window.currentFilter !== "All" && window.currentFilter !== "My Posts" && p.category !== window.currentFilter) return false;
+        if (window.currentFilter === "Reels") {
+            const hasPhotos = Boolean(p.image || (Array.isArray(p.images) && p.images.length > 0)) && !p.isGame && p.category !== 'Games';
+            if (p.category !== "Reels" && !p.isMyDay && !hasPhotos) return false;
+        } else if (window.currentFilter !== "All" && window.currentFilter !== "My Posts" && p.category !== window.currentFilter) {
+            return false;
+        }
         
         // ==========================================
         // V6.1 & V6.2: VISIBILITY & ADMIN BYPASS
@@ -1181,7 +1196,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                         </div>
                         <p class="text-gray-800 dark:text-gray-200 mt-0.5 break-words text-xs">${safeCommentText} ${c.edited ? '<span class="text-[9px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>
                         ${window.generateEmbed(c.text)}
-                        ${c.image ? `<img src="${c.image}" loading="lazy" class="w-full rounded-lg mt-2 object-cover max-h-60 border border-gray-200 dark:border-slate-600 shadow-sm cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${c.image}')">` : ''}
+                        ${c.image ? `<img src="${(window.optMedia && window.optMedia(c.image, { width: 600 })) || c.image}" loading="lazy" class="w-full rounded-lg mt-2 object-cover max-h-60 border border-gray-200 dark:border-slate-600 shadow-sm cursor-pointer hover:opacity-90 transition" onclick="window.viewImage('${c.image}')">` : ''}
                         
                         <div class="flex items-center justify-between mt-1.5 py-0.5">
                             <div class="flex items-center space-x-1 shrink-0">
@@ -2810,7 +2825,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             <span class="text-[9px] text-yellow-600 dark:text-yellow-500 shrink-0 whitespace-nowrap">🏆 ${authorInfo.lbPoints || 0}</span>
                             <span class="text-[9px] text-blue-500 font-bold shrink-0 whitespace-nowrap">👥 ${followerCount}</span>
                         </div>
-                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • <span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span></p>
+                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • ${post.isMyDay ? `<span class="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-semibold"><i class="fa-solid fa-bolt mr-1"></i>My Day</span>` : `<span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span>`}</p>
                     </div>
                 </div>
                 <div class="shrink-0 ml-1 flex items-start">${adminControls}</div>
@@ -2837,6 +2852,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             </div>
             
             <div class="flex items-center space-x-1 shrink-0 ml-auto">
+                ${post.isMyDay ? '' : `
                 <button onclick="window.refreshSinglePost('${post.id}')" class="refresh-btn flex items-center ${window._postLiveListeners && window._postLiveListeners[post.id] ? 'text-green-500' : 'text-gray-400'} hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="${window._postLiveListeners && window._postLiveListeners[post.id] ? 'Live (click to stop)' : 'Refresh Post'}">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
@@ -2849,13 +2865,16 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 <button onclick="window.toggleComments('${post.id}', '${prefix}')" class="flex items-center space-x-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
                     <i class="fa-regular fa-comment text-sm"></i> <span>${commentCount}</span>
                 </button>
+                `}
             </div>
         </div>
         
+        ${post.isMyDay ? '' : `
         <div id="comments-${prefix}-${post.id}" class="${isCommentsOpen ? '' : 'hidden'} mt-1 border-t border-gray-100 dark:border-slate-700 pt-1">
             ${commentInputBox}
             ${commentsHtml}
         </div>
+        `}
     `;
     return postEl;
 }

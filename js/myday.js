@@ -136,16 +136,19 @@ function notifyReaction(targetUid, type, emoji) {
 }
 
 // Force an MP4 / H.264 delivery URL so Mobile Safari (no .webm playback) and
-// Android can always play My Day videos. Cloudinary transcodes on the fly.
+// Android can always play My Day videos. Cloudinary transcodes and compresses on the fly.
 function videoPlayUrl(url) {
-    return String(url || '').replace('/video/upload/', '/video/upload/f_mp4/');
+    if (!url || typeof url !== 'string') return '';
+    if (window.optVideo) return window.optVideo(url, 720);
+    return String(url || '').replace('/video/upload/', '/video/upload/f_mp4,q_auto,w_720,c_limit/');
 }
 
 function avatarOf(uid) {
     const u = window.globalUsersCache?.[uid] || {};
     const own = window.currentUser && uid === window.currentUser.uid ? (window.currentUser.photoURL || '') : '';
     const url = u.pic || own;
-    return url || (window.generateAvatar ? window.generateAvatar(uid) : `https://api.dicebear.com/7.x/bottts/svg?seed=${uid}&backgroundColor=transparent`);
+    const finalUrl = url || (window.generateAvatar ? window.generateAvatar(uid) : `https://api.dicebear.com/7.x/bottts/svg?seed=${uid}&backgroundColor=transparent`);
+    return window.optAvatar ? window.optAvatar(finalUrl, 100) : finalUrl;
 }
 
 function nameOf(uid) {
@@ -186,9 +189,10 @@ function cardHtml(uid) {
     const openProfile = `event.stopPropagation(); window.openProfile('${uid}')`;
     const avatarTag = `<span class="myday-card-avatar${type === 'video' ? ' video-ring' : ''}" onclick="${openProfile}" title="View profile"><img src="${avatar}" alt=""></span>`;
     if (type === 'video') {
+        const poster = window.optVideoPoster ? window.optVideoPoster(myVideos[uid].video, 300) : avatar;
         return `
     <div class="myday-card" onclick="window.viewImage('${esc(videoPlayUrl(myVideos[uid].video))}')" title="Watch My Day video">
-        <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
+        <img class="myday-card-bg" src="${esc(poster)}" alt="" loading="lazy">
         ${avatarTag}
         <span class="myday-play"><i class="fa-solid fa-play"></i></span>
         ${reactChipHtml(`story:${uid}`, myVideos[uid].reactions)}
@@ -196,9 +200,10 @@ function cardHtml(uid) {
     </div>`;
     }
     if (type === 'pic') {
+        const thumb = window.optMedia ? window.optMedia(myPics[uid].pic, { width: 300 }) : myPics[uid].pic;
         return `
     <div class="myday-card" onclick="window.viewImage('${esc(myPics[uid].pic)}')" title="View My Day photo">
-        <img class="myday-card-bg" src="${esc(myPics[uid].pic)}" alt="" loading="lazy">
+        <img class="myday-card-bg" src="${esc(thumb)}" alt="" loading="lazy">
         ${avatarTag}
         ${reactChipHtml(`story:${uid}`, myPics[uid].reactions)}
         <span class="myday-card-label">${name}</span>
@@ -235,9 +240,13 @@ function ownCardHtml(me) {
             : type === 'note'
                 ? `window.MyDay.openNote('${me}')`
                 : 'window.MyDay.addMedia()';
+    const ownVideoPoster = (window.optVideoPoster && myVideos[me]?.video) ? window.optVideoPoster(myVideos[me].video, 300) : avatar;
+    const ownPicThumb = (window.optMedia && myPics[me]?.pic) ? window.optMedia(myPics[me].pic, { width: 300 }) : (myPics[me]?.pic || '');
     const bg = type === 'pic'
-        ? `<img class="myday-card-bg" src="${esc(myPics[me].pic)}" alt="" loading="lazy">`
-        : (hasContent ? `<img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">` : '');
+        ? `<img class="myday-card-bg" src="${esc(ownPicThumb)}" alt="" loading="lazy">`
+        : type === 'video'
+            ? `<img class="myday-card-bg" src="${esc(ownVideoPoster)}" alt="" loading="lazy">`
+            : (hasContent ? `<img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">` : '');
     const ring = `<span class="myday-card-avatar ${type === 'video' ? 'video-ring' : ''}" onclick="event.stopPropagation(); window.openProfile('${me}')" title="View profile"><img src="${avatar}" alt=""></span>`;
     let body = '';
     if (type === 'video') body = '<span class="myday-play"><i class="fa-solid fa-play"></i></span>';
@@ -367,12 +376,68 @@ async function renderCollections(containerId, uid) {
 
 // Every My Day upload is also appended to the user's permanent collection.
 // Best-effort: the live story still works even if the archive write fails.
+let allCollectionsCache = [];
+let allCollectionsLoaded = false;
+let allCollectionsInFlight = null;
+
+async function loadAllCollections() {
+    if (allCollectionsLoaded) return allCollectionsCache;
+    if (allCollectionsInFlight) return allCollectionsInFlight;
+    allCollectionsInFlight = get(ref(db2, 'myday_collections'))
+        .then((snap) => {
+            const raw = snap.val() || {};
+            const items = [];
+            Object.keys(raw).forEach((uid) => {
+                const userStories = raw[uid] || {};
+                Object.keys(userStories).forEach((storyId) => {
+                    const s = userStories[storyId];
+                    if (!s || s.hidden) return;
+                    const media = s.video || s.pic;
+                    if (!media) return;
+                    items.push({
+                        id: `myday_arch_${uid}_${storyId}`,
+                        authorId: uid,
+                        text: '',
+                        image: media,
+                        category: 'Reels',
+                        timestamp: Number(s.createdAt) || Date.now(),
+                        reactions: {},
+                        isMyDay: true,
+                        visibility: 'public'
+                    });
+                });
+            });
+            allCollectionsCache = items;
+            allCollectionsLoaded = true;
+            allCollectionsInFlight = null;
+            return allCollectionsCache;
+        })
+        .catch(() => {
+            allCollectionsInFlight = null;
+            return [];
+        });
+    return allCollectionsInFlight;
+}
+
 async function archiveMyDay(media) {
     const uid = window.currentUser?.uid;
     if (!uid) return;
     try {
-        await push(ref(db2, `myday_collections/${uid}`), media);
+        const newRef = await push(ref(db2, `myday_collections/${uid}`), media);
         delete collectionsCache[uid]; // refresh on the next profile open
+        if (allCollectionsLoaded) {
+            allCollectionsCache.unshift({
+                id: `myday_arch_${uid}_${newRef.key}`,
+                authorId: uid,
+                text: '',
+                image: media.video || media.pic,
+                category: 'Reels',
+                timestamp: Number(media.createdAt) || Date.now(),
+                reactions: {},
+                isMyDay: true,
+                visibility: 'public'
+            });
+        }
     } catch (e) { /* archive is best-effort */ }
 }
 
@@ -462,6 +527,81 @@ function openReactPicker(targetKey, anchorEl) {
 // PUBLIC API + MEDIA UPLOAD (own My Day bubble — photo OR video)
 // ------------------------------------------------------------
 window.MyDay = {
+    ensureAllCollectionsLoaded: () => {
+        if (allCollectionsLoaded || allCollectionsInFlight) return;
+        loadAllCollections().then(() => {
+            if (window.currentFilter === 'Reels' && typeof window.renderFeed === 'function') {
+                window.renderFeed(false);
+            }
+        });
+    },
+    getAllStoryPosts: () => {
+        const posts = [];
+        const seenUrls = new Set();
+        const now = Date.now();
+
+        // 1. Current active stories (highest priority)
+        Object.keys(myVideos).forEach((uid) => {
+            const item = myVideos[uid];
+            if (item && item.video && Number(item.createdAt || 0) > now - STORY_TTL_MS) {
+                seenUrls.add(item.video);
+                posts.push({
+                    id: `myday_vid_${uid}`,
+                    authorId: uid,
+                    text: '',
+                    image: item.video,
+                    category: 'Reels',
+                    timestamp: Number(item.createdAt) || now,
+                    reactions: item.reactions || {},
+                    isMyDay: true,
+                    visibility: 'public'
+                });
+            }
+        });
+        Object.keys(myPics).forEach((uid) => {
+            const item = myPics[uid];
+            if (item && item.pic && Number(item.createdAt || 0) > now - STORY_TTL_MS) {
+                seenUrls.add(item.pic);
+                posts.push({
+                    id: `myday_pic_${uid}`,
+                    authorId: uid,
+                    text: '',
+                    image: item.pic,
+                    category: 'Reels',
+                    timestamp: Number(item.createdAt) || now,
+                    reactions: item.reactions || {},
+                    isMyDay: true,
+                    visibility: 'public'
+                });
+            }
+        });
+
+        // 2. All past archived MyDay collections
+        // Synchronize with the currently loaded Firestore timeline: only include archived stories
+        // down to the oldest post currently fetched from Firestore, or include all if history is complete.
+        // This prevents old MyDays (e.g. from 3 weeks ago) from jumping ahead of un-fetched recent photo posts.
+        let minLoadedTs = 0;
+        if (window.hasMorePosts && Array.isArray(window.allPosts) && window.allPosts.length > 0) {
+            for (let i = 0; i < window.allPosts.length; i++) {
+                const p = window.allPosts[i];
+                if (!p) continue;
+                const ts = p.timestamp?.toMillis ? p.timestamp.toMillis() : (typeof p.timestamp === 'number' ? p.timestamp : 0);
+                if (ts > 0 && (minLoadedTs === 0 || ts < minLoadedTs)) minLoadedTs = ts;
+            }
+        }
+
+        allCollectionsCache.forEach((arch) => {
+            if (arch && arch.image && !seenUrls.has(arch.image)) {
+                const archTs = Number(arch.timestamp) || 0;
+                if (!minLoadedTs || archTs >= minLoadedTs || !window.hasMorePosts) {
+                    seenUrls.add(arch.image);
+                    posts.push(arch);
+                }
+            }
+        });
+
+        return posts;
+    },
     openNote: (uid) => {
         if (!myNotes[uid]?.text) return;
         fillNoteModal(uid);
@@ -633,6 +773,9 @@ function initMyDay() {
         });
         renderStrip();
         cacheAllData();
+        if (window.currentFilter === 'Reels' && typeof window.renderFeed === 'function') {
+            window.renderFeed(false);
+        }
     }, () => {});
 
     bindMediaInput();

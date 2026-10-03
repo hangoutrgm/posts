@@ -1,4 +1,17 @@
-const CACHE_NAME = 'hangout-v195';
+const CACHE_NAME = 'hangout-v203';
+const MEDIA_CACHE_NAME = 'hangout-cloudinary-v1';
+const MAX_MEDIA_ITEMS = 250;
+
+async function trimMediaCache() {
+  try {
+    const cache = await caches.open(MEDIA_CACHE_NAME);
+    const keys = await cache.keys();
+    if (keys.length > MAX_MEDIA_ITEMS) {
+      const toDelete = keys.slice(0, keys.length - MAX_MEDIA_ITEMS);
+      await Promise.all(toDelete.map((req) => cache.delete(req)));
+    }
+  } catch (_) {}
+}
 
 // All local assets to pre-cache on install (relative paths for GitHub Pages subfolder & custom domain support)
 const PRECACHE_ASSETS = [
@@ -8,14 +21,14 @@ const PRECACHE_ASSETS = [
   './css/tailwind.min.css?v=3',
   './css/styles.css?v=13',
   './chat/css/styles.css?v=49',
-  './js/renderers.js?v=68',
-  './js/helpers.js?v=64',
+  './js/renderers.js?v=73',
+  './js/helpers.js?v=65',
   './js/games.js?v=61',
-  './js/main.js?v=64',
-  './js/myday.js?v=17',
+  './js/main.js?v=71',
+  './js/myday.js?v=21',
   './js/voice-recorder.js?v=3',
-  './chat/js/app.js?v=100',
-  './js/users-cache.js?v=4',
+  './chat/js/app.js?v=101',
+  './js/users-cache.js?v=5',
   './config/emoji_riddles.json',
   './config/flags.json',
   './config/emojis.json',
@@ -45,7 +58,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== MEDIA_CACHE_NAME).map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
@@ -53,6 +66,33 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Cloudinary image & poster cache handler (Cache-First)
+  if (request.method === 'GET' && url.hostname === 'res.cloudinary.com') {
+    // Only cache images and poster frames, NOT video streams (Range requests can cause issues in CacheStorage)
+    const isImageOrPoster = url.pathname.includes('/image/upload/') ||
+                            url.pathname.includes('/video/upload/so_') ||
+                            /\.(jpg|jpeg|png|webp|avif|gif)(\?|#|$)/i.test(url.pathname);
+    if (isImageOrPoster) {
+      event.respondWith(
+        caches.open(MEDIA_CACHE_NAME).then((cache) => {
+          return cache.match(request).then((cached) => {
+            if (cached) return cached;
+            return fetch(request).then((response) => {
+              if (response && (response.ok || response.type === 'opaque')) {
+                const copy = response.clone();
+                cache.put(request, copy).then(() => trimMediaCache()).catch(() => {});
+              }
+              return response;
+            }).catch(() => cached);
+          });
+        })
+      );
+      return;
+    }
+    // Let video streams bypass directly to network
+    return;
+  }
 
   // Only handle same-origin GET requests
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;

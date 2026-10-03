@@ -9,8 +9,8 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=64" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html.
-import "./helpers.js?v=64";
-import "./renderers.js?v=68";
+import "./helpers.js?v=65";
+import "./renderers.js?v=73";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -141,6 +141,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
         e.target.classList.add('bg-blue-600', 'text-white'); e.target.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300');
         window.currentFilter = e.target.getAttribute('data-cat');
         window.postLimit = 15;
+        window.feedRenderLimit = 15;
         window.hasMorePosts = true;
         window.listenPosts();
     });
@@ -821,6 +822,10 @@ window._buildBaseQueryForDb = (targetFs) => {
         return query(postsRef, where('authorId', '==', window.activeProfileUid), orderBy('timestamp', 'desc'));
     } else if (window.currentFilter === 'My Posts' && window.currentUser) {
         return query(postsRef, where('authorId', '==', window.currentUser.uid), orderBy('timestamp', 'desc'));
+    } else if (window.currentFilter === 'Reels') {
+        // Query all non-game categories so Reels videos and photo posts from General/Announcements/Rules
+        // are streamed cleanly in real time without being flooded by thousands of Games posts.
+        return query(postsRef, where('category', 'in', ['Reels', 'General', 'Announcements', 'Rules']), orderBy('timestamp', 'desc'));
     } else if (window.currentFilter && window.currentFilter !== 'All') {
         return query(postsRef, where('category', '==', window.currentFilter), orderBy('timestamp', 'desc'));
     } else {
@@ -909,9 +914,11 @@ window.listenPosts = () => {
         window.isLoadingHistory = false;
     };
 
-    const q1 = query(window._buildBaseQueryForDb(fsdb), limit(15));
-    const q2 = query(window._buildBaseQueryForDb(fsdb2), limit(15));
-    const q3 = query(window._buildBaseQueryForDb(fsdb3), limit(15));
+    const batchLimit = window.currentFilter === 'Reels' ? 75 : 15;
+
+    const q1 = query(window._buildBaseQueryForDb(fsdb), limit(batchLimit));
+    const q2 = query(window._buildBaseQueryForDb(fsdb2), limit(batchLimit));
+    const q3 = query(window._buildBaseQueryForDb(fsdb3), limit(batchLimit));
 
     window.postsUnsubscribe1 = onSnapshot(q1, { includeMetadataChanges: false }, (snapshot) => {
         // Use docChanges() so only the 1-2 docs that actually changed are billed,
@@ -932,7 +939,7 @@ window.listenPosts = () => {
         if (snapshot.docs.length > 0) {
             window._liveLastDoc1 = snapshot.docs[snapshot.docs.length - 1];
         }
-        window.hasMorePosts1 = (snapshot.size >= 15);
+        window.hasMorePosts1 = (snapshot.size >= batchLimit);
         window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3;
         initialSnap1 = true;
         safeMergeAndRender();
@@ -958,7 +965,7 @@ window.listenPosts = () => {
         if (snapshot.docs.length > 0) {
             window._liveLastDoc2 = snapshot.docs[snapshot.docs.length - 1];
         }
-        window.hasMorePosts2 = (snapshot.size >= 15);
+        window.hasMorePosts2 = (snapshot.size >= batchLimit);
         window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3;
         initialSnap2 = true;
         safeMergeAndRender();
@@ -984,7 +991,7 @@ window.listenPosts = () => {
         if (snapshot.docs.length > 0) {
             window._liveLastDoc3 = snapshot.docs[snapshot.docs.length - 1];
         }
-        window.hasMorePosts3 = (snapshot.size >= 15);
+        window.hasMorePosts3 = (snapshot.size >= batchLimit);
         window.hasMorePosts = window.hasMorePosts1 || window.hasMorePosts2 || window.hasMorePosts3;
         initialSnap3 = true;
         safeMergeAndRender();
@@ -1005,12 +1012,13 @@ window.listenPosts = () => {
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     window.isLoadingHistory = true;
+    const batchLimit = window.currentFilter === 'Reels' ? 75 : 15;
 
     try {
         const cursor1 = window._lastPostDoc1 || window._liveLastDoc1;
         if (window.hasMorePosts1 !== false && cursor1) {
             try {
-                const pageQuery1 = query(window._buildBaseQueryForDb(fsdb), startAfter(cursor1), limit(15));
+                const pageQuery1 = query(window._buildBaseQueryForDb(fsdb), startAfter(cursor1), limit(batchLimit));
                 const pageSnap1 = await window._getDocsFS(pageQuery1);
                 if (!pageSnap1.empty) {
                     window._lastPostDoc1 = pageSnap1.docs[pageSnap1.docs.length - 1];
@@ -1023,7 +1031,7 @@ window.loadMorePosts = async () => {
                         }
                     });
                 }
-                window.hasMorePosts1 = (pageSnap1.size >= 15);
+                window.hasMorePosts1 = (pageSnap1.size >= batchLimit);
             } catch (e) {
                 console.warn("Error fetching page from fsdb 1:", e);
                 window.hasMorePosts1 = false;
@@ -1033,7 +1041,7 @@ window.loadMorePosts = async () => {
         const cursor2 = window._lastPostDoc2 || window._liveLastDoc2;
         if (window.hasMorePosts2 !== false && cursor2) {
             try {
-                const pageQuery2 = query(window._buildBaseQueryForDb(fsdb2), startAfter(cursor2), limit(15));
+                const pageQuery2 = query(window._buildBaseQueryForDb(fsdb2), startAfter(cursor2), limit(batchLimit));
                 const pageSnap2 = await window._getDocsFS(pageQuery2);
                 if (!pageSnap2.empty) {
                     window._lastPostDoc2 = pageSnap2.docs[pageSnap2.docs.length - 1];
@@ -1046,7 +1054,7 @@ window.loadMorePosts = async () => {
                         }
                     });
                 }
-                window.hasMorePosts2 = (pageSnap2.size >= 15);
+                window.hasMorePosts2 = (pageSnap2.size >= batchLimit);
             } catch (e) {
                 console.warn("Error fetching page from fsdb 2:", e);
                 window.hasMorePosts2 = false;
@@ -1056,7 +1064,7 @@ window.loadMorePosts = async () => {
         const cursor3 = window._lastPostDoc3 || window._liveLastDoc3;
         if (window.hasMorePosts3 !== false && cursor3) {
             try {
-                const pageQuery3 = query(window._buildBaseQueryForDb(fsdb3), startAfter(cursor3), limit(15));
+                const pageQuery3 = query(window._buildBaseQueryForDb(fsdb3), startAfter(cursor3), limit(batchLimit));
                 const pageSnap3 = await window._getDocsFS(pageQuery3);
                 if (!pageSnap3.empty) {
                     window._lastPostDoc3 = pageSnap3.docs[pageSnap3.docs.length - 1];
@@ -1069,7 +1077,7 @@ window.loadMorePosts = async () => {
                         }
                     });
                 }
-                window.hasMorePosts3 = (pageSnap3.size >= 15);
+                window.hasMorePosts3 = (pageSnap3.size >= batchLimit);
             } catch (e) {
                 console.warn("Error fetching page from fsdb 3:", e);
                 window.hasMorePosts3 = false;
@@ -1090,7 +1098,11 @@ window.loadMorePosts = async () => {
         const livePosts = (window.allPosts || []).filter(p => !historyIds.has(p.id));
         window.allPosts = [...livePosts, ...allHistory];
 
-        window.feedRenderLimit = window.allPosts.length;
+        if (window.currentFilter === 'Reels') {
+            window.feedRenderLimit = (window.feedRenderLimit || 15) + 15;
+        } else {
+            window.feedRenderLimit = window.allPosts.length;
+        }
         window.profileRenderLimit = window.allPosts.length;
 
         if (window.activeProfileUid) window.renderProfileData(false);
@@ -1549,6 +1561,10 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
 window.submitComment = async (postId, postAuthorId, prefix) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
+    if (postId && postId.startsWith('myday_')) {
+        window.showToast('Comments are disabled for My Day stories.');
+        return;
+    }
     // Site Control: block when posts are paused (admins bypass)
     if (window.checkSitePaused && window.checkSitePaused('post')) return;
     
@@ -1647,6 +1663,14 @@ window.react = (postId, postAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
     if (window.checkSitePaused && window.checkSitePaused('post')) return;
+    if (postId && postId.startsWith('myday_')) {
+        if (window.MyDay && window.MyDay.react) {
+            const emojiMap = { like: '👍', heart: '❤️', haha: '😂', wow: '😮', sad: '😢', angry: '😡' };
+            window.MyDay.react(`story:${postAuthorId}`, emojiMap[type] || '👍');
+            window.showToast('Reacted to My Day!');
+        }
+        return;
+    }
     let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
     
     let userReactCount = 0;

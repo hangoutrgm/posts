@@ -217,7 +217,13 @@ function insertMentionFromSuggestion() {
   hideMentionSuggestions();
   input.focus();
 }
-function avatarUrl(user = {}) { const url = String(user.pic || user.photoURL || ''); return /^(https?:|data:image\/)/i.test(url) ? url : fallbackAvatar(user.uid || user.name || 'hangout'); }
+function avatarUrl(user = {}) {
+  const url = String(user.pic || user.photoURL || '');
+  if (/^(https?:|data:image\/)/i.test(url)) {
+    return window.optAvatar ? window.optAvatar(url, 100) : url;
+  }
+  return fallbackAvatar(user.uid || user.name || 'hangout');
+}
 function formatTime(timestamp) { if (!timestamp) return ''; const date = new Date(timestamp); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : date.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
 function showToast(message) { const toast = $('toast'); toast.textContent = message; toast.classList.remove('hidden'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.add('hidden'), 3500); }
 function isOnline(uid) { const presence = state.online[uid]; return presence === true || Boolean(presence && typeof presence === 'object' && Object.keys(presence).length); }
@@ -839,10 +845,14 @@ function renderMessages(rawMessages, jumpToLatest = false) {
     if (message.replyTo) {
       let mediaPreview = '';
       if (message.replyTo.image) {
-        if (message.replyTo.image.includes('/video/upload/') || message.replyTo.image.match(/\\.(mp4|webm|mov|ogg)$/i)) {
-          mediaPreview = `<video src="${escapeHtml(message.replyTo.image)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;"></video>`;
+        if (message.replyTo.image.includes('/video/upload/') || message.replyTo.image.match(/\.(mp4|webm|mov|ogg)$/i)) {
+          const poster = window.optVideoThumb ? window.optVideoThumb(message.replyTo.image, 80) : '';
+          mediaPreview = poster
+            ? `<img src="${escapeHtml(poster)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`
+            : `🎬 `;
         } else {
-          mediaPreview = `<img src="${escapeHtml(message.replyTo.image)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
+          const thumb = window.optMedia ? window.optMedia(message.replyTo.image, { width: 80, height: 80, crop: 'c_fill' }) : message.replyTo.image;
+          mediaPreview = `<img src="${escapeHtml(thumb)}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
         }
       } else if (message.replyTo.audio) {
         mediaPreview = `🎤 `;
@@ -859,8 +869,16 @@ function renderMessages(rawMessages, jumpToLatest = false) {
       const audioSrc = message.audio || message.image;
       audioHtml = `<audio class="message-audio" controls src="${escapeHtml(audioSrc)}"></audio>`;
     } else if (message.image) {
-      isVid = message.image.includes('/video/upload/') || message.image.match(/\\.(mp4|webm|mov|ogg)$/i);
-      image = isVid ? `<video class="message-image" src="${escapeHtml(message.image)}" style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>` : `<img class="message-image" src="${escapeHtml(message.image)}" alt="Shared photo">`;
+      isVid = message.image.includes('/video/upload/') || message.image.match(/\.(mp4|webm|mov|ogg)$/i);
+      if (isVid) {
+        const vidSrc = window.optVideo ? window.optVideo(message.image, 720) : message.image;
+        const poster = window.optVideoPoster ? window.optVideoPoster(message.image, 480) : '';
+        const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : '';
+        image = `<video class="message-image" src="${escapeHtml(vidSrc)}"${posterAttr} preload="none" controls style="max-height:200px; max-width: 100%; border-radius: 8px; margin-top: 4px;"></video>`;
+      } else {
+        const optImg = window.optMedia ? window.optMedia(message.image, { width: 800 }) : message.image;
+        image = `<img class="message-image" src="${escapeHtml(optImg)}" alt="Shared photo">`;
+      }
     }
     const isGameCard = Boolean(message.isGame && window.ChatGames);
     const isGameBump = Boolean(message.isGameBump && message.gameBump);
@@ -1105,14 +1123,14 @@ function openImageViewer(src) {
     img.style.display = 'none';
     img.src = '';
     vid.style.display = '';
-    vid.src = src;
+    vid.src = window.optVideo ? window.optVideo(src, 720) : src;
     vid.play().catch(()=>{}); // Autoplay on open
   } else {
     vid.style.display = 'none';
     vid.src = '';
     vid.pause();
     img.style.display = '';
-    img.src = src;
+    img.src = window.optMedia ? window.optMedia(src, { width: 1440 }) : src;
   }
   // Generate unique filename based on current date/time
   const now = new Date();
@@ -2741,8 +2759,15 @@ function setReply(message) {
   state.replyTo = message; 
   let mediaHtml = '';
   if (message.image) {
-    if (message.image.includes('/video/upload/') || message.image.match(/\\.(mp4|webm|mov|ogg)$/i)) mediaHtml = `<video src="${escapeHtml(message.image)}" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;"></video>`;
-    else mediaHtml = `<img src="${escapeHtml(message.image)}" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
+    if (message.image.includes('/video/upload/') || message.image.match(/\.(mp4|webm|mov|ogg)$/i)) {
+      const poster = window.optVideoThumb ? window.optVideoThumb(message.image, 60) : '';
+      mediaHtml = poster
+        ? `<img src="${escapeHtml(poster)}" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`
+        : `🎬 `;
+    } else {
+      const thumb = window.optMedia ? window.optMedia(message.image, { width: 60, height: 60, crop: 'c_fill' }) : message.image;
+      mediaHtml = `<img src="${escapeHtml(thumb)}" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;display:inline-block;">`;
+    }
   }
   $('reply-banner-text').innerHTML = `Replying to ${getNickname(message.senderId)}: <br/> ${mediaHtml}${escapeHtml(replyPreview(message))}`; 
   $('reply-banner').classList.remove('hidden'); 
