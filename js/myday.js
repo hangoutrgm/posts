@@ -30,6 +30,7 @@ const STORY_TTL_MS = 24 * 60 * 60 * 1000; // FB-style: media stories last 24h
 let myNotes = {};       // uid -> { text, updatedAt }
 let myVideos = {};      // uid -> { video, createdAt } (unexpired only)
 let myPics = {};        // uid -> { pic, createdAt }   (unexpired only)
+let mydayComments = {}; // postId -> { commentId: { uid, text, timestamp } } (Reels tab)
 let usersReadySeen = false;
 let pendingRender = false; // render queued until auth + user names/avatars resolve
 let authSettled = false;   // Firebase auth has resolved at least once
@@ -122,6 +123,41 @@ function setLocalReaction(uid, isNote, reactor, emoji) {
     const rx = { ...(bag.reactions || {}) };
     if (emoji) rx[reactor] = emoji; else delete rx[reactor];
     bag.reactions = Object.keys(rx).length ? rx : null;
+}
+
+// ----- My Day post ids → reaction target (used by the Reels tab feed) -----
+//   `myday_vid_{uid}` / `myday_pic_{uid}` = the user's active 24h story
+//     → the shared story node: /myday/{uid}/reactions/{reactor}
+//   `myday_arch_{uid}_{itemId}` = one archived upload
+//     → that archive entry:    /myday_collections/{uid}/{itemId}/reactions/{reactor}
+function parseMyDayPostId(postId) {
+    const s = String(postId || '');
+    if (s.startsWith('myday_vid_')) return { kind: 'active', uid: s.slice(10) };
+    if (s.startsWith('myday_pic_')) return { kind: 'active', uid: s.slice(10) };
+    if (s.startsWith('myday_arch_')) {
+        const rest = s.slice(11);
+        const i = rest.indexOf('_');
+        if (i < 0) return null;
+        return { kind: 'arch', uid: rest.slice(0, i), itemId: rest.slice(i + 1) };
+    }
+    return null;
+}
+
+// The live reactions object the feed renders for a story (shares the node with
+// the original My Day, so a react shows in both places).
+function mydayReactionBag(parsed) {
+    if (!parsed) return null;
+    if (parsed.kind === 'arch') {
+        return allCollectionsCache.find((x) => x && x.id === `myday_arch_${parsed.uid}_${parsed.itemId}`) || null;
+    }
+    return storyOf(parsed.uid);
+}
+
+function mydayReactionPath(parsed, reactorUid) {
+    if (!parsed || !reactorUid) return null;
+    return parsed.kind === 'arch'
+        ? `myday_collections/${parsed.uid}/${parsed.itemId}/reactions/${reactorUid}`
+        : `myday/${parsed.uid}/reactions/${reactorUid}`;
 }
 
 // Tell the owner they were reacted to. Lands on the same RTDB 2 notification
@@ -401,7 +437,7 @@ async function loadAllCollections() {
                         image: media,
                         category: 'Reels',
                         timestamp: Number(s.createdAt) || Date.now(),
-                        reactions: {},
+                        reactions: s.reactions || {},
                         isMyDay: true,
                         visibility: 'public'
                     });
@@ -553,6 +589,7 @@ window.MyDay = {
                     category: 'Reels',
                     timestamp: Number(item.createdAt) || now,
                     reactions: item.reactions || {},
+                    comments: mydayComments[`myday_vid_${uid}`] || {},
                     isMyDay: true,
                     visibility: 'public'
                 });
@@ -570,6 +607,7 @@ window.MyDay = {
                     category: 'Reels',
                     timestamp: Number(item.createdAt) || now,
                     reactions: item.reactions || {},
+                    comments: mydayComments[`myday_pic_${uid}`] || {},
                     isMyDay: true,
                     visibility: 'public'
                 });
@@ -595,7 +633,7 @@ window.MyDay = {
                 const archTs = Number(arch.timestamp) || 0;
                 if (!minLoadedTs || archTs >= minLoadedTs || !window.hasMorePosts) {
                     seenUrls.add(arch.image);
-                    posts.push(arch);
+                    posts.push({ ...arch, reactions: arch.reactions || {}, comments: mydayComments[arch.id] || {} });
                 }
             }
         });
@@ -649,6 +687,39 @@ window.MyDay = {
         renderStrip();
         if (isNote && currentNoteUid === uid) fillNoteModal(uid);
     },
+    // Reels-tab reactions. Active stories sync with the shared /myday/{uid}/reactions
+    // node (same as the original My Day); an archived upload stores its reactions on
+    // that archive entry. Tapping the same emoji removes it.
+    reactToPost: async (postId, emoji) => {
+        const me = myUid();
+        if (!me) {
+            const am = document.getElementById('auth-modal');
+            if (am) am.classList.remove('hidden');
+            return;
+        }
+        const parsed = parseMyDayPostId(postId);
+        if (!parsed || !emoji) return;
+        const bag = mydayReactionBag(parsed);
+        const removing = (bag?.reactions?.[me] || null) === emoji;
+        try {
+            const path = mydayReactionPath(parsed, me);
+            if (removing) await remove(ref(db2, path));
+            else await set(ref(db2, path), emoji);
+        } catch (e) {
+            window.showToast('Could not react: ' + e.message);
+            return;
+        }
+        if (!removing) notifyReaction(parsed.uid, 'react_myday', emoji);
+        // Optimistic local write so the tap repaints before the live listener answers.
+        const target = bag || allCollectionsCache.find((x) => x && x.id === postId);
+        if (target) {
+            const rx = { ...(target.reactions || {}) };
+            if (removing) delete rx[me]; else rx[me] = emoji;
+            target.reactions = Object.keys(rx).length ? rx : null;
+        }
+        renderStrip();
+        if (typeof window.renderFeed === 'function') window.renderFeed(false);
+    },
     // Owner-only: hide / unhide one archived My Day item from the profile.
     toggleCollectionHidden: async (id, hide) => {
         const uid = myUid();
@@ -695,6 +766,26 @@ window.MyDay = {
     hide: () => { const s = $('myday-strip'); if (s) s.classList.add('hidden'); },
     show: () => { const s = $('myday-strip'); if (s) s.classList.remove('hidden'); },
     isVisible: () => { const s = $('myday-strip'); return Boolean(s && !s.classList.contains('hidden')); }
+};
+
+// Owner-only: edit / delete your own My Day comment (stored in RTDB 2).
+window.editMyDayComment = (postId, commentId) => {
+    const c = mydayComments[postId] && mydayComments[postId][commentId];
+    if (!c || !window.currentUser || c.uid !== window.currentUser.uid) return;
+    if (typeof window.openEditModal === 'function') {
+        window.openEditModal({ path: `myday_comments/${postId}/${commentId}`, postId: postId, db2: true }, c.text);
+    }
+};
+window.deleteMyDayComment = (postId, commentId) => {
+    const c = mydayComments[postId] && mydayComments[postId][commentId];
+    if (!c || !window.currentUser || c.uid !== window.currentUser.uid) return;
+    window.showConfirm('Delete this comment?', async () => {
+        try {
+            await remove(ref(db2, `myday_comments/${postId}/${commentId}`));
+        } catch (e) {
+            window.showToast('Could not delete comment: ' + e.message);
+        }
+    });
 };
 
 function bindMediaInput() {
@@ -773,6 +864,15 @@ function initMyDay() {
         });
         renderStrip();
         cacheAllData();
+        if (window.currentFilter === 'Reels' && typeof window.renderFeed === 'function') {
+            window.renderFeed(false);
+        }
+    }, () => {});
+
+    // My Day comments (Reels tab) — RTDB 2, one node keyed by the post id:
+    //   /myday_comments/{postId}/{commentId} = { uid, text, timestamp }
+    onValue(ref(db2, 'myday_comments'), (snap) => {
+        mydayComments = snap.val() || {};
         if (window.currentFilter === 'Reels' && typeof window.renderFeed === 'function') {
             window.renderFeed(false);
         }

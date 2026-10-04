@@ -10,7 +10,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
 import "./helpers.js?v=66";
-import "./renderers.js?v=76";
+import "./renderers.js?v=78";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -1650,8 +1650,24 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
 window.submitComment = async (postId, postAuthorId, prefix) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
+    // My Day posts (Reels tab) keep their comments in RTDB 2, keyed by the post id:
+    //   /myday_comments/{postId}/{commentId} = { uid, text, timestamp }
     if (postId && postId.startsWith('myday_')) {
-        window.showToast('Comments are disabled for My Day stories.');
+        const input = document.getElementById(`comment-input-${prefix}-${postId}`);
+        const text = input ? input.value.trim() : '';
+        if (!text) return;
+        if (window.checkSitePaused && window.checkSitePaused('post')) return;
+        if (!(await window.checkActionCooldown('comment'))) return;
+        input.value = '';
+        const btn = document.getElementById(`comment-submit-btn-${prefix}-${postId}`);
+        if (btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; btn.disabled = true; }
+        try {
+            await push(ref(db2, `myday_comments/${postId}`), { uid: window.currentUser.uid, text: text, timestamp: Date.now() });
+        } catch (e) {
+            window.showToast('Could not post comment: ' + e.message);
+        }
+        if (btn) { btn.innerText = 'Send'; btn.disabled = false; }
+        input.focus();
         return;
     }
     // Site Control: block when posts are paused (admins bypass)
@@ -1748,16 +1764,21 @@ window.submitReply = async (postId, commentId, prefix, commentAuthorId) => {
     input.focus();
 };
 
+// Feed helper used by the My Day reaction buttons in the Reels tab. Syncs with the
+// original My Day (active stories) / the archive entry, then repaints the feed.
+window.mydayReactPost = (postId, emoji) => {
+    if (window.MyDay && typeof window.MyDay.reactToPost === 'function') {
+        window.MyDay.reactToPost(postId, emoji);
+    }
+};
+
 window.react = (postId, postAuthorId, type) => {
     if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
     if (window.checkBan()) return;
     if (window.checkSitePaused && window.checkSitePaused('post')) return;
     if (postId && postId.startsWith('myday_')) {
-        if (window.MyDay && window.MyDay.react) {
-            const emojiMap = { like: '👍', heart: '❤️', haha: '😂', wow: '😮', sad: '😢', angry: '😡' };
-            window.MyDay.react(`story:${postAuthorId}`, emojiMap[type] || '👍');
-            window.showToast('Reacted to My Day!');
-        }
+        const emojiMap = { like: '👍', heart: '❤️', haha: '😂', wow: '😮', sad: '😢', angry: '😡' };
+        window.mydayReactPost(postId, emojiMap[type] || '👍');
         return;
     }
     let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId); if(!post) return;
@@ -2038,6 +2059,9 @@ document.getElementById('save-edit-btn').addEventListener('click', () => {
                     [`comments.${cId}.replies.${rId}.edited`]: true
                 });
             }
+        } else if (window.activeEditTarget.db2) {
+            // RTDB 2 target (e.g. My Day comments in the Reels tab)
+            update(ref(db2, window.activeEditTarget.path), { text: newText, edited: true });
         } else {
             // Fallback for RTDB (if any)
             update(ref(db, window.activeEditTarget.path), { text: newText, edited: true });

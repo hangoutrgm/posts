@@ -1036,6 +1036,42 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         return { triggerHtml, activeHtml };
     };
     
+    // My Day reactions are stored as a flat map { reactorUid: emoji } (shared with
+    // the original My Day), so they get their own chips/picker instead of the
+    // Firestore { type: { uid: true } } shape handled above.
+    const MYDAY_REACT_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+    const generateMyDayReactionsUI = () => {
+        const mdRx = post.reactions || {}; // { reactorUid: emoji }
+        const mine = window.currentUser ? mdRx[window.currentUser.uid] : null;
+        const counts = {};
+        Object.values(mdRx).forEach(e => { if (e) counts[e] = (counts[e] || 0) + 1; });
+        const totals = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+        let activeHtml = '';
+        totals.forEach(([emoji, count]) => {
+            const on = mine === emoji;
+            activeHtml += `<button onclick="window.mydayReactPost('${post.id}', '${emoji}')" class="flex items-center space-x-1 transition shrink-0 px-2.5 py-1 rounded-full border ${on ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-800' : 'border-gray-100 dark:border-slate-700/50 text-gray-500 bg-gray-50 dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-900/20'}">
+                <span>${emoji}</span> <span>${count}</span>
+            </button>`;
+        });
+
+        const triggerHtml = `
+            <div class="relative group/rx flex shrink-0">
+                <button class="flex items-center space-x-1 transition shrink-0 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 text-gray-500 bg-gray-50 dark:bg-slate-900 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer">
+                    <i class="fa-regular fa-thumbs-up"></i>
+                </button>
+                <div class="absolute bottom-full left-0 mb-1 invisible opacity-0 flex group-hover/rx:visible group-hover/rx:opacity-100 transition-all duration-300 delay-300 group-hover/rx:delay-0 items-center space-x-1.5 bg-white dark:bg-slate-800 p-1.5 rounded-full shadow-lg border border-gray-100 dark:border-slate-700 z-50">
+                    ${MYDAY_REACT_EMOJIS.map(e => `
+                        <button onclick="window.mydayReactPost('${post.id}', '${e}')" class="w-8 h-8 rounded-full flex items-center justify-center text-lg hover:scale-110 transition-transform ${mine === e ? 'bg-blue-50 dark:bg-blue-900/30' : ''}">
+                            ${e}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        return { triggerHtml, activeHtml };
+    };
+
     const generateCommentReactionsUI = (c, cId) => {
         const cRx = c.reactions || {};
         const activeReactions = Object.keys(cRx).map(type => ({
@@ -1257,6 +1293,48 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     } else {
         commentInputBox = `<div class="mt-3 text-center text-[11px] text-gray-500 font-semibold bg-gray-50 dark:bg-slate-900/50 py-2 rounded-lg border border-gray-100 dark:border-slate-800"><i class="fa-solid fa-lock text-orange-500 mr-1"></i> Comments locked by author</div>`;
     }
+
+    // ── My Day comment section (Reels tab) ──
+    // Stored flat in RTDB 2 (/myday_comments/{postId}) and loaded into post.comments
+    // by myday.js. Flat list only (no replies / comment reactions) to keep it simple.
+    const mydayCommentsArr = Object.keys(post.comments || {})
+        .map(cid => ({ id: cid, ...post.comments[cid] }))
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    let mydayCommentsHtml = '';
+    if (mydayCommentsArr.length) {
+        mydayCommentsHtml = `
+            <div class="mt-2 mb-2 pb-1.5 border-b border-gray-100 dark:border-slate-700/50">
+                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Comments</span>
+            </div>
+        ` + mydayCommentsArr.map(c => {
+            const cAuth = window.globalUsersCache[c.uid] || { name: 'Unknown', pic: window.generateAvatar(c.uid) };
+            const safeText = window.formatText(c.text);
+            const isMine = Boolean(window.currentUser && c.uid === window.currentUser.uid);
+            return `
+                <div class="flex items-start space-x-2 mt-2 group">
+                    <img src="${cAuth.pic || window.generateAvatar(c.uid)}" loading="lazy" class="w-6 h-6 rounded-full object-cover cursor-pointer hover:opacity-80 transition shrink-0" onclick="window.openProfile('${c.uid}')">
+                    <div class="flex-1 bg-gray-50 dark:bg-slate-900/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 text-xs min-w-0">
+                        <div class="flex items-start justify-between gap-1">
+                            <p class="font-bold text-gray-700 dark:text-gray-300 text-[10px] cursor-pointer hover:underline min-w-0" onclick="window.openProfile('${c.uid}')">
+                                ${cAuth.name} ${window.getRole(c.uid).badgeHtml} <span class="text-gray-400 font-normal ml-1">· ${window.timeAgo(c.timestamp)}</span>
+                            </p>
+                            ${isMine ? `<div class="flex items-center space-x-1.5 shrink-0">
+                                <button onclick="window.editMyDayComment('${post.id}', '${c.id}')" class="text-[10px] text-blue-400 hidden group-hover:block transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                                <button onclick="window.deleteMyDayComment('${post.id}', '${c.id}')" class="text-[10px] text-red-400 hidden group-hover:block transition" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                            </div>` : ''}
+                        </div>
+                        <p class="text-gray-800 dark:text-gray-200 mt-0.5 break-words text-[11px] leading-tight">${safeText}${c.edited ? ' <span class="text-[9px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>
+                        ${window.generateEmbed(c.text)}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    const mydayCommentInputBox = `
+        <div class="flex mt-3 items-center space-x-1.5 bg-gray-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-gray-200 dark:border-slate-700">
+            <input type="text" id="comment-input-${prefix}-${post.id}" class="flex-1 bg-transparent text-xs px-1 py-1 focus:outline-none dark:text-white" placeholder="Write a comment...">
+            <button id="comment-submit-btn-${prefix}-${post.id}" onclick="window.submitComment('${post.id}', '${post.authorId}', '${prefix}')" class="bg-blue-600 hover:bg-blue-500 text-white rounded px-3 py-1.5 text-xs font-bold shrink-0 shadow-sm transition">Send</button>
+        </div>`;
 
     const postEl = document.createElement('div');
     postEl.id = `post-${prefix}-${post.id}`;
@@ -2839,20 +2917,20 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             ${gameHtml}
         </div>
         
-        ${post.isMyDay ? '' : `
         <div id="reactions-${prefix}-${post.id}" class="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 pt-2 text-xs pb-1 mt-1">
             <div class="flex items-center space-x-2 shrink-0">
                 <button onclick="window.showReactors('${post.id}')" class="flex items-center space-x-1 transition shrink-0 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 text-gray-500 bg-gray-50 dark:bg-slate-900 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20">
                     <i class="fa-solid fa-users"></i>
                 </button>
-                ${(() => { const ui = generatePostReactionsUI(); return ui.triggerHtml; })()}
+                ${(() => { const ui = post.isMyDay ? generateMyDayReactionsUI() : generatePostReactionsUI(); return ui.triggerHtml; })()}
             </div>
             
             <div class="flex-1 flex items-center space-x-1 overflow-x-auto scrollbar-hide mx-2 px-1">
-                ${(() => { const ui = generatePostReactionsUI(); return ui.activeHtml; })()}
+                ${(() => { const ui = post.isMyDay ? generateMyDayReactionsUI() : generatePostReactionsUI(); return ui.activeHtml; })()}
             </div>
             
             <div class="flex items-center space-x-1 shrink-0 ml-auto">
+                ${post.isMyDay ? '' : `
                 <button onclick="window.refreshSinglePost('${post.id}')" class="refresh-btn flex items-center ${window._postLiveListeners && window._postLiveListeners[post.id] ? 'text-green-500' : 'text-gray-400'} hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="${window._postLiveListeners && window._postLiveListeners[post.id] ? 'Live (click to stop)' : 'Refresh Post'}">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
@@ -2862,19 +2940,16 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 <button onclick="window.copyPostLink('${post.id}')" class="flex items-center text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="Copy Link">
                     <i class="fa-solid fa-link"></i>
                 </button>
+                `}
                 <button onclick="window.toggleComments('${post.id}', '${prefix}')" class="flex items-center space-x-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
                     <i class="fa-regular fa-comment text-sm"></i> <span>${commentCount}</span>
                 </button>
             </div>
         </div>
-        `}
-        
-        ${post.isMyDay ? '' : `
         <div id="comments-${prefix}-${post.id}" class="${isCommentsOpen ? '' : 'hidden'} mt-1 border-t border-gray-100 dark:border-slate-700 pt-1">
-            ${commentInputBox}
-            ${commentsHtml}
+            ${post.isMyDay ? mydayCommentInputBox : commentInputBox}
+            ${post.isMyDay ? mydayCommentsHtml : commentsHtml}
         </div>
-        `}
     `;
     return postEl;
 }
@@ -3010,7 +3085,11 @@ window.renderMembers = (resetLimit = true) => {
 };
 
 window.showReactors = (postId, commentId = null) => {
-    const post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
+    let post = window.allPosts.find(p => p.id === postId) || (window.globalPinnedPosts || []).find(p => p.id === postId) || (window.profilePinnedPosts || []).find(p => p.id === postId);
+    // My Day posts (Reels tab) aren't in allPosts — resolve them from My Day.
+    if (!post && postId && postId.startsWith('myday_') && window.MyDay && typeof window.MyDay.getAllStoryPosts === 'function') {
+        post = window.MyDay.getAllStoryPosts().find(p => p.id === postId) || null;
+    }
     if (!post) return;
     const target = commentId ? post.comments?.[commentId] : post;
     if (!target) return;
@@ -3028,9 +3107,13 @@ window.showReactors = (postId, commentId = null) => {
         angry: '<i class="fa-solid fa-face-angry text-red-500"></i>'
     };
 
-    for (let type in rx) {
-        for (let uid in rx[type]) {
-            reactors.push({ uid, type });
+    // Firestore posts store { type: { uid: true } }; My Day stores { uid: emoji }.
+    for (let key in rx) {
+        const val = rx[key];
+        if (val && typeof val === 'object') {
+            for (let uid in val) reactors.push({ uid, type: key });
+        } else if (typeof val === 'string' && val) {
+            reactors.push({ uid: key, type: val });
         }
     }
 

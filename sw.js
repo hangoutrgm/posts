@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v212';
+const CACHE_NAME = 'hangout-v214';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 
@@ -21,11 +21,11 @@ const PRECACHE_ASSETS = [
   './css/tailwind.min.css?v=3',
   './css/styles.css?v=15',
   './chat/css/styles.css?v=49',
-  './js/renderers.js?v=76',
+  './js/renderers.js?v=78',
   './js/helpers.js?v=66',
   './js/games.js?v=61',
-  './js/main.js?v=75',
-  './js/myday.js?v=21',
+  './js/main.js?v=77',
+  './js/myday.js?v=23',
   './js/voice-recorder.js?v=3',
   './chat/js/app.js?v=101',
   './js/users-cache.js?v=5',
