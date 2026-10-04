@@ -869,9 +869,17 @@ function handlePlaybackError(code) {
 
 let scrubbing = false;
 
+/**
+ * Volume preference, shared with the full Music app.
+ * Maximum (100) unless the listener has deliberately moved the slider.
+ * NB: `Number(null)` is 0 — an UNSET key must be handled explicitly or the
+ * player silently boots at volume 0 (the old fallback never fired).
+ */
 function storedVolume() {
-  const v = Number(localStorage.getItem('hangout_music_volume'));
-  return Number.isFinite(v) && v >= 0 ? v : 100;
+  const raw = localStorage.getItem('hangout_music_volume');
+  if (raw === null) return 100;
+  const v = Number(raw);
+  return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 100;
 }
 
 /** Lazily boots the hidden audio engine and returns its init promise. */

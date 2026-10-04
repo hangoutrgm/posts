@@ -1125,7 +1125,7 @@
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.
         window.openMiniPlayer = () => {
-            import('./music/mini-player.js?v=1')
+            import('./music/mini-player.js?v=2')
                 .then((mod) => mod.toggleMiniPlayer())
                 .catch((err) => console.error('[mini-player] load failed', err));
         };

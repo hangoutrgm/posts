@@ -87,10 +87,15 @@ function notify(msg) {
   else console.info('[mini-player]', msg);
 }
 
-/** Same volume preference the full Music app persists. */
+/**
+ * Same volume preference the full Music app persists — maximum by default.
+ * (An unset key must be checked explicitly: `Number(null)` is 0, not NaN.)
+ */
 function storedVolume() {
-  const v = Number(localStorage.getItem('hangout_music_volume'));
-  return Number.isFinite(v) && v >= 0 ? v : 100;
+  const raw = localStorage.getItem('hangout_music_volume');
+  if (raw === null) return 100;
+  const v = Number(raw);
+  return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 100;
 }
 
 function loadUnplayable() {
