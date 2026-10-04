@@ -10,7 +10,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
 import "./helpers.js?v=66";
-import "./renderers.js?v=78";
+import "./renderers.js?v=79";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -749,6 +749,7 @@ window._startNotifListener = (uid) => {
                     const rxEmoji = window.REACT_EMOJI?.[n.reactType] || '❤️';
                     const msg = n.type === 'mention' ? `${sourceUser?.name || 'Someone'} mentioned you!` :
                                 n.type === 'comment' ? `${sourceUser?.name || 'Someone'} commented on your post!` :
+                                n.type === 'comment_myday' ? `${sourceUser?.name || 'Someone'} commented on your My Day!` :
                                 n.type === 'react_post' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your post!` :
                                 n.type === 'react_comment' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your comment!` :
                                 n.type === 'react_reply' ? `${sourceUser?.name || 'Someone'} reacted ${rxEmoji} to your reply!` :
@@ -1663,6 +1664,11 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
         if (btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; btn.disabled = true; }
         try {
             await push(ref(db2, `myday_comments/${postId}`), { uid: window.currentUser.uid, text: text, timestamp: Date.now() });
+            // Tell the My Day owner (never yourself) — same RTDB 2 notification node
+            // the bell list + local push already listen to.
+            if (postAuthorId && postAuthorId !== window.currentUser.uid && postAuthorId !== 'undefined') {
+                push(ref(db2, `notifications/${postAuthorId}`), { type: 'comment_myday', sourceUid: window.currentUser.uid, postId: postId, timestamp: Date.now(), read: false }).catch(() => {});
+            }
         } catch (e) {
             window.showToast('Could not post comment: ' + e.message);
         }

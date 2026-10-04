@@ -111,6 +111,10 @@ window.renderNotifications = () => {
                 linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
             }
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
+            else if(n.type === 'comment_myday') {
+                text = 'commented on your My Day.'; icon = '💬';
+                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+            }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
             else if(n.type === 'chat_mention') {
