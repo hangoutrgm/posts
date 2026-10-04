@@ -957,6 +957,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     const authorInfo = window.globalUsersCache[displayAuthorId] || { name: "Unknown", pic: window.generateAvatar(displayAuthorId), points: 0 };
     const roleData = window.getRole(displayAuthorId);
     const followerCount = authorInfo.followers ? Object.keys(authorInfo.followers).length : 0; 
+    const isMyDayPost = Boolean(post.isMyDay || (post.id && String(post.id).startsWith('myday_')));
     
     let repostBanner = '';
     if (post.isRepost) {
@@ -2825,7 +2826,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             <span class="text-[9px] text-yellow-600 dark:text-yellow-500 shrink-0 whitespace-nowrap">🏆 ${authorInfo.lbPoints || 0}</span>
                             <span class="text-[9px] text-blue-500 font-bold shrink-0 whitespace-nowrap">👥 ${followerCount}</span>
                         </div>
-                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • ${post.isMyDay ? `<span class="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-semibold"><i class="fa-solid fa-bolt mr-1"></i>My Day</span>` : `<span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span>`}</p>
+                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • ${isMyDayPost ? `<span class="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-semibold"><i class="fa-solid fa-bolt mr-1"></i>My Day</span>` : `<span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span>`}</p>
                     </div>
                 </div>
                 <div class="shrink-0 ml-1 flex items-start">${adminControls}</div>
@@ -2839,7 +2840,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             ${gameHtml}
         </div>
         
-        ${post.isMyDay ? '' : `
+        ${isMyDayPost ? '' : `
         <div id="reactions-${prefix}-${post.id}" class="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 pt-2 text-xs pb-1 mt-1">
             <div class="flex items-center space-x-2 shrink-0">
                 <button onclick="window.showReactors('${post.id}')" class="flex items-center space-x-1 transition shrink-0 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 text-gray-500 bg-gray-50 dark:bg-slate-900 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20">
@@ -2869,7 +2870,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         </div>
         `}
         
-        ${post.isMyDay ? '' : `
+        ${isMyDayPost ? '' : `
         <div id="comments-${prefix}-${post.id}" class="${isCommentsOpen ? '' : 'hidden'} mt-1 border-t border-gray-100 dark:border-slate-700 pt-1">
             ${commentInputBox}
             ${commentsHtml}
