@@ -1,7 +1,7 @@
 // admin.js
-import { app, auth, db, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
+import { app, auth, db, db3, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { ref, onValue, set, update, push, get, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, onValue, set, update, push, get, remove, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import "../js/globals.js?v=5";
 import "../js/helpers.js?v=64";
@@ -46,6 +46,105 @@ onAuthStateChanged(auth, async (user) => {
         loadingScreen.innerHTML = `<p class="text-red-400">Error verifying access: ${err.message}</p><a href="../" class="text-blue-400 underline mt-2 block">Go back</a>`;
     }
 });
+
+// ── Hangout Music: the ONE shared YouTube Data API v3 key (stored in RTDB 3) ──
+// Written here from /config and read by /music through a live onValue listener,
+// so members never have to paste their own key. Pasting a YouTube link in the
+// app never needs a key at all — only keyword search does.
+const MUSIC_API_PATH = 'settings/youtube_api_key';
+
+function initMusicApiKey() {
+    const form = document.getElementById('music-api-form');
+    if (!form) return;
+
+    const input = document.getElementById('music-api-key');
+    const stateEl = document.getElementById('music-api-state');
+    const testBtn = document.getElementById('music-api-test');
+    const clearBtn = document.getElementById('music-api-clear');
+    let currentKey = '';
+
+    function describe(key) {
+        if (!stateEl) return;
+        if (key) {
+            stateEl.textContent = `Shared key active (${key.slice(0, 6)}…${key.slice(-4)}, ${key.length} chars) — every member can search by keyword.`;
+            stateEl.className = 'text-[10px] text-emerald-600 dark:text-emerald-400';
+        } else {
+            stateEl.textContent = 'No shared key saved — keyword search in /music is off (pasting a YouTube link still works).';
+            stateEl.className = 'text-[10px] text-amber-600 dark:text-amber-400';
+        }
+    }
+
+    // Live mirror: the app and this page always agree on the active key.
+    onValue(ref(db3, MUSIC_API_PATH), (snap) => {
+        currentKey = String(snap.val() || '').trim();
+        if (document.activeElement !== input) input.value = currentKey;
+        describe(currentKey);
+    }, (err) => {
+        console.error('Music API key read failed:', err);
+        if (stateEl) {
+            stateEl.textContent = 'Could not read the key — check the RTDB 3 rules for /settings.';
+            stateEl.className = 'text-[10px] text-rose-500';
+        }
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const key = input.value.trim();
+        if (!key) return alert('Paste a YouTube Data API v3 key first.');
+
+        const btn = form.querySelector('button[type="submit"]');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving...';
+        try {
+            await set(ref(db3, MUSIC_API_PATH), key);
+            alert('Shared YouTube API key saved. The Music app picks it up instantly.');
+        } catch (err) {
+            console.error(err);
+            alert('Error saving the key: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    });
+
+    if (testBtn) testBtn.addEventListener('click', async () => {
+        const key = input.value.trim() || currentKey;
+        if (!key) return alert('Paste a key first.');
+        const original = testBtn.innerHTML;
+        testBtn.disabled = true;
+        testBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Testing...';
+        try {
+            const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=id&id=dQw4w9WgXcQ&key=${encodeURIComponent(key)}`);
+            const data = await res.json();
+            if (res.ok && data.items) alert('Key works — the YouTube Data API responded.');
+            else alert('Key rejected: ' + ((data.error && data.error.message) || `HTTP ${res.status}`));
+        } catch (err) {
+            alert('Test failed: ' + err.message);
+        } finally {
+            testBtn.disabled = false;
+            testBtn.innerHTML = original;
+        }
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', async () => {
+        if (!confirm('Remove the shared YouTube API key? Keyword search in /music stops working until a new key is saved.')) return;
+        const original = clearBtn.innerHTML;
+        clearBtn.disabled = true;
+        clearBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Clearing...';
+        try {
+            await remove(ref(db3, MUSIC_API_PATH));
+            input.value = '';
+            alert('Shared key removed.');
+        } catch (err) {
+            console.error(err);
+            alert('Error removing the key: ' + err.message);
+        } finally {
+            clearBtn.disabled = false;
+            clearBtn.innerHTML = original;
+        }
+    });
+}
 
 function initAdminDashboard() {
     // Theme toggle
@@ -603,6 +702,9 @@ function initAdminDashboard() {
             btn.innerHTML = original;
         }
     });
+
+    // 5e. Hangout Music — the shared YouTube Data API v3 key (stored in RTDB 3)
+    initMusicApiKey();
 
     // ★ Migrate User Points (Stars ★ & LB 🏆 from one account into another)
     // Only ADDITIVE — the receiving user's points are incremented, never replaced.

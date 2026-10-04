@@ -29,6 +29,7 @@ const firebaseConfig2 = {
 const firebaseConfig3 = {
     apiKey: "AIzaSyC1LxLyC1_s9hOqAMiTHyjuecg_Psw0C6c",
     authDomain: "rpw3-67a05.firebaseapp.com",
+    databaseURL: "https://rpw3-67a05-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "rpw3-67a05",
     storageBucket: "rpw3-67a05.firebasestorage.app",
     messagingSenderId: "594743398766",
@@ -65,6 +66,13 @@ export const fsdb3 = initializeFirestore(app3, {
         tabManager: persistentMultipleTabManager()
     })
 });
+
+// Tertiary Realtime Database (rpw3-67a05) — used by the standalone Music app
+// (/music) for the shared /global_library and per-user /user_playlists nodes.
+// Rules in database3.rules.json. Requests arrive UNAUTHENTICATED (app3's Auth is
+// never signed in), so the client writes the owner uid into the path itself —
+// same "open with client-side guards" convention as db2.
+export const db3 = getDatabase(app3);
 
 // Map to track which Firestore database holds a specific post (1, 2, or 3)
 window._postDbMap = window._postDbMap || new Map();
@@ -138,6 +146,7 @@ window.fsdb = fsdb;
 window.fsdb2 = fsdb2;
 window.db2 = db2;
 window.fsdb3 = fsdb3;
+window.db3 = db3;
 window.getFirestoreBySource = getFirestoreBySource;
 window.getSourceByFirestore = getSourceByFirestore;
 window.getFirestoreForPost = getFirestoreForPost;

@@ -5,9 +5,9 @@ module.exports = {
     "./*.html",
     "./js/**/*.{js,html}",
     "./config/**/*.{html,js}",
-    "./reels/**/*.{html,js}",
     "./treasury/**/*.{html,js}",
-    "./chat/**/*.{html,js}"
+    "./chat/**/*.{html,js}",
+    "./music/**/*.{html,js}"
   ],
   theme: {
     extend: {

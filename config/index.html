@@ -490,10 +490,55 @@
                     </form>
                 </div>
 
+                <!-- Hangout Music — shared YouTube Data API key (RTDB 3) -->
+                <div class="bg-white dark:bg-slate-800/90 border border-violet-200 dark:border-violet-900/50 p-4 rounded-xl shadow-sm flex flex-col">
+                    <div class="flex items-center mb-3">
+                        <div class="w-7 h-7 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center mr-2">
+                            <i class="fa-solid fa-music text-sm"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-white">Hangout Music</h3>
+                    </div>
+
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                        One shared <strong>YouTube Data API v3</strong> key powers keyword search for everyone in
+                        <strong>/music</strong>, so members never have to paste their own. Pasting a YouTube link
+                        never needs a key.
+                    </p>
+
+                    <form id="music-api-form" class="space-y-2">
+                        <div>
+                            <label for="music-api-key" class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">YouTube Data API v3 key</label>
+                            <input type="text" id="music-api-key" autocomplete="off" spellcheck="false" placeholder="AIza…"
+                                   class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-violet-500 dark:focus:border-violet-500 focus:ring-1 focus:ring-violet-500 rounded-lg px-2.5 py-2 text-xs font-mono outline-none transition">
+                        </div>
+                        <p id="music-api-state" class="text-[10px] text-slate-400 dark:text-slate-500">Checking…</p>
+                        <div class="flex flex-wrap items-center gap-2 pt-1">
+                            <button type="submit" class="bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2 px-4 rounded-lg transition shadow-md shadow-violet-500/25 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-check mr-2"></i> Save Key
+                            </button>
+                            <button type="button" id="music-api-test" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 font-semibold py-2 px-4 rounded-lg transition text-sm">
+                                <i class="fa-solid fa-vial mr-1.5"></i> Test
+                            </button>
+                            <button type="button" id="music-api-clear" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 font-semibold py-2 px-4 rounded-lg transition text-sm">
+                                Clear
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                        <p class="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                            <i class="fa-solid fa-database mr-1"></i>Stored at
+                            <code class="font-mono">/settings/youtube_api_key</code> in RTDB 3
+                            (<code class="font-mono">rpw3-67a05</code>). Every member's browser reads it, so restrict the
+                            key to your domain with <strong>HTTP referrer</strong> limits in Google Cloud Console.
+                        </p>
+                    </div>
+                </div>
+
             </div>
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=33"></script>
+    <script type="module" src="admin.js?v=34"></script>
 </body>
 </html>

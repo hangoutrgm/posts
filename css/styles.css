@@ -442,6 +442,173 @@ body {
     transform: scale(0.94);
 }
 
+/* ── Floating Music Button (stacked above the create button) ── */
+#floating-music-btn {
+    position: fixed;
+    bottom: 84px; /* 24 (create btn) + 48 + 12 gap */
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #d946ef);
+    color: #ffffff !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    box-shadow: 0 10px 25px -5px rgba(168, 85, 247, 0.5);
+    border: 3px solid #ffffff;
+    cursor: pointer;
+    z-index: 90;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+:is(.dark *) #floating-music-btn,
+.dark #floating-music-btn {
+    border-color: #1e293b;
+    box-shadow: 0 10px 25px -5px rgba(168, 85, 247, 0.6);
+}
+#floating-music-btn:hover { transform: scale(1.08); }
+#floating-music-btn:active { transform: scale(0.94); }
+#floating-music-btn.is-playing { animation: mpFloat 2s ease-in-out infinite; }
+@keyframes mpFloat {
+    0%, 100% { box-shadow: 0 10px 25px -5px rgba(168, 85, 247, 0.5); }
+    50%      { box-shadow: 0 10px 28px -3px rgba(217, 70, 239, 0.95); }
+}
+
+/* ── Mini Music Player: shell, header, rows ── */
+.mp-off { display: none !important; }
+
+.mp-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    animation: mpFade 0.16s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 640px) { .mp-overlay { align-items: center; padding: 16px; } }
+@keyframes mpFade { from { opacity: 0; } to { opacity: 1; } }
+
+.mp-card {
+    width: 100%;
+    max-width: 360px;
+    border-radius: 22px;
+    background: #ffffff;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 24px 50px -18px rgba(15, 23, 42, 0.45);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: mpPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+:is(.dark *) .mp-card,
+.dark .mp-card { background: #1e293b; border-color: rgba(51, 65, 85, 0.75); }
+@keyframes mpPop { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+.mp-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; }
+.mp-badge {
+    width: 34px; height: 34px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    background: linear-gradient(135deg, #a855f7, #d946ef);
+}
+.mp-head-text { min-width: 0; flex: 1; }
+.mp-h3 { font-size: 13px; font-weight: 800; line-height: 1.2; margin: 0; color: #0f172a; }
+.mp-sub { font-size: 10px; color: #94a3b8; margin: 1px 0 0; }
+:is(.dark *) .mp-h3, .dark .mp-h3 { color: #f8fafc; }
+
+.mp-icon-btn {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; text-decoration: none; cursor: pointer;
+    color: #64748b; background: rgba(148, 163, 184, 0.14); border: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.mp-icon-btn:hover { background: rgba(148, 163, 184, 0.3); color: #0f172a; }
+:is(.dark *) .mp-icon-btn, .dark .mp-icon-btn { color: #94a3b8; }
+:is(.dark *) .mp-icon-btn:hover, .dark .mp-icon-btn:hover { color: #f8fafc; }
+
+.mp-list { list-style: none; margin: 0; padding: 0 8px 6px; overflow-y: auto; max-height: min(44vh, 300px); }
+.mp-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; cursor: pointer; transition: background 0.15s ease; }
+.mp-row:hover { background: rgba(148, 163, 184, 0.14); }
+.mp-row.is-current { background: rgba(168, 85, 247, 0.14); }
+.mp-thumb { width: 38px; height: 38px; border-radius: 9px; object-fit: cover; flex-shrink: 0; background: rgba(148, 163, 184, 0.2); }
+.mp-row-text { min-width: 0; flex: 1; }
+.mp-title, .mp-artist { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-title { font-size: 12px; font-weight: 600; color: #1e293b; }
+.mp-artist { font-size: 10px; color: #94a3b8; }
+:is(.dark *) .mp-title, .dark .mp-title { color: #e2e8f0; }
+.mp-eq { display: none; font-size: 11px; color: #a855f7; }
+.mp-row.is-current .mp-eq { display: inline-flex; }
+
+.mp-empty { padding: 26px 20px; text-align: center; }
+.mp-empty i { display: block; font-size: 22px; color: #cbd5e1; margin-bottom: 8px; }
+.mp-empty p { font-size: 11px; color: #94a3b8; margin: 0 0 10px; line-height: 1.5; }
+.mp-empty button, .mp-empty a {
+    display: inline-block; font-size: 11px; font-weight: 700; color: #fff; text-decoration: none;
+    background: linear-gradient(135deg, #a855f7, #d946ef); border: 0; border-radius: 999px; padding: 7px 14px; cursor: pointer;
+}
+
+.mp-foot { border-top: 1px solid rgba(226, 232, 240, 0.9); padding: 10px 14px 14px; }
+:is(.dark *) .mp-foot, .dark .mp-foot { border-top-color: rgba(51, 65, 85, 0.7); }
+.mp-now { font-size: 11px; font-weight: 700; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(.dark *) .mp-now, .dark .mp-now { color: #e2e8f0; }
+
+.mp-seek-row { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.mp-time { width: 30px; font-size: 10px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.mp-time:last-child { text-align: right; }
+.mp-seek {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.38);
+    outline: none;
+    cursor: pointer;
+}
+.mp-seek::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #a855f7; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.mp-seek::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #a855f7; border: 2px solid #fff; }
+
+.mp-ctrls { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 10px; }
+.mp-ctrl {
+    width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 13px;
+    color: #334155; background: rgba(148, 163, 184, 0.14);
+    transition: background 0.15s ease, transform 0.12s ease;
+}
+.mp-ctrl:hover { background: rgba(148, 163, 184, 0.3); }
+.mp-ctrl:active { transform: scale(0.94); }
+:is(.dark *) .mp-ctrl, .dark .mp-ctrl { color: #e2e8f0; }
+.mp-ctrl-main {
+    width: 46px; height: 46px; font-size: 17px; color: #fff;
+    background: linear-gradient(135deg, #a855f7, #d946ef);
+    box-shadow: 0 8px 18px -6px rgba(168, 85, 247, 0.7);
+}
+.mp-ctrl-main:hover { background: linear-gradient(135deg, #a855f7, #d946ef); filter: brightness(1.07); }
+
+/* Hidden audio-only YouTube mount (1px, never display:none — that stops playback) */
+.mp-yt { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0.01; pointer-events: none; z-index: -1; }
+
+/* ── Missing Tailwind utility safety net ──
+   css/tailwind.min.css is a compiled artifact that predates some of the classes
+   used in the markup, so those silently no-op and the element renders unstyled.
+   Found by auditing every class in index.html against the compiled bundle.
+   `npm run build:css` folds these into the bundle properly. */
+.rounded-3xl { border-radius: 1.5rem; }                                      /* Hangout Apps modal card */
+.pb-28 { padding-bottom: 7rem; }                                             /* feed bottom spacer for the FABs */
+.dark .dark\:bg-slate-700\/60 { background-color: rgba(51, 65, 85, 0.6); }   /* Apps modal close button */
+
 /* ── Hangout Apps Modal ── */
 .app-card {
     display: flex;

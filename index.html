@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=15">
+    <link rel="stylesheet" href="css/styles.css?v=17">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -229,14 +229,14 @@
                     <span class="app-badge-live">Live</span>
                 </a>
 
-                <!-- 2. Music (Placeholder) -->
-                <button onclick="window.showToast('Music is not available as of this moment.')" class="app-card">
+                <!-- 2. Music -->
+                <a href="music/" class="app-card">
                     <div class="app-card-icon app-icon-music">
                         <i class="fa-solid fa-music"></i>
                     </div>
                     <span class="app-card-label">Music</span>
-                    <span class="app-badge-soon">Soon</span>
-                </button>
+                    <span class="app-badge-live">Live</span>
+                </a>
 
                 <!-- 3. Arena (Placeholder) -->
                 <button onclick="window.showToast('Arena is not available as of this moment.')" class="app-card">
@@ -1107,6 +1107,11 @@
         <i class="fa-solid fa-plus"></i>
     </button>
 
+    <!-- Floating Music Button (mini player) — stacked above the create button -->
+    <button id="floating-music-btn" onclick="window.openMiniPlayer()" title="Hangout Music" aria-label="Open the music player">
+        <i class="fa-solid fa-music"></i>
+    </button>
+
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
@@ -1116,6 +1121,15 @@
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=26"></script>
     <script type="module" src="js/main.js?v=82"></script>
+    <script>
+        // Mini music player is lazy-loaded: the module (and the shared YouTube
+        // audio engine) only downloads the first time the floating button is used.
+        window.openMiniPlayer = () => {
+            import('./music/mini-player.js?v=1')
+                .then((mod) => mod.toggleMiniPlayer())
+                .catch((err) => console.error('[mini-player] load failed', err));
+        };
+    </script>
     <script>
         if ('serviceWorker' in navigator) {
             // Was this page already controlled by a service worker when it loaded?

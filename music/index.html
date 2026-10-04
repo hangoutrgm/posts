@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#05060d" id="meta-theme-color">
+<meta name="description" content="Hangout Music — a community jukebox: search YouTube, share tracks to the global library, and build your own playlist.">
+<title>Hangout Music</title>
+<link rel="icon" href="../favicon.ico">
+<script>
+  /* Theme bootstrap — runs before first paint so there is never a flash.
+     Same contract as the rest of the site: localStorage.theme === 'light' | 'dark' */
+  if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
+  else document.documentElement.classList.add('dark');
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: { extend: { fontFamily: { sans: ['Inter', '"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'] } } }
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="music.css?v=6">
+<!-- Shared Cloudinary optimizers (window.optAvatar) — ?v must match sw.js PRECACHE -->
+<script src="../js/users-cache.js?v=6"></script>
+</head>
+<body class="music-body min-h-screen antialiased">
+<div class="music-bg" aria-hidden="true"></div>
+
+<!-- ============================ Header ============================ -->
+<header class="sticky top-0 z-30 glass-strong m-hairline-b">
+  <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2.5 sm:gap-3">
+    <!-- Back to Hangout + brand -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <a id="btn-back" href="../index.html" class="icon-btn w-9 h-9 shrink-0"
+         title="Back to Hangout" aria-label="Back to Hangout">
+        <i class="fa-solid fa-arrow-left text-sm"></i>
+      </a>
+      <span class="flex items-center gap-2.5">
+        <span class="w-9 h-9 rounded-xl grid place-items-center bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-lg shadow-fuchsia-500/25">
+          <i class="fa-solid fa-music text-white"></i>
+        </span>
+        <span class="hidden sm:block leading-none">
+          <span class="block text-sm font-extrabold tracking-tight m-text">Hangout Music</span>
+          <span class="block text-[10px] m-muted mt-0.5">Community jukebox</span>
+        </span>
+      </span>
+    </div>
+
+    <form id="music-search-form" class="flex-1 min-w-0 max-w-2xl" role="search">
+      <div class="relative">
+        <span class="absolute inset-y-0 left-3 flex items-center m-faint text-sm pointer-events-none">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </span>
+        <input id="music-search-input" type="search" autocomplete="off" spellcheck="false"
+               placeholder="Search YouTube or paste a link…"
+               class="glass-input w-full pl-9 pr-12 sm:pr-24 py-2.5 text-sm">
+        <div class="absolute inset-y-0 right-1.5 flex items-center">
+          <button id="music-search-btn" type="submit" class="btn-accent h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" title="Search">
+            <i class="fa-solid fa-magnifying-glass"></i><span class="hidden sm:inline">Search</span>
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <div class="flex items-center gap-1.5 shrink-0">
+      <span id="yt-status" class="hidden sm:inline-flex items-center gap-1.5 text-[10px] m-faint px-2 py-1 rounded-full m-hairline">
+        <i class="fa-solid fa-circle-notch fa-spin"></i>Audio engine
+      </span>
+      <!-- Account & settings trigger: avatar when signed in, generic icon otherwise -->
+      <button id="btn-user-menu" type="button"
+              class="icon-btn w-9 h-9 overflow-hidden shrink-0"
+              title="Account &amp; settings" aria-haspopup="dialog" aria-expanded="false">
+        <img id="user-avatar" alt="" class="hidden w-full h-full object-cover rounded-full">
+        <i id="user-avatar-icon" class="fa-solid fa-user text-sm m-muted"></i>
+      </button>
+    </div>
+  </div>
+  <div class="max-w-6xl mx-auto px-3 sm:px-4 pb-2">
+    <p id="search-hint" class="hidden text-[11px] m-muted"></p>
+  </div>
+</header>
+
+<!-- ============================ Main ============================ -->
+<main class="max-w-6xl mx-auto px-3 sm:px-4 pt-5">
+  <div class="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-5">
+
+    <!-- Sidebar / tabs -->
+    <aside class="lg:sticky lg:top-32 self-start">
+      <nav class="glass-card p-2.5 space-y-1" aria-label="Library sections">
+        <button id="tab-library" type="button"
+                class="tab-pill is-active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+          <i class="fa-solid fa-layer-group w-4 text-center"></i>
+          <span class="flex-1">Community Library</span>
+          <span id="lib-count" class="text-[10px] font-mono px-1.5 py-0.5 rounded-md m-soft-2 m-faint">0</span>
+        </button>
+        <button id="tab-playlist" type="button"
+                class="tab-pill w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+          <i class="fa-solid fa-heart w-4 text-center"></i>
+          <span class="flex-1">My Playlist</span>
+          <span id="playlist-count" class="text-[10px] font-mono px-1.5 py-0.5 rounded-md m-soft-2 m-faint">0</span>
+        </button>
+        <button id="tab-search" type="button"
+                class="tab-pill w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+          <i class="fa-solid fa-magnifying-glass w-4 text-center"></i>
+          <span class="flex-1">Search Results</span>
+        </button>
+        <button id="tab-queue" type="button"
+                class="tab-pill w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+          <i class="fa-solid fa-list-ol w-4 text-center"></i>
+          <span class="flex-1">Play Queue</span>
+        </button>
+      </nav>
+
+      <div class="glass-card p-3.5 mt-4 hidden lg:block">
+        <p class="text-[11px] m-muted leading-relaxed">
+          <i class="fa-solid fa-circle-info m-accent-text mr-1"></i>
+          Shared with the whole hangout. Tap a row to play it, heart it to save it,
+          and paste any YouTube link to contribute a track to the community library.
+        </p>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <section id="content-panel" class="min-w-0">
+      <div class="flex items-end justify-between gap-3 mb-3">
+        <div class="min-w-0">
+          <h2 id="content-title" class="text-lg font-bold m-text leading-tight">Community Library</h2>
+          <p id="content-sub" class="text-xs m-muted mt-0.5">0 tracks</p>
+        </div>
+      </div>
+
+      <ul id="content-list" class="space-y-2 list-none p-0 m-0"></ul>
+
+      <div id="content-empty" class="glass-card p-10 text-center">
+        <div class="w-14 h-14 mx-auto rounded-2xl grid place-items-center m-soft m-hairline mb-3">
+          <i class="fa-solid fa-music text-xl m-faint"></i>
+        </div>
+        <h3 id="content-empty-title" class="text-sm font-semibold m-text">The library is empty</h3>
+        <p id="content-empty-text" class="text-xs m-muted mt-1 max-w-sm mx-auto">
+          Search for a song above and tap “+” to add the very first track.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <div class="player-spacer" aria-hidden="true"></div>
+</main>
+
+<!-- ============================ Hidden audio engine (1px x 1px) ============================ -->
+<div id="yt-hidden-wrap" aria-hidden="true"
+     style="position:fixed;left:0;bottom:0;width:1px;height:1px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1;">
+  <div id="yt-player-mount"></div>
+</div>
+
+<!-- ============================ Now playing bar ============================ -->
+<div id="player-bar" class="player-bar fixed bottom-0 inset-x-0 z-40 glass-strong m-hairline-t">
+  <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3">
+
+    <div class="flex items-center gap-3">
+      <!-- Now playing info (tap to toggle) -->
+      <button id="player-info" type="button" class="flex items-center gap-3 min-w-0 flex-1 text-left" title="Play / Pause">
+        <div class="relative w-11 h-11 sm:w-12 sm:h-12 shrink-0">
+          <img id="player-thumb" alt=""
+               class="w-full h-full object-cover rounded-xl m-hairline m-soft">
+          <span id="player-vinyl" class="vinyl is-paused absolute -bottom-1 -right-1 w-5 h-5 rounded-full grid place-items-center m-soft-2 m-hairline">
+            <span class="w-2 h-2 rounded-full bg-gradient-to-br from-fuchsia-400 to-violet-500"></span>
+          </span>
+        </div>
+        <div class="min-w-0">
+          <div id="player-title-wrap" class="marquee text-sm font-semibold m-text max-w-[34vw] sm:max-w-xs">
+            <span id="player-title">Nothing playing</span>
+          </div>
+          <div id="player-artist" class="text-[11px] m-muted truncate">Pick a track to start</div>
+        </div>
+      </button>
+
+      <!-- Transport -->
+      <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <button id="btn-prev" type="button" class="icon-btn w-9 h-9 text-sm" title="Previous">
+          <i class="fa-solid fa-backward-step"></i>
+        </button>
+        <button id="btn-play" type="button" class="btn-accent w-11 h-11 rounded-full text-base" title="Play / Pause">
+          <i id="icon-play" class="fa-solid fa-play"></i>
+        </button>
+        <button id="btn-next" type="button" class="icon-btn w-9 h-9 text-sm" title="Next">
+          <i class="fa-solid fa-forward-step"></i>
+        </button>
+      </div>
+
+      <!-- Visualizer -->
+      <div id="viz" class="viz is-paused hidden md:flex shrink-0 mx-1" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+
+      <!-- Volume — popover, reachable on every screen size -->
+      <div class="relative shrink-0">
+        <button id="btn-volume" type="button" class="icon-btn w-9 h-9 text-sm" title="Volume" aria-haspopup="true" aria-expanded="false">
+          <i id="icon-vol" class="fa-solid fa-volume-high"></i>
+        </button>
+
+        <div id="volume-pop" class="hidden vol-pop absolute bottom-12 right-0 z-50 w-64 p-3 rounded-2xl glass-strong animate-pop">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-semibold uppercase tracking-wider m-faint">Volume</span>
+            <span id="vol-value" class="text-[11px] font-mono m-muted">100%</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <button id="btn-mute" type="button" class="icon-btn w-8 h-8 text-xs shrink-0" title="Mute / Unmute">
+              <i id="icon-mute" class="fa-solid fa-volume-high"></i>
+            </button>
+            <input id="volbar" class="volbar flex-1" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
+          </div>
+          <p class="text-[10px] m-faint mt-2 leading-snug">
+            <i class="fa-solid fa-circle-info mr-1"></i>YouTube caps at 100% — also raise your device volume.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Seek row -->
+    <div class="flex items-center gap-3 mt-2.5">
+      <span id="time-current" class="text-[11px] m-muted font-mono tabular-nums w-10 text-right">0:00</span>
+      <input id="seekbar" class="seekbar flex-1" type="range" min="0" max="100" step="1" value="0" aria-label="Seek">
+      <span id="time-total" class="text-[11px] m-muted font-mono tabular-nums w-10">--:--</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ Account / menu modal ============================ -->
+<div id="modal-user" class="hidden fixed inset-0 z-50 flex items-center justify-center m-scrim backdrop-blur-xl p-4">
+  <div class="glass-strong rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-pop">
+    <button id="btn-user-close" type="button" class="icon-btn w-8 h-8 absolute top-4 right-4 text-sm" title="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+
+    <!-- Identity -->
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-12 h-12 rounded-full overflow-hidden shrink-0 grid place-items-center m-soft-2 m-hairline">
+        <img id="user-avatar-lg" alt="" class="hidden w-full h-full object-cover rounded-full">
+        <i id="user-avatar-lg-icon" class="fa-solid fa-user m-muted"></i>
+      </span>
+      <div class="min-w-0">
+        <p id="user-modal-name" class="text-sm font-bold m-text truncate">Guest</p>
+        <p id="user-modal-status" class="text-[11px] m-muted leading-snug">Not signed in</p>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <!-- Appearance (theme toggle) -->
+      <div class="menu-row">
+        <span class="menu-icon">
+          <i id="icon-theme" class="fa-solid fa-moon text-sm"></i>
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-semibold m-text">Appearance</p>
+          <p id="theme-label" class="text-[10px] m-muted">Dark mode</p>
+        </div>
+        <button id="theme-toggle" type="button" role="switch" aria-checked="true"
+                class="theme-switch" title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
+          <span class="theme-switch-knob"></span>
+        </button>
+      </div>
+
+      <!-- Session -->
+      <button id="btn-user-signin" type="button"
+              class="btn-accent w-full h-11 rounded-xl text-sm font-semibold inline-flex items-center justify-center gap-2">
+        <i class="fa-solid fa-right-to-bracket"></i> Sign in
+      </button>
+      <button id="btn-user-signout" type="button" class="hidden w-full">
+        <span class="menu-row w-full justify-center text-sm font-medium m-text">
+          <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i> Sign out
+        </span>
+      </button>
+    </div>
+
+    <!-- How to use -->
+    <div class="mt-4 p-3 rounded-xl m-soft m-hairline">
+      <p class="text-[10px] font-semibold uppercase tracking-wider m-faint mb-2">
+        <i class="fa-solid fa-circle-question mr-1"></i>How to use
+      </p>
+      <ul class="space-y-2 text-[11px] m-muted leading-snug list-none p-0 m-0">
+        <li class="flex items-start gap-2.5">
+          <i class="fa-solid fa-magnifying-glass m-accent-text mt-0.5 w-3 text-center shrink-0"></i>
+          <span>Search the song you want — or paste a YouTube link.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <i class="fa-solid fa-plus m-accent-text mt-0.5 w-3 text-center shrink-0"></i>
+          <span>Press <b class="m-text">+</b> to add it to the Hangout library for everyone.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <i class="fa-solid fa-heart m-accent-text mt-0.5 w-3 text-center shrink-0"></i>
+          <span>Press the <b class="m-text">heart</b> to save it to your own playlist.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <i class="fa-solid fa-trash-can m-accent-text mt-0.5 w-3 text-center shrink-0"></i>
+          <span>If a song shows <b class="m-text">Can’t embed</b>, tap the <b class="m-text">trash</b> to delete it — it will never play here.</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ Sign-in modal ============================ -->
+<div id="modal-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center m-scrim backdrop-blur-xl p-4">
+  <div class="glass-strong rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-pop">
+    <button id="btn-auth-close" type="button" class="icon-btn w-8 h-8 absolute top-4 right-4 text-sm" title="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <div class="text-center mb-5">
+      <div class="w-11 h-11 mx-auto rounded-2xl grid place-items-center bg-gradient-to-br from-fuchsia-500 to-violet-600 mb-2.5 shadow-lg shadow-fuchsia-500/25">
+        <i class="fa-solid fa-music text-white"></i>
+      </div>
+      <h3 class="text-base font-bold m-text">Sign in to Hangout</h3>
+      <p class="text-xs m-muted mt-1">Save playlists and add tracks to the community library.</p>
+    </div>
+
+    <button id="btn-auth-google" type="button"
+            class="w-full inline-flex items-center justify-center gap-2.5 h-11 rounded-xl m-hairline m-soft m-text font-semibold text-sm hover:opacity-85 transition">
+      <i class="fa-brands fa-google"></i> Continue with Google
+    </button>
+
+    <div class="flex items-center gap-3 my-4">
+      <span class="h-px flex-1 m-divider"></span>
+      <span class="text-[10px] m-faint uppercase tracking-widest">or</span>
+      <span class="h-px flex-1 m-divider"></span>
+    </div>
+
+    <form id="form-auth-email" class="space-y-2.5">
+      <input id="input-auth-email" type="email" autocomplete="email" placeholder="Email"
+             class="glass-input w-full px-3.5 py-2.5 text-sm">
+      <input id="input-auth-password" type="password" autocomplete="current-password" placeholder="Password"
+             class="glass-input w-full px-3.5 py-2.5 text-sm">
+      <p id="auth-error-msg" class="hidden text-[11px] m-danger"></p>
+      <button type="submit" class="btn-accent w-full h-11 rounded-xl text-sm font-semibold">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============================ Toast ============================ -->
+<div id="toast" role="status" aria-live="polite"
+     class="hidden fixed left-1/2 -translate-x-1/2 bottom-44 md:bottom-32 z-[60] glass-strong rounded-full px-4 py-2.5 text-xs font-medium m-text flex items-center gap-2 shadow-2xl max-w-[92vw]"></div>
+
+<script>
+  /* Register the site-wide service worker so /music is precached and works
+     offline. Unlike the main shell there is deliberately NO controllerchange
+     reload here — reloading the page would interrupt playback.
+     Path + scope match the chat app's registration. */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('../sw.js').catch(() => {});
+    });
+  }
+</script>
+<script type="module" src="music-app.js?v=10"></script>
+</body>
+</html>

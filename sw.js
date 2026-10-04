@@ -1,13 +1,22 @@
-const CACHE_NAME = 'hangout-v221';
+const CACHE_NAME = 'hangout-v229';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
+// YouTube artwork (i.ytimg.com). The music app renders one thumbnail per
+// library row, so caching these locally removes nearly all repeat image
+// traffic. Bump the version suffix if the caching strategy ever changes.
+const YTIMG_CACHE_NAME = 'hangout-ytimg-v1';
+const MAX_YTIMG_ITEMS = 200;
 
-async function trimMediaCache() {
+// Caches that must survive an activate() sweep.
+const PERSISTENT_CACHES = [CACHE_NAME, MEDIA_CACHE_NAME, YTIMG_CACHE_NAME];
+
+/** Trims any cache to its newest `maxItems` entries (oldest evicted first). */
+async function trimCache(cacheName, maxItems) {
   try {
-    const cache = await caches.open(MEDIA_CACHE_NAME);
+    const cache = await caches.open(cacheName);
     const keys = await cache.keys();
-    if (keys.length > MAX_MEDIA_ITEMS) {
-      const toDelete = keys.slice(0, keys.length - MAX_MEDIA_ITEMS);
+    if (keys.length > maxItems) {
+      const toDelete = keys.slice(0, keys.length - maxItems);
       await Promise.all(toDelete.map((req) => cache.delete(req)));
     }
   } catch (_) {}
@@ -19,7 +28,7 @@ const PRECACHE_ASSETS = [
   './index.html',
   './chat/index.html',
   './css/tailwind.min.css?v=3',
-  './css/styles.css?v=15',
+  './css/styles.css?v=17',
   './chat/css/styles.css?v=49',
   './js/renderers.js?v=83',
   './js/helpers.js?v=67',
@@ -28,6 +37,11 @@ const PRECACHE_ASSETS = [
   './js/myday.js?v=26',
   './js/voice-recorder.js?v=3',
   './chat/js/app.js?v=101',
+  // Standalone Music SPA (/music) — keep these ?v= in sync with music/index.html
+  './music/index.html',
+  './music/music.css?v=6',
+  './music/music-app.js?v=10',
+  './music/youtube-player.js?v=7',
   './js/users-cache.js?v=6',
   './config/emoji_riddles.json',
   './config/flags.json',
@@ -58,7 +72,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== MEDIA_CACHE_NAME).map((key) => caches.delete(key)))
+      Promise.all(keys.filter((key) => !PERSISTENT_CACHES.includes(key)).map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
@@ -86,7 +100,7 @@ self.addEventListener('fetch', (event) => {
             return fetch(request).then((response) => {
               if (response && (response.ok || response.type === 'opaque')) {
                 const copy = response.clone();
-                cache.put(request, copy).then(() => trimMediaCache()).catch(() => {});
+                cache.put(request, copy).then(() => trimCache(MEDIA_CACHE_NAME, MAX_MEDIA_ITEMS)).catch(() => {});
               }
               return response;
             }).catch(() => (request.mode === 'no-cors' ? cached : null));
@@ -96,6 +110,28 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     // Let video streams bypass directly to network
+    return;
+  }
+
+  // YouTube artwork cache handler (Cache-First) — used by the Music app's track
+  // rows and the main-site mini player. <img> requests are 'no-cors', so the responses
+  // are opaque; an opaque response may only be replayed to another 'no-cors'
+  // request (same guard as the Cloudinary branch above).
+  if (request.method === 'GET' && url.hostname === 'i.ytimg.com') {
+    event.respondWith(
+      caches.open(YTIMG_CACHE_NAME).then((cache) =>
+        cache.match(request).then((cached) => {
+          if (cached && (cached.type !== 'opaque' || request.mode === 'no-cors')) return cached;
+          return fetch(request).then((response) => {
+            if (response && (response.ok || response.type === 'opaque')) {
+              const copy = response.clone();
+              cache.put(request, copy).then(() => trimCache(YTIMG_CACHE_NAME, MAX_YTIMG_ITEMS)).catch(() => {});
+            }
+            return response;
+          }).catch(() => (request.mode === 'no-cors' ? cached : null));
+        })
+      )
+    );
     return;
   }
 
