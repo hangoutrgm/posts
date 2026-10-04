@@ -351,9 +351,11 @@ function collectionCardHtml(item, uid, isOwner) {
         : '';
     const cls = `myday-card${hidden ? ' is-hidden' : ''}${isOwner ? ' has-hide' : ''}`;
     if (item.video) {
+        // Video preview: a Cloudinary poster frame (0s thumbnail), same as the feed strip.
+        const poster = window.optVideoPoster ? window.optVideoPoster(item.video, 300) : avatar;
         return `
     <div class="${cls}" style="height:120px;min-height:120px" onclick="window.viewImage('${esc(videoPlayUrl(item.video))}')" title="Watch My Day video">
-        <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
+        <img class="myday-card-bg" src="${esc(poster)}" alt="" loading="lazy">
         ${avatarTag}
         <span class="myday-play"><i class="fa-solid fa-play"></i></span>
         ${hideTag}

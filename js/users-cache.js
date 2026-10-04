@@ -12,13 +12,15 @@
 
     const isVideo = opts.isVideo || url.includes('/video/upload/') || /\.(mp4|webm|mov|ogg|m4v)(\?|#|$)/i.test(url);
 
-    // 1. VIDEO POSTER / THUMBNAIL FRAME (0.0s frame as ultra-compact JPEG)
+    // 1. VIDEO POSTER / THUMBNAIL FRAME (frame ~2s in as an ultra-compact JPEG).
+    //    Reading a couple of seconds in avoids the dark/faded first frame (so_0)
+    //    becoming the preview. Cloudinary clamps gracefully on shorter videos.
     if (isVideo && (opts.asPoster || opts.asThumbnail)) {
-      if (url.includes('/video/upload/so_0')) return url;
+      if (url.includes('/video/upload/so_')) return url;
       const w = opts.width || (opts.asThumbnail ? 120 : 640);
       const h = opts.height || (opts.asThumbnail ? 120 : 0);
       const crop = opts.crop || (opts.asThumbnail ? 'c_fill' : 'c_limit');
-      const parts = ['so_0', 'f_jpg', 'q_auto', 'w_' + w];
+      const parts = ['so_2', 'f_jpg', 'q_auto', 'w_' + w];
       if (h) parts.push('h_' + h);
       parts.push(crop);
       const transform = parts.join(',');
