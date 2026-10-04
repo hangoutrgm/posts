@@ -163,12 +163,13 @@ function mydayReactionPath(parsed, reactorUid) {
 // Tell the owner they were reacted to. Lands on the same RTDB 2 notification
 // node the posts page listens to, so it shows in the bell list immediately.
 // Never notifies yourself, and never fires for an un-react (toggling off).
-function notifyReaction(targetUid, type, emoji) {
+function notifyReaction(targetUid, type, emoji, postId) {
     const me = myUid();
     if (!me || !targetUid || targetUid === me) return;
-    push(ref(db2, `notifications/${targetUid}`), {
-        type, sourceUid: me, reactType: emoji, timestamp: Date.now(), read: false
-    }).catch(() => {});
+    const payload = { type, sourceUid: me, reactType: emoji, timestamp: Date.now(), read: false };
+    // Include the My Day post id when known, so the alert can open that exact post.
+    if (postId) payload.postId = postId;
+    push(ref(db2, `notifications/${targetUid}`), payload).catch(() => {});
 }
 
 // Force an MP4 / H.264 delivery URL so Mobile Safari (no .webm playback) and
@@ -640,6 +641,30 @@ window.MyDay = {
 
         return posts;
     },
+    // Look up a single My Day post by its feed id (myday_vid_/myday_pic_/myday_arch_).
+    // Used by goToPost/goToMyDayPost so a comment notification opens the exact post.
+    // Reads the live caches directly (no minLoadedTs filter) so archived posts older
+    // than the loaded Firestore timeline still resolve.
+    getPostById: (postId) => {
+        const s = String(postId || '');
+        const now = Date.now();
+        if (s.startsWith('myday_vid_') || s.startsWith('myday_pic_')) {
+            const isVideo = s.startsWith('myday_vid_');
+            const uid = s.slice(10);
+            const item = isVideo ? myVideos[uid] : myPics[uid];
+            const media = item && (isVideo ? item.video : item.pic);
+            if (!media) return null;
+            return {
+                id: s, authorId: uid, text: '', image: media, category: 'Reels',
+                timestamp: Number(item.createdAt) || now,
+                reactions: item.reactions || {}, comments: mydayComments[s] || {},
+                isMyDay: true, visibility: 'public'
+            };
+        }
+        const arch = allCollectionsCache.find((x) => x && x.id === s);
+        if (arch) return { ...arch, reactions: arch.reactions || {}, comments: mydayComments[s] || {} };
+        return null;
+    },
     openNote: (uid) => {
         if (!myNotes[uid]?.text) return;
         fillNoteModal(uid);
@@ -681,7 +706,12 @@ window.MyDay = {
             return;
         }
         // Notify the owner (skipped for your own cards and for un-reacts).
-        if (!removing) notifyReaction(uid, isNote ? 'react_note' : 'react_myday', emoji);
+        // A story reaction carries its feed post id so the alert can open that post.
+        if (!removing) {
+            const story = isNote ? null : storyOf(uid);
+            const notifPostId = story ? (story.video ? `myday_vid_${uid}` : `myday_pic_${uid}`) : undefined;
+            notifyReaction(uid, isNote ? 'react_note' : 'react_myday', emoji, notifPostId);
+        }
         // The live db2 listener repaints; update locally first so the tap feels instant.
         setLocalReaction(uid, isNote, me, current === emoji ? null : emoji);
         renderStrip();
@@ -709,7 +739,7 @@ window.MyDay = {
             window.showToast('Could not react: ' + e.message);
             return;
         }
-        if (!removing) notifyReaction(parsed.uid, 'react_myday', emoji);
+        if (!removing) notifyReaction(parsed.uid, 'react_myday', emoji, postId);
         // Optimistic local write so the tap repaints before the live listener answers.
         const target = bag || allCollectionsCache.find((x) => x && x.id === postId);
         if (target) {

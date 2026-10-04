@@ -104,7 +104,11 @@ window.renderNotifications = () => {
             // back to the raw value when it is not one of the feed's type keys.
             else if(n.type === 'react_myday') {
                 text = 'reacted to your My Day.'; icon = window.REACT_EMOJI?.[n.reactType] || n.reactType || '❤️';
-                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+                // Newer alerts carry the My Day post id — open that post; older ones
+                // (and note reactions) still fall back to the reactor's profile.
+                linkAction = n.postId
+                    ? `onclick="window.goToMyDayPost('${n.postId}', '${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`
+                    : `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
             }
             else if(n.type === 'react_note') {
                 text = 'reacted to your note.'; icon = window.REACT_EMOJI?.[n.reactType] || n.reactType || '❤️';
@@ -113,7 +117,7 @@ window.renderNotifications = () => {
             else if(n.type === 'comment') { text = 'commented on your post.'; icon = '💬'; }
             else if(n.type === 'comment_myday') {
                 text = 'commented on your My Day.'; icon = '💬';
-                linkAction = `onclick="window.openProfile('${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
+                linkAction = `onclick="window.goToMyDayPost('${n.postId}', '${n.sourceUid}'); document.getElementById('notif-modal').classList.add('hidden'); window.markNotifRead('${n.id}');"`;
             }
             else if(n.type === 'reply') { text = 'replied to your comment.'; icon = '↪️'; }
             else if(n.type === 'mention') { text = 'mentioned you.'; icon = '📣'; }
@@ -193,6 +197,18 @@ window.goToPost = (postId) => {
     if (window.isolatedPostUnsubscribe) {
         window.isolatedPostUnsubscribe();
         window.isolatedPostUnsubscribe = null;
+    }
+
+    // My Day posts (Reels tab) live in RTDB 2, not in community_posts, so resolve them
+    // from the My Day store and skip the Firestore subscription entirely.
+    if (String(postId).startsWith('myday_')) {
+        if (!window.isolatedPostData && window.MyDay && typeof window.MyDay.getPostById === 'function') {
+            window.isolatedPostData = window.MyDay.getPostById(postId) || null;
+        }
+        window.openComments.add(postId); // reveal the comment section the alert is about
+        window.renderFeed(true);
+        window.scrollTo(0, 0);
+        return;
     }
 
     const targetRef = getPostDocRef(postId);
@@ -289,6 +305,26 @@ window.goToPost = (postId) => {
 
     window.renderFeed(true);
     window.scrollTo(0,0);
+};
+
+// Notification helper: open a My Day post (Reels tab) from a comment_myday alert.
+// My Day posts are not Firestore docs, so resolve the live story/archive entry and
+// hand it to goToPost's spotlight view. Archived entries may still be loading, so we
+// retry briefly; if it never resolves, fall back to the commenter's profile.
+window.goToMyDayPost = (postId, sourceUid) => {
+    if (!postId) return;
+    const attempt = (tries) => {
+        const found = (window.MyDay && typeof window.MyDay.getPostById === 'function')
+            ? window.MyDay.getPostById(postId)
+            : null;
+        if (found) { window.goToPost(postId); return; }
+        if (window.MyDay && typeof window.MyDay.ensureAllCollectionsLoaded === 'function') {
+            window.MyDay.ensureAllCollectionsLoaded();
+        }
+        if (tries < 25) setTimeout(() => attempt(tries + 1), 150);
+        else if (sourceUid) window.openProfile(sourceUid);
+    };
+    attempt(0);
 };
 
 window.clearIsolatedPost = () => {
@@ -1382,7 +1418,9 @@ window.generatePostHTML = function(post, prefix, filterContext) {
     postEl.className = `bg-white dark:bg-slate-800 rounded-xl p-3 shadow-sm border ${effectivelyPinned ? 'border-l-4 border-l-green-500 border-y-0 border-r-0' : 'border-gray-100 dark:border-slate-700'} relative mb-3`;
     
     let adminControls = '';
-    if(window.currentUser) {
+    // My Day posts (Reels tab) are not community_posts docs, so pin / lock / visibility /
+    // edit / delete actions don't apply — hide the whole action cluster for them.
+    if(window.currentUser && !post.isMyDay) {
         if(window.getRole(window.currentUser.uid).level >= 2 || window.currentUser.uid === post.authorId) {
             const isProfilePinned = (window.profilePinnedPosts || []).some(p => p.id === post.id);
             const isFeedPinned = (window.globalPinnedPosts || []).some(p => p.id === post.id);
