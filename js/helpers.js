@@ -532,7 +532,7 @@ window.viewImage = (src) => {
     downloadBtn.href = '#';
     downloadBtn.download = uniqueName;
     downloadBtn.classList.remove('hidden');
-    fetch(src)
+    fetch(src, { mode: 'cors' })
         .then(res => res.blob())
         .then(blob => {
             const blobUrl = URL.createObjectURL(blob);

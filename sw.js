@@ -1,5 +1,5 @@
-const CACHE_NAME = 'hangout-v207';
-const MEDIA_CACHE_NAME = 'hangout-cloudinary-v1';
+const CACHE_NAME = 'hangout-v210';
+const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 
 async function trimMediaCache() {
@@ -19,10 +19,10 @@ const PRECACHE_ASSETS = [
   './index.html',
   './chat/index.html',
   './css/tailwind.min.css?v=3',
-  './css/styles.css?v=14',
+  './css/styles.css?v=15',
   './chat/css/styles.css?v=49',
-  './js/renderers.js?v=73',
-  './js/helpers.js?v=65',
+  './js/renderers.js?v=74',
+  './js/helpers.js?v=66',
   './js/games.js?v=61',
   './js/main.js?v=75',
   './js/myday.js?v=21',
@@ -77,14 +77,19 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(
         caches.open(MEDIA_CACHE_NAME).then((cache) => {
           return cache.match(request).then((cached) => {
-            if (cached) return cached;
+            // An opaque response can ONLY be returned to a 'no-cors' request.
+            // If the incoming request is 'cors' (e.g. fetch() in window.viewImage), an opaque response
+            // triggers: "an 'opaque' response was used for a request whose type is not no-cors".
+            if (cached && (cached.type !== 'opaque' || request.mode === 'no-cors')) {
+              return cached;
+            }
             return fetch(request).then((response) => {
               if (response && (response.ok || response.type === 'opaque')) {
                 const copy = response.clone();
                 cache.put(request, copy).then(() => trimMediaCache()).catch(() => {});
               }
               return response;
-            }).catch(() => cached);
+            }).catch(() => (request.mode === 'no-cors' ? cached : null));
           });
         })
       );

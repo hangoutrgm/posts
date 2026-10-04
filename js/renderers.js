@@ -2839,6 +2839,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             ${gameHtml}
         </div>
         
+        ${post.isMyDay ? '' : `
         <div id="reactions-${prefix}-${post.id}" class="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 pt-2 text-xs pb-1 mt-1">
             <div class="flex items-center space-x-2 shrink-0">
                 <button onclick="window.showReactors('${post.id}')" class="flex items-center space-x-1 transition shrink-0 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 text-gray-500 bg-gray-50 dark:bg-slate-900 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20">
@@ -2852,7 +2853,6 @@ window.generatePostHTML = function(post, prefix, filterContext) {
             </div>
             
             <div class="flex items-center space-x-1 shrink-0 ml-auto">
-                ${post.isMyDay ? '' : `
                 <button onclick="window.refreshSinglePost('${post.id}')" class="refresh-btn flex items-center ${window._postLiveListeners && window._postLiveListeners[post.id] ? 'text-green-500' : 'text-gray-400'} hover:text-blue-500 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition" title="${window._postLiveListeners && window._postLiveListeners[post.id] ? 'Live (click to stop)' : 'Refresh Post'}">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
@@ -2865,9 +2865,9 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                 <button onclick="window.toggleComments('${post.id}', '${prefix}')" class="flex items-center space-x-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 bg-gray-50 dark:bg-slate-900 px-2.5 py-1 rounded-full border border-gray-100 dark:border-slate-700/50 transition">
                     <i class="fa-regular fa-comment text-sm"></i> <span>${commentCount}</span>
                 </button>
-                `}
             </div>
         </div>
+        `}
         
         ${post.isMyDay ? '' : `
         <div id="comments-${prefix}-${post.id}" class="${isCommentsOpen ? '' : 'hidden'} mt-1 border-t border-gray-100 dark:border-slate-700 pt-1">
