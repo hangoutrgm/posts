@@ -134,12 +134,88 @@ setInterval(() => {
 document.getElementById('post-search').addEventListener('input', window.debounce(() => window.renderFeed(true), 300));
 document.getElementById('member-search').addEventListener('input', window.debounce(() => window.renderMembers(true), 300));
 
+// In-memory tab session cache to eliminate duplicate Firestore reads on tab switching
+window._filterCache = window._filterCache || {};
+
+window._saveFilterState = (filterKey) => {
+    if (!filterKey) return;
+    window._filterCache[filterKey] = {
+        allPosts: window.allPosts ? [...window.allPosts] : [],
+        historyPosts1: window._historyPosts1 ? [...window._historyPosts1] : [],
+        historyPosts2: window._historyPosts2 ? [...window._historyPosts2] : [],
+        historyPosts3: window._historyPosts3 ? [...window._historyPosts3] : [],
+        historyPosts: window._historyPosts ? [...window._historyPosts] : [],
+        lastPostDoc1: window._lastPostDoc1,
+        lastPostDoc2: window._lastPostDoc2,
+        lastPostDoc3: window._lastPostDoc3,
+        liveLastDoc1: window._liveLastDoc1,
+        liveLastDoc2: window._liveLastDoc2,
+        liveLastDoc3: window._liveLastDoc3,
+        hasMorePosts1: window.hasMorePosts1,
+        hasMorePosts2: window.hasMorePosts2,
+        hasMorePosts3: window.hasMorePosts3,
+        hasMorePosts: window.hasMorePosts,
+        feedRenderLimit: window.feedRenderLimit || 15,
+        savedAt: Date.now()
+    };
+};
+
+window._restoreFilterState = (filterKey) => {
+    const cached = window._filterCache && window._filterCache[filterKey];
+    if (!cached || !cached.allPosts || cached.allPosts.length === 0) return false;
+    window.allPosts = [...cached.allPosts];
+    window._historyPosts1 = [...cached.historyPosts1];
+    window._historyPosts2 = [...cached.historyPosts2];
+    window._historyPosts3 = [...cached.historyPosts3];
+    window._historyPosts = [...cached.historyPosts];
+    window._lastPostDoc1 = cached.lastPostDoc1;
+    window._lastPostDoc2 = cached.lastPostDoc2;
+    window._lastPostDoc3 = cached.lastPostDoc3;
+    window._liveLastDoc1 = cached.liveLastDoc1;
+    window._liveLastDoc2 = cached.liveLastDoc2;
+    window._liveLastDoc3 = cached.liveLastDoc3;
+    window.hasMorePosts1 = cached.hasMorePosts1;
+    window.hasMorePosts2 = cached.hasMorePosts2;
+    window.hasMorePosts3 = cached.hasMorePosts3;
+    window.hasMorePosts = cached.hasMorePosts;
+    window.feedRenderLimit = cached.feedRenderLimit;
+    return true;
+};
+
 document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         window.clearIsolatedPost();
-        document.querySelectorAll('.filter-btn').forEach(b => { b.classList.remove('bg-blue-600', 'text-white'); b.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300'); });
-        e.target.classList.add('bg-blue-600', 'text-white'); e.target.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300');
-        window.currentFilter = e.target.getAttribute('data-cat');
+        const prevFilter = window.currentFilter;
+        const newFilter = e.currentTarget.getAttribute('data-cat');
+        const isExplicitRefresh = (prevFilter === newFilter);
+
+        document.querySelectorAll('.filter-btn').forEach(b => { 
+            b.classList.remove('bg-blue-600', 'text-white'); 
+            b.classList.add('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300'); 
+        });
+        e.currentTarget.classList.add('bg-blue-600', 'text-white'); 
+        e.currentTarget.classList.remove('bg-gray-200', 'text-gray-700', 'dark:bg-slate-800', 'dark:text-gray-300');
+
+        // Save state of outgoing filter before switching
+        if (!isExplicitRefresh && prevFilter) {
+            window._saveFilterState(prevFilter);
+        }
+
+        window.currentFilter = newFilter;
+
+        // Serve from memory cache if recently visited (0 reads!), unless clicking current tab to refresh
+        const cached = window._filterCache && window._filterCache[newFilter];
+        const isCacheFresh = cached && (Date.now() - (cached.savedAt || 0) < 5 * 60 * 1000);
+
+        if (!isExplicitRefresh && isCacheFresh && window._restoreFilterState(newFilter)) {
+            if (window.postsUnsubscribe1) { window.postsUnsubscribe1(); window.postsUnsubscribe1 = null; }
+            if (window.postsUnsubscribe2) { window.postsUnsubscribe2(); window.postsUnsubscribe2 = null; }
+            if (window.postsUnsubscribe3) { window.postsUnsubscribe3(); window.postsUnsubscribe3 = null; }
+            if (typeof window.postsUnsubscribe === 'function') { window.postsUnsubscribe(); window.postsUnsubscribe = null; }
+            window.renderFeed(false);
+            return;
+        }
+
         window.postLimit = 15;
         window.feedRenderLimit = 15;
         window.hasMorePosts = true;
@@ -910,11 +986,12 @@ window.listenPosts = () => {
                 if (window.processBingoAnimations) window.processBingoAnimations();
             }
         }
+        if (window.currentFilter && window._saveFilterState) window._saveFilterState(window.currentFilter);
         window.handleDeepLinks();
         window.isLoadingHistory = false;
     };
 
-    const batchLimit = window.currentFilter === 'Reels' ? 75 : 15;
+    const batchLimit = window.currentFilter === 'Reels' ? 35 : 15;
 
     const q1 = query(window._buildBaseQueryForDb(fsdb), limit(batchLimit));
     const q2 = query(window._buildBaseQueryForDb(fsdb2), limit(batchLimit));
@@ -1012,7 +1089,7 @@ window.listenPosts = () => {
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     window.isLoadingHistory = true;
-    const batchLimit = window.currentFilter === 'Reels' ? 75 : 15;
+    const batchLimit = window.currentFilter === 'Reels' ? 35 : 15;
 
     try {
         const cursor1 = window._lastPostDoc1 || window._liveLastDoc1;
@@ -1107,6 +1184,7 @@ window.loadMorePosts = async () => {
 
         if (window.activeProfileUid) window.renderProfileData(false);
         else window.renderFeed(false);
+        if (window.currentFilter && window._saveFilterState) window._saveFilterState(window.currentFilter);
     } catch (err) {
         console.error("Error loading more posts:", err);
     } finally {
@@ -1271,6 +1349,16 @@ window.toggleCreateMenu = () => {
 
 window.closeCreateMenu = () => {
     const modal = document.getElementById('create-type-modal');
+    if (modal) modal.classList.add('hidden');
+};
+
+window.openAppsModal = () => {
+    const modal = document.getElementById('apps-modal');
+    if (modal) modal.classList.remove('hidden');
+};
+
+window.closeAppsModal = () => {
+    const modal = document.getElementById('apps-modal');
     if (modal) modal.classList.add('hidden');
 };
 
@@ -1552,6 +1640,7 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
 
         // Back to the default My Day view after a successful post
         window.closeCreateComposer();
+        window._filterCache = {};
         
     } catch (err) { window.showAlert("Failed to post: " + err.message); }
     
