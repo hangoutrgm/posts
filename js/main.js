@@ -9,8 +9,8 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=66";
-import "./renderers.js?v=79";
+import "./helpers.js?v=67";
+import "./renderers.js?v=81";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -992,7 +992,7 @@ window.listenPosts = () => {
         window.isLoadingHistory = false;
     };
 
-    const batchLimit = window.currentFilter === 'Reels' ? 35 : 15;
+    const batchLimit = window.currentFilter === 'Reels' ? 20 : 15;
 
     const q1 = query(window._buildBaseQueryForDb(fsdb), limit(batchLimit));
     const q2 = query(window._buildBaseQueryForDb(fsdb2), limit(batchLimit));
@@ -1090,7 +1090,7 @@ window.listenPosts = () => {
 window.loadMorePosts = async () => {
     if (window.isLoadingHistory || !window.hasMorePosts) return;
     window.isLoadingHistory = true;
-    const batchLimit = window.currentFilter === 'Reels' ? 35 : 15;
+    const batchLimit = window.currentFilter === 'Reels' ? 20 : 15;
 
     try {
         const cursor1 = window._lastPostDoc1 || window._liveLastDoc1;
@@ -1606,9 +1606,11 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
             window.clearPendingVoice();
         }
 
+        const hasPhoto = Boolean((finalImage && !isVideo) || (collageImages && collageImages.length > 0));
         const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
         const postData = {
             authorId: window.currentUser.uid, text: text, image: finalImage,
+            hasPhoto: hasPhoto,
             category: document.getElementById('post-category').value,
             timestamp: Date.now(), pinned: false, edited: false, locked: false, reactions: {},
             visibility: window.postVisibility || 'public',

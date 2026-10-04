@@ -167,7 +167,6 @@ window.openProfile = (uid) => {
     window.activeProfileUid = uid;
     window.postLimit = 15;
     window.hasMorePosts = true;
-    if (window.listenPosts) window.listenPosts();
     window.renderProfileData(true);
     window.scrollTo(0,0);
 };
@@ -178,8 +177,8 @@ window.closeProfile = () => {
     window.activeProfileUid = null;
     window.postLimit = 15;
     window.hasMorePosts = true;
-    if (window.listenPosts) window.listenPosts();
     window.history.replaceState({}, document.title, window.location.pathname);
+    if (window.renderFeed) window.renderFeed(false);
 };
 
 window.goToPost = (postId) => {
@@ -630,7 +629,7 @@ window.renderFeed = (resetLimit = true) => {
     let displayPosts = mergedPosts.filter(p => {
         if (window.currentFilter === "My Posts" && (!window.currentUser || p.authorId !== window.currentUser.uid)) return false;
         if (window.currentFilter === "Reels") {
-            const hasPhotos = Boolean(p.image || (Array.isArray(p.images) && p.images.length > 0)) && !p.isGame && p.category !== 'Games';
+            const hasPhotos = Boolean(p.hasPhoto ?? (p.image || (Array.isArray(p.images) && p.images.length > 0))) && !p.isGame && p.category !== 'Games';
             if (p.category !== "Reels" && !p.isMyDay && !hasPhotos) return false;
         } else if (window.currentFilter !== "All" && window.currentFilter !== "My Posts" && p.category !== window.currentFilter) {
             return false;
@@ -696,7 +695,8 @@ window.renderFeed = (resetLimit = true) => {
     // Clean up any existing loaders or catchup messages first
     feed.querySelectorAll('.sentinel-loader, .end-message-catchup').forEach(el => el.remove());
 
-    if (window.feedRenderLimit < window.filteredPostsLength || window.hasMorePosts) {
+    if (window.feedRenderLimit < window.filteredPostsLength) {
+        // More in-memory posts to reveal — auto-scroll with 0 Firestore reads
         const sentinel = document.createElement('div');
         sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
         sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading...</span>';
@@ -705,15 +705,41 @@ window.renderFeed = (resetLimit = true) => {
         if(window.feedObserver) window.feedObserver.disconnect();
         window.feedObserver = new IntersectionObserver((entries) => {
             if(entries[0].isIntersecting) {
-                if (window.feedRenderLimit < window.filteredPostsLength) {
-                    window.feedRenderLimit += 15;
-                    window.renderFeed(false);
-                } else if (window.hasMorePosts) {
-                    window.loadMorePosts();
-                }
+                window.feedRenderLimit += 15;
+                window.renderFeed(false);
             }
         }, { rootMargin: "300px" });
         window.feedObserver.observe(sentinel);
+    } else if (window.hasMorePosts) {
+        // In-memory posts fully displayed. If screen has enough content (>=8 posts), auto-scroll is safe.
+        // If screen is short (few or 0 posts), show a manual button to prevent infinite runaway loops!
+        if (displayPosts.length >= 8) {
+            const sentinel = document.createElement('div');
+            sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
+            sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading older posts...</span>';
+            feed.appendChild(sentinel);
+            
+            if(window.feedObserver) window.feedObserver.disconnect();
+            window.feedObserver = new IntersectionObserver((entries) => {
+                if(entries[0].isIntersecting) {
+                    window.loadMorePosts();
+                }
+            }, { rootMargin: "300px" });
+            window.feedObserver.observe(sentinel);
+        } else {
+            const loadMoreBox = document.createElement('div');
+            loadMoreBox.className = 'sentinel-loader w-full flex items-center justify-center py-4';
+            loadMoreBox.innerHTML = `<button id="feed-load-more-btn" class="bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 text-xs font-bold px-4 py-2 rounded-full transition shadow-sm">
+                <i class="fa-solid fa-clock-rotate-left mr-1.5"></i> Load older posts
+            </button>`;
+            loadMoreBox.querySelector('#feed-load-more-btn').onclick = async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Loading...';
+                await window.loadMorePosts();
+            };
+            feed.appendChild(loadMoreBox);
+        }
     } else if (displayPosts.length > 0) {
         const endMessage = document.createElement('div');
         endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold end-message-catchup';
@@ -914,7 +940,8 @@ window.renderProfileData = (resetLimit = true) => {
     // Clean up any existing loaders or catchup messages first
     pFeed.querySelectorAll('.sentinel-loader, .end-message-catchup').forEach(el => el.remove());
 
-    if (window.profileRenderLimit < pPosts.length || window.hasMorePosts) {
+    if (window.profileRenderLimit < pPosts.length) {
+        // More in-memory posts already loaded for this author (0 Firestore reads)
         const sentinel = document.createElement('div');
         sentinel.className = 'sentinel-loader w-full flex items-center justify-center text-blue-500 font-bold text-sm py-4 animate-pulse';
         sentinel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i><span>Loading...</span>';
@@ -923,15 +950,25 @@ window.renderProfileData = (resetLimit = true) => {
         if(window.profileObserver) window.profileObserver.disconnect();
         window.profileObserver = new IntersectionObserver((entries) => {
             if(entries[0].isIntersecting) {
-                if (window.profileRenderLimit < pPosts.length) {
-                    window.profileRenderLimit += 15;
-                    window.renderProfileData(false);
-                } else if (window.hasMorePosts) {
-                    window.loadMorePosts();
-                }
+                window.profileRenderLimit += 15;
+                window.renderProfileData(false);
             }
         }, { rootMargin: "300px" });
         window.profileObserver.observe(sentinel);
+    } else if (window.hasMorePosts) {
+        // In-memory posts exhausted: provide a clean manual button so it NEVER loops automatically
+        const loadMoreBox = document.createElement('div');
+        loadMoreBox.className = 'sentinel-loader w-full flex items-center justify-center py-4';
+        loadMoreBox.innerHTML = `<button id="profile-load-more-btn" class="bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 text-xs font-bold px-4 py-2 rounded-full transition shadow-sm">
+            <i class="fa-solid fa-clock-rotate-left mr-1.5"></i> Load older posts
+        </button>`;
+        loadMoreBox.querySelector('#profile-load-more-btn').onclick = async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Loading...';
+            await window.loadMorePosts();
+        };
+        pFeed.appendChild(loadMoreBox);
     } else if (pPosts.length > 0) {
         const endMessage = document.createElement('div');
         endMessage.className = 'w-full text-center text-gray-400 dark:text-gray-500 text-xs py-4 font-semibold end-message-catchup';

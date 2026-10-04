@@ -428,6 +428,7 @@ window.repostPost = function(postId) {
                 authorId: window.currentUser.uid,
                 text: originalPost.text || "",
                 image: originalPost.image || "",
+                hasPhoto: Boolean(originalPost.hasPhoto ?? (originalPost.image || (Array.isArray(originalPost.images) && originalPost.images.length > 0))),
                 ...(Array.isArray(originalPost.images) && originalPost.images.length > 1 ? { images: originalPost.images } : {}),
                 category: originalPost.category || "General",
                 timestamp: Date.now(),
