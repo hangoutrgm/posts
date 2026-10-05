@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=23">
+    <link rel="stylesheet" href="css/styles.css?v=25">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -1127,9 +1127,15 @@
         <i class="fa-solid fa-plus"></i>
     </button>
 
-    <!-- Floating Music Button (mini player) — stacked above the create button -->
+    <!-- Floating Music Button (mini player) — middle of the stack (refresh — music — create) -->
     <button id="floating-music-btn" onclick="window.openMiniPlayer()" title="Hangout Music" aria-label="Open the music player">
         <i class="fa-solid fa-music"></i>
+    </button>
+
+    <!-- Floating Feed Refresh Button — bottom of the stack: scrolls the feed
+         to the top and refreshes it (never reloads the page) -->
+    <button id="floating-refresh-btn" onclick="window.refreshFeedFromTop()" title="Refresh feed" aria-label="Scroll up and refresh the feed">
+        <i class="fa-solid fa-arrows-rotate"></i>
     </button>
 
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
@@ -1140,7 +1146,7 @@
     <script type="module" src="js/games.js?v=61"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=28"></script>
-    <script type="module" src="js/main.js?v=82"></script>
+    <script type="module" src="js/main.js?v=86"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.

@@ -223,6 +223,50 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
     });
 });
 
+// Floating "back to top" refresh button (bottom-right, above the music button):
+// smooth-scrolls the feed to the top, then refreshes it in place — the path of
+// clicking the active category tab. ORDER MATTERS: the refresh repaint swaps the
+// whole feed (pagination history gone, images not yet loaded), which transiently
+// shrinks the page — a shrink DURING the smooth animation clamps the scroll and
+// cancels it, stranding the user partway up (it used to take several taps to
+// reach the top). So the refresh fires only once the glide lands, with a 2.5s
+// fallback. The page itself never reloads; pull-to-refresh is disabled in
+// css/styles.css, so this button is the way to refresh. Debounced to one refresh
+// per second: every refresh tears down and re-creates the Firestore Listen
+// channels, and hammering that on a weak network floods the console with
+// reconnect/QUIC noise.
+let _feedRefreshAt = 0;
+let _pendingFeedRefresh = null;
+window.refreshFeedFromTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const now = Date.now();
+    if (now - _feedRefreshAt < 1000) return; // rapid taps only scroll
+    _feedRefreshAt = now;
+    // Refresh only AFTER the glide lands. The post-refresh repaint swaps the whole
+    // feed (pagination history gone, images not yet loaded), which transiently
+    // shrinks the page — a shrink DURING the smooth animation clamps the scroll
+    // and cancels it, stranding the user partway up (it took several taps before).
+    // Poll for arrival at the top, with a 2.5s fallback so the refresh always runs.
+    if (_pendingFeedRefresh) clearInterval(_pendingFeedRefresh);
+    const startedAt = Date.now();
+    _pendingFeedRefresh = setInterval(() => {
+        if (window.scrollY > 0 && Date.now() - startedAt <= 2500) return;
+        clearInterval(_pendingFeedRefresh);
+        _pendingFeedRefresh = null;
+        // Spotlight posts clear before the re-listen — only when one is open.
+        if (window.isolatedPostId && typeof window.clearIsolatedPost === 'function') window.clearIsolatedPost();
+        window.postLimit = 15;
+        window.hasMorePosts = true;
+        window.listenPosts();
+        const btn = document.getElementById('floating-refresh-btn');
+        if (btn) {
+            btn.classList.remove('spinning');
+            void btn.offsetWidth; // reflow so the spin restarts on rapid taps
+            btn.classList.add('spinning');
+        }
+    }, 80);
+};
+
 document.querySelectorAll('.member-filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         const targetBtn = e.currentTarget;

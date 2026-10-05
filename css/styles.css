@@ -1,5 +1,13 @@
-body { 
-    -webkit-tap-highlight-color: transparent; 
+body {
+    -webkit-tap-highlight-color: transparent;
+}
+/* Pull-to-refresh OFF for the whole site: dragging down at the very top of the
+   feed must not reload the page — the floating refresh button (bottom-right)
+   scrolls up and refreshes the feed in place instead. `overscroll-behavior-y:
+   contain` on the root scroller is what gates Chrome/Android's gesture. */
+html,
+body {
+    overscroll-behavior-y: contain;
 }
 .scrollbar-hide::-webkit-scrollbar { 
     display: none; 
@@ -479,7 +487,7 @@ body {
 /* ── Floating Create Button (Bottom-Right) ── */
 #floating-create-btn {
     position: fixed;
-    bottom: 24px;
+    bottom: 144px; /* top of the stack: 24 + 48 + 12 gap (music) + 48 + 12 gap */
     right: 20px;
     width: 48px;
     height: 48px;
@@ -509,10 +517,10 @@ body {
     transform: scale(0.94);
 }
 
-/* ── Floating Music Button (stacked above the create button) ── */
+/* ── Floating Music Button (middle of the stack) ── */
 #floating-music-btn {
     position: fixed;
-    bottom: 84px; /* 24 (create btn) + 48 + 12 gap */
+    bottom: 84px; /* 24 (refresh btn) + 48 + 12 gap */
     right: 20px;
     width: 48px;
     height: 48px;
@@ -555,6 +563,43 @@ body {
 @keyframes mpFloat {
     0%, 100% { opacity: 0.35; }
     50%      { opacity: 1; }
+}
+
+/* ── Floating Feed Refresh Button (bottom of the stack) ──
+   Scrolls the feed back to the top and refreshes it in place — the page
+   itself never reloads (site-wide pull-to-refresh is disabled at the top
+   of this file). */
+#floating-refresh-btn {
+    position: fixed;
+    bottom: 24px; /* bottom of the stack: refresh — music — create (top) */
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+    color: #ffffff !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.5);
+    border: 3px solid #ffffff;
+    cursor: pointer;
+    z-index: 90;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+:is(.dark *) #floating-refresh-btn,
+.dark #floating-refresh-btn {
+    border-color: #1e293b;
+    box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.6);
+}
+#floating-refresh-btn:hover { transform: scale(1.08); }
+#floating-refresh-btn:active { transform: scale(0.94); }
+/* One-shot spin on tap so the refresh feels immediate */
+#floating-refresh-btn.spinning i { animation: feedRefreshSpin 0.7s ease-in-out; }
+@keyframes feedRefreshSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
 }
 
 /* ── Mini Music Player: shell, header, rows ── */
