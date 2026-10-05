@@ -113,6 +113,32 @@ function markUnplayable(id) {
   } catch (_) { /* ignore */ }
 }
 
+/* -------------------------- playlist cache --------------------------
+   Same "instant first paint" idea as the chat apps' inbox cache: the
+   signed-in user's normalized track list is mirrored to localStorage on
+   every live snapshot and restored on auth/open, so the widget never
+   waits on (or re-downloads) RTDB just to show what's already theirs. */
+function loadPlaylistCache(uid) {
+  try {
+    const raw = localStorage.getItem(`hangout-playlist-${uid}`);
+    if (!raw) return false;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return false;
+    mp.tracks = arr.filter((t) => t && t.youtubeId);
+    renderList(); // paint immediately; the live listener refreshes below
+    return true;
+  } catch (_) { return false; } // corrupted cache — wait on live data
+}
+
+function savePlaylistCache() {
+  if (!mp.user) return;
+  try {
+    // Saved even when empty, so "no tracks" is cached truth too (no stale
+    // resurrect after the user heart-removes everything).
+    localStorage.setItem(`hangout-playlist-${mp.user.uid}`, JSON.stringify(mp.tracks));
+  } catch (_) { /* private mode / quota — memory is best-effort */ }
+}
+
 /* ------------------------------- shell ------------------------------- */
 
 function build() {
@@ -162,7 +188,13 @@ function openModal() {
   build();
   mp.open = true;
   el('mini-music-modal').classList.remove('mp-off');
-  if (mp.user) watchPlaylist(mp.user.uid);
+  if (mp.user) {
+    // Instant first paint: memory, then localStorage — no RTDB wait.
+    if (!mp.tracks.length) loadPlaylistCache(mp.user.uid);
+    if (mp.tracks.length) renderList();
+    // Stay subscribed after the first open — never re-download per open.
+    if (!mp.unsubPlaylist) watchPlaylist(mp.user.uid);
+  }
   // paintSeek() no-ops while the widget is closed, so paint one fresh frame now.
   if (player && player.ready) paintSeek(player.getCurrentTime(), player.getDuration());
 }
@@ -370,7 +402,11 @@ function handleError(code) {
 function watchAuth() {
   mp.unsubAuth = onAuthStateChanged(auth, (user) => {
     mp.user = user || null;
-    if (user) { watchPlaylist(user.uid); return; }
+    if (user) {
+      loadPlaylistCache(user.uid); // instant state, even before first open
+      watchPlaylist(user.uid);
+      return;
+    }
     if (mp.unsubPlaylist) { mp.unsubPlaylist(); mp.unsubPlaylist = null; }
     mp.tracks = [];
     renderList();
@@ -392,6 +428,7 @@ function watchPlaylist(uid) {
         addedAt: Number(t.addedAt) || 0
       };
     }).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+    savePlaylistCache(); // mirror every snapshot so the next open is instant
     renderList();
   }, (err) => {
     console.warn('[mini-player] playlist read failed:', err);
