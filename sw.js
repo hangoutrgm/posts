@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v243';
+const CACHE_NAME = 'hangout-v244';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // YouTube artwork (i.ytimg.com). The music app renders one thumbnail per
@@ -36,7 +36,7 @@ const PRECACHE_ASSETS = [
   './js/main.js?v=82',
   './js/myday.js?v=28',
   './js/voice-recorder.js?v=3',
-  './chat/js/app.js?v=106',
+  './chat/js/app.js?v=107',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.
   './chat/mini-chat.js?v=4',
   './music/mini-player.js?v=4',
@@ -148,11 +148,13 @@ self.addEventListener('fetch', (event) => {
   const isHtml = request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname.endsWith('/') || !url.pathname.split('/').pop().includes('.');
 
   if (isVersionedAsset) {
-    // Cache-first: versioned JS/CSS files rarely change; serve from cache instantly
+    // Cache-first: versioned JS/CSS files rarely change; serve from cache instantly.
+    // `no-store` on the miss path bypasses the HTTP cache (vercel.json serves .js
+    // with max-age=86400), so a version bump can never be answered by a stale copy.
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
-        return fetch(request).then((response) => {
+        return fetch(request, { cache: 'no-store' }).then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
