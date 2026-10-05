@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=18">
+    <link rel="stylesheet" href="css/styles.css?v=22">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -93,7 +93,7 @@
                 <button onclick="window.openRankingModal()" class="shrink-0 bg-yellow-500 hover:bg-yellow-400 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative mr-2" title="Leaderboards & Earnings">
                     <i class="fa-solid fa-trophy text-lg"></i>
                 </button>
-                <a href="chat/" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative" title="Open Messenger">
+                <a href="chat/" onclick="if(event.metaKey||event.ctrlKey||event.shiftKey||event.button!==0)return;if(window.openMiniChat){event.preventDefault();window.openMiniChat();}" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white w-[38px] h-[38px] flex items-center justify-center rounded-lg shadow-sm transition relative" title="Open Messenger">
                     <i class="fa-solid fa-comments text-lg"></i>
                     <span id="chat-unread-badge" class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow border-2 border-white dark:border-slate-800 hidden">0</span>
                 </a>
@@ -220,12 +220,12 @@
             </div>
             
             <div class="grid grid-cols-3 gap-3">
-                <!-- 1. Treasury -->
-                <a href="treasury/" class="app-card">
-                    <div class="app-card-icon app-icon-treasury">
-                        <i class="fa-solid fa-money-bill-wave"></i>
+                <!-- 1. Chat -->
+                <a href="chat/" class="app-card">
+                    <div class="app-card-icon app-icon-chat">
+                        <i class="fa-solid fa-comments"></i>
                     </div>
-                    <span class="app-card-label">Treasury</span>
+                    <span class="app-card-label">Chat</span>
                     <span class="app-badge-live">Live</span>
                 </a>
 
@@ -238,7 +238,16 @@
                     <span class="app-badge-live">Live</span>
                 </a>
 
-                <!-- 3. Arena (Placeholder) -->
+                <!-- 3. Treasury -->
+                <a href="treasury/" class="app-card">
+                    <div class="app-card-icon app-icon-treasury">
+                        <i class="fa-solid fa-money-bill-wave"></i>
+                    </div>
+                    <span class="app-card-label">Treasury</span>
+                    <span class="app-badge-live">Live</span>
+                </a>
+
+                <!-- 4. Arena (Placeholder) -->
                 <button onclick="window.showToast('Arena is not available as of this moment.')" class="app-card">
                     <div class="app-card-icon app-icon-arena">
                         <i class="fa-solid fa-shield-halved"></i>
@@ -1128,6 +1137,20 @@
             import('./music/mini-player.js?v=3')
                 .then((mod) => mod.toggleMiniPlayer())
                 .catch((err) => console.error('[mini-player] load failed', err));
+        };
+    </script>
+    <script>
+        // Mini chat widget is lazy-loaded the same way: the module (and its
+        // RTDB listeners) only cost anything once the chat button is used.
+        // The button keeps href="chat/" — ctrl/middle-click still opens the
+        // full app, and a failed import falls back to navigating there.
+        window.openMiniChat = () => {
+            import('./chat/mini-chat.js?v=4')
+                .then((mod) => mod.openMiniChat())
+                .catch((err) => {
+                    console.error('[mini-chat] load failed', err);
+                    window.location.href = 'chat/';
+                });
         };
     </script>
     <script>

@@ -506,6 +506,11 @@ body {
     backdrop-filter: blur(3px);
     animation: mpFade 0.16s ease;
     -webkit-tap-highlight-color: transparent;
+    /* Same overscroll shield as .mc-overlay: pulls stop here while the
+       mini player is open instead of pull-to-refreshing the whole site. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overscroll-behavior: contain;
 }
 @media (min-width: 640px) { .mp-overlay { align-items: center; padding: 16px; } }
 @keyframes mpFade { from { opacity: 0; } to { opacity: 1; } }
@@ -548,7 +553,17 @@ body {
 :is(.dark *) .mp-icon-btn, .dark .mp-icon-btn { color: #94a3b8; }
 :is(.dark *) .mp-icon-btn:hover, .dark .mp-icon-btn:hover { color: #f8fafc; }
 
-.mp-list { list-style: none; margin: 0; padding: 0 8px 6px; overflow-y: auto; max-height: min(44vh, 300px); }
+.mp-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 8px 6px;
+    overflow-y: auto;
+    max-height: min(44vh, 300px);
+    /* Reaching the top of the playlist never chains to the page
+       (pull-to-refresh of the whole site). */
+    overscroll-behavior-y: contain;
+    -webkit-overscroll-behavior-y: contain;
+}
 .mp-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; cursor: pointer; transition: background 0.15s ease; }
 .mp-row:hover { background: rgba(148, 163, 184, 0.14); }
 .mp-row.is-current { background: rgba(168, 85, 247, 0.14); }
@@ -614,6 +629,421 @@ body {
 
 /* Hidden audio-only YouTube mount (1px, never display:none — that stops playback) */
 .mp-yt { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0.01; pointer-events: none; z-index: -1; }
+
+/* ── Mini Chat: main-site conversations widget ── */
+.mc-off { display: none !important; }
+
+.mc-overlay {
+    position: fixed;
+    inset: 0;
+    /* 150: above the feed content/FABs (z<=100) but BELOW the site toast
+       (z-[200]) so window.showToast feedback from send() stays visible. */
+    z-index: 150;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    animation: mpFade 0.16s ease;
+    -webkit-tap-highlight-color: transparent;
+    /* Overscroll shield: being a scroll container with `contain` makes EVERY
+       pull that reaches a boundary inside the widget stop here instead of
+       chaining to the page and pull-to-refreshing the whole site. Only
+       active while the widget is open (the overlay covers the viewport). */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overscroll-behavior: contain;
+}
+@media (min-width: 640px) { .mc-overlay { align-items: center; padding: 16px; } }
+
+.mc-card {
+    width: 100%;
+    max-width: 420px;
+    height: min(78vh, 620px);
+    border-radius: 22px;
+    background: #ffffff;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 24px 50px -18px rgba(15, 23, 42, 0.45);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: mpPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+:is(.dark *) .mc-card,
+.dark .mc-card { background: #1e293b; border-color: rgba(51, 65, 85, 0.75); }
+
+.mc-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid rgba(226, 232, 240, 0.9); }
+:is(.dark *) .mc-head, .dark .mc-head { border-bottom-color: rgba(51, 65, 85, 0.7); }
+
+.mc-head-badge {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+}
+.mc-head-text { min-width: 0; flex: 1; }
+.mc-h3 { font-size: 13px; font-weight: 800; line-height: 1.2; margin: 0; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-sub { font-size: 10px; color: #94a3b8; margin: 1px 0 0; }
+:is(.dark *) .mc-h3, .dark .mc-h3 { color: #f8fafc; }
+
+.mc-icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+    color: #64748b;
+    background: rgba(148, 163, 184, 0.14);
+    border: 0;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.mc-icon-btn:hover { background: rgba(148, 163, 184, 0.3); color: #0f172a; }
+:is(.dark *) .mc-icon-btn, .dark .mc-icon-btn { color: #94a3b8; }
+:is(.dark *) .mc-icon-btn:hover, .dark .mc-icon-btn:hover { color: #f8fafc; }
+
+/* Conversation list */
+/* overscroll contain: reaching the top of this list never chains to the page
+   (pull-to-refresh of the whole site). user-select off: long-press opens the
+   action menu instead of the native selection callout — Copy lives in it. */
+.mc-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px;
+    min-height: 0;
+    overscroll-behavior-y: contain;
+    -webkit-overscroll-behavior-y: contain;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.mc-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    font: inherit;
+    transition: background 0.15s ease;
+}
+.mc-row:hover { background: rgba(148, 163, 184, 0.14); }
+.mc-row.mc-unread { background: rgba(59, 130, 246, 0.08); }
+:is(.dark *) .mc-row.mc-unread, .dark .mc-row.mc-unread { background: rgba(59, 130, 246, 0.14); }
+
+.mc-ava-wrap { position: relative; flex-shrink: 0; }
+.mc-ava {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(148, 163, 184, 0.2);
+    font-size: 16px;
+}
+.mc-ava-fallback { color: #fff; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+.mc-dot {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid #fff;
+}
+:is(.dark *) .mc-dot, .dark .mc-dot { border-color: #1e293b; }
+
+.mc-copy { min-width: 0; flex: 1; }
+.mc-top { display: flex; align-items: baseline; gap: 8px; }
+.mc-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-time { font-size: 10px; color: #94a3b8; flex-shrink: 0; }
+.mc-prev { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.mc-prev > span { flex: 1; min-width: 0; font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(.dark *) .mc-name, .dark .mc-name { color: #f1f5f9; }
+:is(.dark *) .mc-prev > span, .dark .mc-prev > span { color: #94a3b8; }
+
+.mc-ubadge {
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mc-empty { padding: 28px 18px; text-align: center; font-size: 11.5px; color: #94a3b8; line-height: 1.6; }
+.mc-empty p { margin: 0 0 10px; }
+.mc-cta {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    text-decoration: none;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* Thread view */
+.mc-thread { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mc-msgs {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    /* Same rules as .mc-list: no chain-to-page pull-to-refresh at the top of
+       the history, and no native text selection on long-press. */
+    overscroll-behavior-y: contain;
+    -webkit-overscroll-behavior-y: contain;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mc-bub {
+    max-width: 78%;
+    align-self: flex-start;
+    padding: 7px 11px;
+    border-radius: 16px;
+    border-bottom-left-radius: 6px;
+    background: rgba(148, 163, 184, 0.18);
+    color: #0f172a;
+    font-size: 12.5px;
+    line-height: 1.45;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    display: flex;
+    flex-direction: column;
+}
+.mc-bub.mine {
+    align-self: flex-end;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 6px;
+}
+:is(.dark *) .mc-bub, .dark .mc-bub { background: rgba(148, 163, 184, 0.2); color: #e2e8f0; }
+:is(.dark *) .mc-bub.mine, .dark .mc-bub.mine { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
+
+.mc-sender { font-size: 10px; font-weight: 800; color: #6366f1; margin-bottom: 2px; }
+:is(.dark *) .mc-sender, .dark .mc-sender { color: #818cf8; }
+.mc-text a { color: inherit; text-decoration: underline; }
+.mc-bub.mine .mc-text a { color: #eef2ff; }
+.mc-faded { font-style: italic; opacity: 0.7; }
+.mc-deleted { opacity: 0.75; font-style: italic; }
+
+.mc-mtime { font-size: 8.5px; opacity: 0.55; margin-top: 3px; text-align: right; display: flex; gap: 5px; justify-content: flex-end; }
+.mc-edited { font-size: 8.5px; font-style: italic; }
+
+.mc-sys {
+    align-self: center;
+    font-size: 10px;
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.12);
+    padding: 3px 10px;
+    border-radius: 999px;
+    max-width: 88%;
+    text-align: center;
+}
+
+.mc-media { max-width: 230px; max-height: 230px; border-radius: 10px; margin-top: 4px; display: block; background: rgba(0, 0, 0, 0.05); }
+.mc-audio { width: 220px; max-width: 100%; margin-top: 4px; }
+
+.mc-ban {
+    padding: 10px 14px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    border-top: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.mc-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(226, 232, 240, 0.9); }
+:is(.dark *) .mc-form, .dark .mc-form { border-top-color: rgba(51, 65, 85, 0.7); }
+.mc-input {
+    flex: 1;
+    min-width: 0;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    background: rgba(148, 163, 184, 0.1);
+    padding: 9px 14px;
+    font-size: 12.5px;
+    color: #0f172a;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+}
+.mc-input:focus { border-color: #6366f1; }
+:is(.dark *) .mc-input, .dark .mc-input { color: #f1f5f9; border-color: rgba(71, 85, 105, 0.8); }
+.mc-send {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 0;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s ease, opacity 0.15s ease;
+}
+.mc-send:hover { transform: scale(1.05); }
+.mc-send:active { transform: scale(0.94); }
+.mc-send:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* Reply / edit banners above the composer */
+.mc-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 11px;
+    color: #4338ca;
+    background: rgba(99, 102, 241, 0.1);
+    border-top: 1px solid rgba(99, 102, 241, 0.25);
+}
+:is(.dark *) .mc-banner, .dark .mc-banner { color: #a5b4fc; }
+.mc-banner.mc-edit { color: #b45309; background: rgba(245, 158, 11, 0.1); border-top-color: rgba(245, 158, 11, 0.3); }
+:is(.dark *) .mc-banner.mc-edit, .dark .mc-banner.mc-edit { color: #fcd34d; }
+.mc-banner-icon { flex-shrink: 0; font-size: 10px; }
+.mc-banner-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-banner-x {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.08);
+    color: inherit;
+    cursor: pointer;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+:is(.dark *) .mc-banner-x, .dark .mc-banner-x { background: rgba(255, 255, 255, 0.12); }
+
+/* Message action menu (dark pill in both themes, messenger-style) */
+.mc-menu {
+    position: fixed;
+    z-index: 170;
+    background: #1e293b;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 14px;
+    box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.45);
+    padding: 6px;
+    min-width: 176px;
+    animation: mpPop 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mc-menu-row { display: flex; align-items: center; gap: 2px; padding: 2px; }
+.mc-menu-sep { height: 1px; background: rgba(148, 163, 184, 0.2); margin: 4px 2px; }
+.mc-mreact {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    font-size: 17px;
+    line-height: 1;
+    padding: 6px 2px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+}
+.mc-mreact:hover { background: rgba(148, 163, 184, 0.18); transform: scale(1.12); }
+.mc-mreact.active { background: rgba(129, 140, 248, 0.3); }
+.mc-micon {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: #cbd5e1;
+    font-size: 12px;
+    padding: 7px 4px;
+    border-radius: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.mc-micon:hover { background: rgba(148, 163, 184, 0.18); color: #fff; }
+
+/* Reaction chips under message content */
+.mc-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.mc-chip {
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(148, 163, 184, 0.15);
+    color: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.5;
+    transition: transform 0.1s ease, background 0.15s ease;
+}
+.mc-chip:hover { transform: scale(1.08); }
+.mc-chip.mine { background: rgba(99, 102, 241, 0.35); border-color: rgba(129, 140, 248, 0.7); }
+.mc-bub.mine .mc-chip { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.4); }
+.mc-bub.mine .mc-chip.mine { background: rgba(255, 255, 255, 0.4); border-color: #fff; }
+
+/* Reply quote inside a bubble — tap jumps to the original message */
+.mc-quote {
+    display: block;
+    text-align: left;
+    width: 100%;
+    border: 0;
+    border-left: 3px solid #818cf8;
+    background: rgba(129, 140, 248, 0.15);
+    border-radius: 6px;
+    padding: 3px 7px;
+    margin-bottom: 4px;
+    font-size: 10.5px;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+}
+.mc-quote b { display: block; font-size: 9.5px; color: #818cf8; }
+.mc-quote span { display: block; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-quote:hover { background: rgba(129, 140, 248, 0.28); }
+
+
+
 
 /* ── Missing Tailwind utility safety net ──
    css/tailwind.min.css is a compiled artifact that predates some of the classes
@@ -688,6 +1118,10 @@ body {
 .app-icon-arena {
     background: linear-gradient(135deg, #f59e0b, #ea580c);
     box-shadow: 0 6px 14px -2px rgba(245, 158, 11, 0.4);
+}
+.app-icon-chat {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    box-shadow: 0 6px 14px -2px rgba(59, 130, 246, 0.4);
 }
 .app-icon-launcher {
     background: linear-gradient(135deg, #6366f1, #8b5cf6);
