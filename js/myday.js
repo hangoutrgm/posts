@@ -5,7 +5,7 @@
 // It shows by default; opening the + composer hides the strip.
 //
 // Data — all in db2 (hangoutrgm2):
-//   /notes/{uid} = { text, updatedAt, reactions? }         (chat notes — always shown)
+//   /notes/{uid} = { text, updatedAt, reactions?, song? }     (chat notes — always shown)
 //   /myday/{uid} = { video | pic, createdAt, reactions? }  (one story per user; 24h TTL)
 //   /myday_collections/{uid}/{id} = { video | pic, createdAt, hidden? }  (permanent archive — profile section)
 //
@@ -251,7 +251,7 @@ function cardHtml(uid) {
     <div class="myday-card" onclick="window.MyDay.openNote('${uid}')" title="${esc('Note: ' + noteText)}">
         <img class="myday-card-bg" src="${avatar}" alt="" loading="lazy">
         ${avatarTag}
-        <span class="myday-cloud"><span class="myday-cloud-text">${esc(noteText)}</span></span>
+        <span class="myday-cloud"><span class="myday-cloud-text">${myNotes[uid]?.song?.youtubeId ? '🎵 ' : ''}${esc(noteText)}</span></span>
         ${reactChipHtml(`note:${uid}`, myNotes[uid]?.reactions)}
         <span class="myday-card-label">${name}</span>
     </div>`;
@@ -287,7 +287,7 @@ function ownCardHtml(me) {
     const ring = `<span class="myday-card-avatar ${type === 'video' ? 'video-ring' : ''}" onclick="event.stopPropagation(); window.openProfile('${me}')" title="View profile"><img src="${avatar}" alt=""></span>`;
     let body = '';
     if (type === 'video') body = '<span class="myday-play"><i class="fa-solid fa-play"></i></span>';
-    else if (type === 'note') body = `<span class="myday-cloud"><span class="myday-cloud-text">${esc((myNotes[me]?.text || '').slice(0, 90))}</span></span>`;
+    else if (type === 'note') body = `<span class="myday-cloud"><span class="myday-cloud-text">${myNotes[me]?.song?.youtubeId ? '🎵 ' : ''}${esc((myNotes[me]?.text || '').slice(0, 90))}</span></span>`;
     const removable = type === 'video' || type === 'pic';
     const removeBtn = removable
         ? `<span class="myday-remove" onclick="event.stopPropagation(); window.MyDay.removeStory()" title="Remove My Day"><i class="fa-solid fa-xmark"></i></span>`
@@ -481,6 +481,85 @@ async function archiveMyDay(media) {
 }
 
 // ------------------------------------------------------------
+// NOTE SONG — mirrors the chat note song on the shared /notes/{uid} node.
+// Opening the note plays it through a visually-hidden YouTube frame and the
+// chip shows a small equalizer while the audio is live; the frame is removed
+// on close, which stops the sound.
+// ------------------------------------------------------------
+let _noteSongFrame = null; // hidden <iframe> currently playing
+let _noteSongUid = null;   // uid of the note the frame belongs to
+let _noteSongTimer = null; // safety net that cuts a clipped song at its chosen end
+
+function stopNoteSong() {
+    if (_noteSongTimer) { clearTimeout(_noteSongTimer); _noteSongTimer = null; }
+    if (_noteSongFrame) { _noteSongFrame.remove(); _noteSongFrame = null; }
+    _noteSongUid = null;
+    $('myday-note-song')?.classList.remove('playing');
+}
+
+function playNoteSong(uid, song) {
+    stopNoteSong();
+    if (!song || !song.youtubeId) return;
+    // Optional clip (Messenger-style "only part of the song") — seconds on the note.
+    const startAt = Math.floor(Number(song.startAt) || 0);
+    const endAt = Math.floor(Number(song.endAt) || 0);
+    const hasClip = endAt > startAt;
+    const params = ['autoplay=1', 'playsinline=1', 'rel=0'];
+    if (startAt > 0) params.push(`start=${startAt}`);
+    if (hasClip) params.push(`end=${endAt}`);
+    const frame = document.createElement('iframe');
+    frame.className = 'myday-note-song-frame';
+    frame.title = song.title || 'Note song';
+    frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+    frame.src = `https://www.youtube.com/embed/${encodeURIComponent(song.youtubeId)}?${params.join('&')}`;
+    document.body.appendChild(frame);
+    _noteSongFrame = frame;
+    _noteSongUid = uid;
+    $('myday-note-song')?.classList.add('playing');
+    if (hasClip) {
+        const clipMs = (endAt - startAt) * 1000;
+        const arm = (ms) => { if (_noteSongTimer) clearTimeout(_noteSongTimer); _noteSongTimer = setTimeout(stopNoteSong, ms); };
+        // Most embeds stop themselves at `end=`; the timers guarantee the cut even
+        // when a browser ignores it. Counting starts when the player document has
+        // loaded (autoplay begins right after); the creation-time arm is fallback.
+        frame.addEventListener('load', () => arm(clipMs + 800), { once: true });
+        arm(clipMs + 5000);
+    }
+}
+
+function fmtClipTime(sec) {
+    const t = Math.max(0, Math.floor(Number(sec) || 0));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
+// "0:15–0:30" / "0:00–0:30" / "from 0:15" — shown on the chip when a clip is set.
+function noteSongClipLabel(song) {
+    const s = Math.floor(Number(song.startAt) || 0);
+    const e = Math.floor(Number(song.endAt) || 0);
+    if (e > 0 && e > s) return s > 0 ? `${fmtClipTime(s)}–${fmtClipTime(e)}` : `0:00–${fmtClipTime(e)}`;
+    if (s > 0) return `from ${fmtClipTime(s)}`;
+    return '';
+}
+
+// Fill the chip inside the note modal (playback itself starts in openNote, so
+// a react re-render never restarts the song).
+function fillNoteSongChip(uid, note) {
+    const chip = $('myday-note-song');
+    if (!chip) return;
+    const song = note && note.song && note.song.youtubeId ? note.song : null;
+    chip.classList.toggle('hidden', !song);
+    if (!song) return;
+    $('myday-note-song-thumb').src = `https://i.ytimg.com/vi/${encodeURIComponent(song.youtubeId)}/default.jpg`;
+    $('myday-note-song-title').textContent = song.title || 'Untitled';
+    const artistEl = $('myday-note-song-artist');
+    const clipLabel = noteSongClipLabel(song);
+    artistEl.textContent = [song.artist || '', clipLabel].filter(Boolean).join(' · ');
+    artistEl.classList.toggle('hidden', !song.artist && !clipLabel);
+    const playing = Boolean(_noteSongFrame && _noteSongUid === uid);
+    chip.title = playing ? `Stop “${song.title || 'song'}”` : `Play “${song.title || 'song'}”`;
+}
+
+// ------------------------------------------------------------
 // NOTE MODAL (tap a note card) — avatar opens the profile + reactions row.
 // The note node is shared with chat, so reacts land on both surfaces.
 // ------------------------------------------------------------
@@ -498,6 +577,7 @@ function fillNoteModal(uid) {
     if (nmEl) nmEl.textContent = nameOf(uid);
     if (txEl) txEl.textContent = note.text;
     if (barEl) barEl.innerHTML = reactRowHtml(`note:${uid}`, note.reactions);
+    fillNoteSongChip(uid, note);
 }
 
 // ------------------------------------------------------------
@@ -672,10 +752,29 @@ window.MyDay = {
         fillNoteModal(uid);
         const modal = $('myday-note-modal');
         if (modal) modal.classList.remove('hidden');
+        // Opening a note plays its attached song (same behaviour as chat).
+        const song = myNotes[uid]?.song;
+        if (song && song.youtubeId) playNoteSong(uid, song);
+        else stopNoteSong();
     },
     closeNote: () => {
+        stopNoteSong();
         const modal = $('myday-note-modal');
         if (modal) modal.classList.add('hidden');
+    },
+    // Tap the chip in the note modal to stop the audio / start it again.
+    toggleNoteSong: () => {
+        const uid = currentNoteUid;
+        const song = myNotes[uid]?.song;
+        if (!song || !song.youtubeId) return;
+        const chip = $('myday-note-song');
+        if (_noteSongFrame && _noteSongUid === uid) {
+            stopNoteSong();
+            if (chip) chip.title = `Play “${song.title || 'song'}”`;
+        } else {
+            playNoteSong(uid, song);
+            if (chip) chip.title = `Stop “${song.title || 'song'}”`;
+        }
     },
     // Tapping the note avatar opens that member's profile.
     openNoteProfile: () => {

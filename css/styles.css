@@ -338,6 +338,73 @@ body {
 .myday-react-btn.mine { opacity: 1; transform: scale(1.06); }
 .myday-react-btn.mine b { color: #2563eb; }
 .dark .myday-react-btn.mine b { color: #93c5fd; }
+/* ── Note song chip in the My Day note modal (mirrors the chat note song) ──
+   Thumbnail + title with a small "sound is playing" equalizer while the
+   hidden audio frame is live; tap to stop / restart. */
+.myday-note-song {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: pointer;
+    text-align: left;
+}
+.myday-note-song:hover { background: #f1f5f9; }
+.dark .myday-note-song { border-color: #334155; background: #1e293b; }
+.dark .myday-note-song:hover { background: #263449; }
+.myday-note-song-thumb {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #e2e8f0;
+}
+.myday-note-song-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.myday-note-song-meta strong {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dark .myday-note-song-meta strong { color: #f1f5f9; }
+.myday-note-song-meta small {
+    font-size: 10px;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dark .myday-note-song-meta small { color: #94a3b8; }
+.myday-note-play { flex-shrink: 0; font-size: 11px; line-height: 1; color: #2563eb; }
+.dark .myday-note-play { color: #93c5fd; }
+.myday-note-eq { display: none; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
+.myday-note-eq i { width: 3px; height: 4px; border-radius: 2px; background: #2563eb; }
+.dark .myday-note-eq i { background: #93c5fd; }
+.myday-note-song.playing .myday-note-eq { display: inline-flex; }
+.myday-note-song.playing .myday-note-play { display: none; }
+.myday-note-song.playing .myday-note-eq i { animation: note-eq-bounce .9s ease-in-out infinite; }
+.myday-note-song.playing .myday-note-eq i:nth-child(2) { animation-delay: .15s; }
+.myday-note-song.playing .myday-note-eq i:nth-child(3) { animation-delay: .3s; }
+@keyframes note-eq-bounce { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+/* Audio-only YouTube frame behind the chip — removed on close to stop the sound */
+.myday-note-song-frame {
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    border: 0;
+}
 /* Owner-only hide / unhide toggle on a My Day collection item */
 .myday-card.has-hide .myday-card-label { right: 28px; }
 .myday-hide {

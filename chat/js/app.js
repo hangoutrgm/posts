@@ -1,4 +1,4 @@
-import { auth, db, db2, cloudinaryConfig } from '../../js/firebase-config.js?v=2';
+import { auth, db, db2, db3, cloudinaryConfig } from '../../js/firebase-config.js?v=2';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import '../games/index.js?v=34';
@@ -331,11 +331,29 @@ function showAppModal(options = {}) {
     confirmBtn.className = `app-modal-btn ${options.danger ? 'danger' : 'primary'}`;
     let html = '';
     if (options.message) html += `<p class="app-modal-message">${escapeHtml(options.message)}</p>`;
-    if (options.textarea) html += `<textarea id="app-modal-input" class="app-modal-input" rows="6" style="resize:vertical;">${escapeHtml(options.inputValue || '')}</textarea>`;
+    if (options.textarea) html += `<textarea id="app-modal-input" class="app-modal-input" rows="${Number(options.rows) > 0 ? Math.floor(Number(options.rows)) : 6}" style="resize:vertical;">${escapeHtml(options.inputValue || '')}</textarea>`;
     else if (options.input) html += `<input id="app-modal-input" class="app-modal-input" type="text" value="${escapeHtml(options.inputValue || '')}" placeholder="${escapeHtml(options.placeholder || '')}">`;
     if (options.memberList) {
       html += `<label class="search-box app-modal-search"><span>⌕</span><input id="app-modal-search-input" type="search" autocomplete="off" placeholder="Search members"></label>`;
       html += `<div id="app-modal-member-list" class="member-select-list"></div>`;
+    }
+    // Optional song picker (chat notes): current-song row + searchable list
+    // drawn from the Hangout Music community library.
+    if (options.songPicker) {
+      html += `<div id="app-modal-song-current" class="app-modal-song-current${options.songPicker.current ? '' : ' hidden'}">
+        <span aria-hidden="true">🎵</span>
+        <span id="app-modal-song-current-text" class="app-modal-song-current-text"></span>
+        <button type="button" id="app-modal-song-clear" class="app-modal-song-clear" title="Remove song from note">✕</button>
+      </div>
+      <!-- Clip row: play only part of the song (optional) -->
+      <div id="app-modal-song-clip" class="app-modal-song-clip hidden">
+        <label class="app-modal-song-clip-field"><span>From</span><input id="app-modal-song-start" type="text" inputmode="numeric" autocomplete="off" placeholder="0:00"></label>
+        <label class="app-modal-song-clip-field"><span>To</span><input id="app-modal-song-end" type="text" inputmode="numeric" autocomplete="off" placeholder="end"></label>
+        <p class="app-modal-song-clip-hint">Play only part of the song — times as m:ss (e.g. 0:30). Leave both blank for the whole song.</p>
+      </div>
+      <label id="app-modal-song-search-wrap" class="search-box app-modal-search"><span>⌕</span><input id="app-modal-song-search" type="search" autocomplete="off" placeholder="Search the community song library"></label>
+      <div id="app-modal-song-list" class="member-select-list"></div>
+      <p id="app-modal-song-hint" class="app-modal-song-hint">Can't find the song you want? Open <a href="../music/" target="_blank" rel="noopener noreferrer">Hangout Music</a>, search for it and add it to the community library first — it will show up here right away.</p>`;
     }
     $('app-modal-body').innerHTML = html;
     let selected = options.selectedList ? [...options.selectedList] : [];
@@ -359,9 +377,107 @@ function showAppModal(options = {}) {
       render();
       $('app-modal-search-input')?.addEventListener('input', e => render(e.target.value.trim().toLowerCase()));
     }
+    // Song picker state + rendering (chat notes) — re-renders on every tap so the
+    // selected row stays highlighted; tapping the selected song again clears it.
+    let pickedSong = options.songPicker && options.songPicker.current ? { ...options.songPicker.current } : null;
+    // Clip fields (m:ss) for playing only part of the song — seeded from the note's saved clip.
+    let clipStartTxt = options.songPicker && options.songPicker.current && Number(options.songPicker.current.startAt) > 0 ? fmtClipTime(options.songPicker.current.startAt) : '';
+    let clipEndTxt = options.songPicker && options.songPicker.current && Number(options.songPicker.current.endAt) > Number(options.songPicker.current.startAt || 0) ? fmtClipTime(options.songPicker.current.endAt) : '';
+    let clipForYt = options.songPicker && options.songPicker.current ? options.songPicker.current.youtubeId : null; // song the clip fields describe
+    if (options.songPicker) {
+      const refreshSongRow = () => {
+        const box = $('app-modal-song-current');
+        if (box) {
+          box.classList.toggle('hidden', !pickedSong);
+          if (pickedSong) $('app-modal-song-current-text').textContent = `${pickedSong.title || 'Untitled'}${pickedSong.artist ? ` — ${pickedSong.artist}` : ''}`;
+        }
+        const clipBox = $('app-modal-song-clip');
+        if (clipBox) {
+          clipBox.classList.toggle('hidden', !pickedSong);
+          if (pickedSong) {
+            $('app-modal-song-start').value = clipStartTxt;
+            $('app-modal-song-end').value = clipEndTxt;
+          }
+        }
+        // While a song is selected the search box, list and hint step aside so the
+        // note text, the clip row and the buttons keep their room. Removing the
+        // song with ✕ brings the selection UI back.
+        const showSearch = !pickedSong;
+        $('app-modal-song-search-wrap')?.classList.toggle('hidden', !showSearch);
+        $('app-modal-song-list')?.classList.toggle('hidden', !showSearch);
+        $('app-modal-song-hint')?.classList.toggle('hidden', !showSearch);
+      };
+      const renderSongs = (term = '') => {
+        const el = $('app-modal-song-list');
+        if (!el) return;
+        const all = options.songPicker.songs || [];
+        const list = all.filter((s) => !term || `${s.title || ''} ${s.artist || ''}`.toLowerCase().includes(term)).slice(0, 60);
+        el.innerHTML = list.length ? list.map((s) => `
+          <button type="button" class="member-select-item${pickedSong && pickedSong.youtubeId === s.youtubeId ? ' selected' : ''}" data-yid="${escapeHtml(s.youtubeId)}">
+            <img class="avatar" src="https://i.ytimg.com/vi/${escapeHtml(s.youtubeId)}/default.jpg" alt="">
+            <span class="member-select-name">${escapeHtml(s.title || 'Untitled')}${s.artist ? `<small>${escapeHtml(s.artist)}</small>` : ''}</span>
+          </button>`).join('') : `<p class="list-empty">${all.length ? 'No matching songs.' : 'No songs in the community library yet — add one in Hangout Music.'}</p>`;
+        el.querySelectorAll('.member-select-item').forEach((b) => b.addEventListener('click', () => {
+          const song = (options.songPicker.songs || []).find((x) => x.youtubeId === b.dataset.yid);
+          if (!song) return;
+          captureClipInputs();
+          const already = pickedSong && pickedSong.youtubeId === song.youtubeId;
+          pickedSong = already ? null : { youtubeId: song.youtubeId, title: song.title || 'Untitled', artist: song.artist || '' };
+          if (clipForYt !== song.youtubeId) {
+            // Different song the clip fields are about → reset them (or seed from
+            // the note's saved clip when it is the song that was already attached).
+            const cur = options.songPicker.current;
+            if (cur && cur.youtubeId === song.youtubeId) {
+              clipStartTxt = Number(cur.startAt) > 0 ? fmtClipTime(cur.startAt) : '';
+              clipEndTxt = Number(cur.endAt) > Number(cur.startAt || 0) ? fmtClipTime(cur.endAt) : '';
+            } else {
+              clipStartTxt = '';
+              clipEndTxt = '';
+            }
+            clipForYt = song.youtubeId;
+          }
+          refreshSongRow();
+          renderSongs(term);
+        }));
+      };
+      // Keep whatever the user typed while the row is visible (the DOM is the
+      // source of truth between renders); hidden rows are never captured.
+      const captureClipInputs = () => {
+        const clipBox = $('app-modal-song-clip');
+        if (!clipBox || clipBox.classList.contains('hidden')) return;
+        clipStartTxt = $('app-modal-song-start').value;
+        clipEndTxt = $('app-modal-song-end').value;
+      };
+      renderSongs();
+      refreshSongRow();
+      $('app-modal-song-search')?.addEventListener('input', (e) => renderSongs(e.target.value.trim().toLowerCase()));
+      $('app-modal-song-clear')?.addEventListener('click', () => {
+        captureClipInputs();
+        pickedSong = null;
+        refreshSongRow();
+        renderSongs($('app-modal-song-search')?.value.trim().toLowerCase() || '');
+      });
+    }
     let done = false;
     const finish = (val) => { if (done) return; done = true; modal.close(); resolve(val); };
-    confirmBtn.onclick = () => finish((options.input || options.textarea) ? ($('app-modal-input')?.value ?? '') : options.memberList ? selected : true);
+    confirmBtn.onclick = () => {
+      // With a song picker the modal also carries the note text, so both come back together.
+      if (options.songPicker) {
+        const clipStart = parseClipSec($('app-modal-song-start')?.value);
+        const clipEnd = parseClipSec($('app-modal-song-end')?.value);
+        if (Number.isNaN(clipStart) || Number.isNaN(clipEnd)) { showToast('Clip times: use m:ss (e.g. 0:30).'); return; }
+        if ((clipStart || 0) > 36000 || (clipEnd || 0) > 36000) { showToast('Clip time is out of range (max 10 hours).'); return; }
+        if (clipStart != null && clipEnd != null && clipEnd <= clipStart) { showToast('“To” must be after “From”.'); return; }
+        let song = null;
+        if (pickedSong) {
+          song = { youtubeId: pickedSong.youtubeId, title: pickedSong.title || 'Untitled', artist: pickedSong.artist || '' };
+          if (clipStart > 0) song.startAt = clipStart;
+          if (clipEnd > 0) song.endAt = clipEnd;
+        }
+        return finish({ text: $('app-modal-input')?.value ?? '', song });
+      }
+      finish((options.input || options.textarea) ? ($('app-modal-input')?.value ?? '') : options.memberList ? selected : true);
+    };
     cancelBtn.onclick = () => finish(null);
     $('app-modal-close').onclick = () => finish(null);
     modal.onclose = () => { if (modal.open) return; finish(null); };
@@ -532,6 +648,76 @@ function noteReactRowHtml(uid, reactions) {
   }).join('');
 }
 
+// ── Note song ──
+// A note can carry one song picked from the Hangout Music community library
+// (db3 /global_library) — stored on the note node as song = { youtubeId, title,
+// artist }. Opening the note plays it through a visually-hidden YouTube frame
+// and the chip shows a small equalizer while the audio is live. The frame is
+// removed on close, which stops the sound.
+let _noteSongFrame = null; // hidden <iframe> currently playing
+let _noteSongUid = null;   // uid of the note the frame belongs to
+let _noteSongTimer = null; // safety net that cuts a clipped song at its chosen end
+
+function stopNoteSong() {
+  if (_noteSongTimer) { clearTimeout(_noteSongTimer); _noteSongTimer = null; }
+  if (_noteSongFrame) { _noteSongFrame.remove(); _noteSongFrame = null; }
+  _noteSongUid = null;
+  $('note-song')?.classList.remove('playing');
+}
+
+function playNoteSong(uid, song) {
+  stopNoteSong();
+  if (!song || !song.youtubeId) return;
+  // Optional clip (Messenger-style "only part of the song") — seconds on the note.
+  const startAt = Math.floor(Number(song.startAt) || 0);
+  const endAt = Math.floor(Number(song.endAt) || 0);
+  const hasClip = endAt > startAt;
+  const params = ['autoplay=1', 'playsinline=1', 'rel=0'];
+  if (startAt > 0) params.push(`start=${startAt}`);
+  if (hasClip) params.push(`end=${endAt}`);
+  const frame = document.createElement('iframe');
+  frame.className = 'note-song-frame';
+  frame.title = song.title || 'Note song';
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+  frame.src = `https://www.youtube.com/embed/${encodeURIComponent(song.youtubeId)}?${params.join('&')}`;
+  document.body.appendChild(frame);
+  _noteSongFrame = frame;
+  _noteSongUid = uid;
+  $('note-song')?.classList.add('playing');
+  if (hasClip) {
+    const clipMs = (endAt - startAt) * 1000;
+    const arm = (ms) => { if (_noteSongTimer) clearTimeout(_noteSongTimer); _noteSongTimer = setTimeout(stopNoteSong, ms); };
+    // Most embeds stop themselves at `end=`; the timers guarantee the cut even
+    // when a browser ignores it. Counting starts when the player document has
+    // loaded (autoplay begins right after); the creation-time arm is fallback.
+    frame.addEventListener('load', () => arm(clipMs + 800), { once: true });
+    arm(clipMs + 5000);
+  }
+}
+
+// "1:30" → 90 · blank → null (unset) · junk → NaN (invalid)
+function parseClipSec(raw) {
+  const str = String(raw || '').trim();
+  if (!str) return null;
+  const parts = str.includes(':') ? str.split(':').map((p) => p.trim()) : [str];
+  if (parts.length > 2 || parts.some((p) => !/^\d+$/.test(p))) return NaN;
+  return parts.length === 2 ? parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10) : parseInt(parts[0], 10);
+}
+
+function fmtClipTime(sec) {
+  const t = Math.max(0, Math.floor(Number(sec) || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
+// "0:15–0:30" / "0:00–0:30" / "from 0:15" — shown on the chip when a clip is set.
+function noteSongClipLabel(song) {
+  const s = Math.floor(Number(song.startAt) || 0);
+  const e = Math.floor(Number(song.endAt) || 0);
+  if (e > 0 && e > s) return s > 0 ? `${fmtClipTime(s)}–${fmtClipTime(e)}` : `0:00–${fmtClipTime(e)}`;
+  if (s > 0) return `from ${fmtClipTime(s)}`;
+  return '';
+}
+
 function renderNotes() {
   const strip = $('notes-strip');
   if (!strip) return;
@@ -548,7 +734,7 @@ function renderNotes() {
   const myReacts = noteReactsLabel(state.notes[me]?.reactions, me);
   let html = `
     <button class="note-item me${myNote ? ' has-note' : ''}" onclick="window.openMyNote()" title="${myNote ? 'Edit my note' : 'Add a note'}">
-      ${myNote ? `<span class="note-bubble"><span class="note-bubble-text">${escapeHtml(myNote)}</span></span>` : ''}
+      ${myNote ? `<span class="note-bubble"><span class="note-bubble-text">${state.notes[me]?.song?.youtubeId ? '🎵 ' : ''}${escapeHtml(myNote)}</span></span>` : ''}
       <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl({ ...(state.users[me] || {}), uid: me }))}" alt=""></span>
       <span class="note-label">My note</span>
       ${myReacts ? `<span class="note-reacts${state.notes[me]?.reactions?.[me] ? ' mine' : ''}">${escapeHtml(myReacts)}</span>` : ''}
@@ -558,7 +744,7 @@ function renderNotes() {
     const reacts = noteReactsLabel(n.reactions, me);
     html += `
     <button class="note-item has-note" onclick="window.openNote('${uid}', this)" title="${escapeHtml(n.text)}">
-      <span class="note-bubble"><span class="note-bubble-text">${escapeHtml(n.text)}</span></span>
+      <span class="note-bubble"><span class="note-bubble-text">${n.song?.youtubeId ? '🎵 ' : ''}${escapeHtml(n.text)}</span></span>
       <span class="note-ring"><img class="avatar" src="${escapeHtml(avatarUrl(u))}" alt=""></span>
       <span class="note-label">${escapeHtml(u.name || 'Member')}</span>
       ${reacts ? `<span class="note-reacts${n.reactions?.[me] ? ' mine' : ''}">${escapeHtml(reacts)}</span>` : ''}
@@ -578,6 +764,25 @@ window.openNote = (uid, anchorEl) => {
   $('note-view-avatar').title = `${u.name || 'Member'} — view profile`;
   $('note-view-name').textContent = u.name || 'Member';
   $('note-view-text').textContent = note.text;
+  // Attached song: fill the chip and start playback (the chip is measured by the
+  // popover anchoring below, so wire it before reading offsetHeight).
+  const song = note.song && note.song.youtubeId ? note.song : null;
+  const songChip = $('note-song');
+  if (songChip) {
+    songChip.classList.toggle('hidden', !song);
+    if (song) {
+      $('note-song-thumb').src = `https://i.ytimg.com/vi/${encodeURIComponent(song.youtubeId)}/default.jpg`;
+      $('note-song-title').textContent = song.title || 'Untitled';
+      const artistEl = $('note-song-artist');
+      const clipLabel = noteSongClipLabel(song);
+      artistEl.textContent = [song.artist || '', clipLabel].filter(Boolean).join(' · ');
+      artistEl.classList.toggle('hidden', !song.artist && !clipLabel);
+      songChip.title = `Stop “${song.title || 'song'}”`;
+      playNoteSong(uid, song);
+    } else {
+      stopNoteSong();
+    }
+  }
   const reactRow = $('note-react-row');
   if (reactRow) reactRow.innerHTML = noteReactRowHtml(uid, note.reactions);
   const replyBtn = $('note-reply-btn');
@@ -649,27 +854,53 @@ window.replyToNote = async (uid) => {
   }
 };
 
-// Set / clear my own note (saved to db2)
+// Set / clear my own note (saved to db2) — optional song attached from the
+// Hangout Music community library (one-shot read of db3 /global_library).
 window.openMyNote = async () => {
   if (!state.user) return showAuth();
   const me = state.user.uid;
   const current = state.notes[me]?.text || '';
+  const currentSong = state.notes[me]?.song?.youtubeId ? { ...state.notes[me].song } : null;
+  let songs = [];
+  try {
+    const snap = await get(ref(db3, 'global_library'));
+    songs = Object.values(snap.val() || {})
+      .filter((s) => s && s.youtubeId)
+      .map((s) => ({ youtubeId: s.youtubeId, title: s.title || 'Untitled', artist: s.artist || '' }))
+      .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+  } catch (e) { songs = []; }
   const result = await showAppModal({
     title: 'My Note',
     textarea: true,
+    rows: 3, // thinner input — leaves room for the song picker + buttons
     inputValue: current,
     placeholder: 'Share a short note (max 140 chars)…',
     confirmText: 'Save',
+    songPicker: { songs, current: currentSong },
   });
   if (result === null) return; // cancelled
-  const text = String(result || '').trim();
+  const text = String(result.text || '').trim();
+  const song = result.song;
   try {
     if (!text) {
       await remove(ref(db2, `notes/${me}`));
       showToast('Note cleared.');
     } else {
-      await set(ref(db2, `notes/${me}`), { text: text.slice(0, 140), updatedAt: Date.now() });
-      showToast('Note saved.');
+      const note = { text: text.slice(0, 140), updatedAt: Date.now() };
+      if (song && song.youtubeId) {
+        note.song = {
+          youtubeId: String(song.youtubeId).slice(0, 20),
+          title: String(song.title || 'Untitled').slice(0, 120),
+          artist: String(song.artist || '').slice(0, 120),
+        };
+        // Optional clip — only stored when set, so plain songs keep their old shape.
+        const clipFrom = Math.floor(Number(song.startAt) || 0);
+        const clipTo = Math.floor(Number(song.endAt) || 0);
+        if (clipFrom > 0) note.song.startAt = clipFrom;
+        if (clipTo > clipFrom) note.song.endAt = clipTo;
+      }
+      await set(ref(db2, `notes/${me}`), note);
+      showToast(note.song ? 'Note saved with song 🎵' : 'Note saved.');
     }
   } catch (e) {
     showToast('Could not save note: ' + e.message);
@@ -3431,11 +3662,24 @@ $('search-clear').addEventListener('click', () => {
   renderConversations(true);
 });
 // Note viewer — tiny popover (close via X, outside click, or Escape)
-const closeNotePopover = () => $('note-popover')?.classList.add('hidden');
+const closeNotePopover = () => { $('note-popover')?.classList.add('hidden'); stopNoteSong(); };
 $('note-view-close').addEventListener('click', closeNotePopover);
 // React (inline row) + Reply (quoted DM) + avatar → profile
 $('note-reply-btn')?.addEventListener('click', () => window.replyToNote(window._noteViewUid));
 $('note-view-avatar')?.addEventListener('click', () => window.openUserProfile(window._noteViewUid));
+// Song chip — tap to stop the audio, tap again to restart it
+$('note-song')?.addEventListener('click', () => {
+  const uid = window._noteViewUid;
+  const song = state.notes[uid]?.song;
+  if (!song || !song.youtubeId) return;
+  if (_noteSongFrame && _noteSongUid === uid) {
+    stopNoteSong();
+    $('note-song').title = `Play “${song.title || 'song'}”`;
+  } else {
+    playNoteSong(uid, song);
+    $('note-song').title = `Stop “${song.title || 'song'}”`;
+  }
+});
 document.addEventListener('click', (e) => {
   const pop = $('note-popover');
   if (!pop || pop.classList.contains('hidden')) return;
