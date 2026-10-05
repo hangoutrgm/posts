@@ -469,10 +469,25 @@ body {
 }
 #floating-music-btn:hover { transform: scale(1.08); }
 #floating-music-btn:active { transform: scale(0.94); }
-#floating-music-btn.is-playing { animation: mpFloat 2s ease-in-out infinite; }
+/* Playing indicator: a static-shadow halo on a pseudo-element that only pulses
+   OPACITY. The old version animated the button's own box-shadow, which cannot
+   run on the compositor — it re-painted this fixed button on the main thread
+   60x/sec for as long as music played and janked feed scrolling. Opacity (and
+   transform) animate on the compositor instead, so playback no longer costs
+   the main thread anything. */
+#floating-music-btn.is-playing::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    box-shadow: 0 10px 28px -3px rgba(217, 70, 239, 0.95);
+    opacity: 0.5;
+    pointer-events: none;
+    animation: mpFloat 2s ease-in-out infinite;
+}
 @keyframes mpFloat {
-    0%, 100% { box-shadow: 0 10px 25px -5px rgba(168, 85, 247, 0.5); }
-    50%      { box-shadow: 0 10px 28px -3px rgba(217, 70, 239, 0.95); }
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1; }
 }
 
 /* ── Mini Music Player: shell, header, rows ── */

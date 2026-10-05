@@ -163,6 +163,8 @@ function openModal() {
   mp.open = true;
   el('mini-music-modal').classList.remove('mp-off');
   if (mp.user) watchPlaylist(mp.user.uid);
+  // paintSeek() no-ops while the widget is closed, so paint one fresh frame now.
+  if (player && player.ready) paintSeek(player.getCurrentTime(), player.getDuration());
 }
 
 function closeModal() {
@@ -268,17 +270,27 @@ function ensurePlayer() {
 }
 
 function paintSeek(current, duration) {
+  // The engine ticks every 250ms even while this widget is closed (playback
+  // continues in the background) — skip ALL DOM work until it's visible.
+  // openModal() paints one fresh frame when it reopens.
+  if (!mp.open) return;
   const dur = Number(duration) || (player ? player.getDuration() : 0) || 0;
   const cur = dur ? Math.min(Number(current) || 0, dur) : (Number(current) || 0);
   const seek = el('mini-music-seek');
   if (seek && !mp.scrubbing) {
-    seek.max = String(Math.max(1, Math.round(dur)));
-    seek.value = String(Math.round(cur));
+    const maxStr = String(Math.max(1, Math.round(dur)));
+    const valStr = String(Math.round(cur));
+    // Write only on change: values are seconds-granular, so this drops DOM
+    // mutations from 4/sec to ~1/sec while playing with the modal open.
+    if (seek.max !== maxStr) seek.max = maxStr;
+    if (seek.value !== valStr) seek.value = valStr;
   }
+  const curText = fmtTime(cur);
   const curLabel = el('mini-music-cur');
-  if (curLabel) curLabel.textContent = fmtTime(cur);
+  if (curLabel && curLabel.textContent !== curText) curLabel.textContent = curText;
+  const durText = dur ? fmtTime(dur) : '--:--';
   const durLabel = el('mini-music-dur');
-  if (durLabel) durLabel.textContent = dur ? fmtTime(dur) : '--:--';
+  if (durLabel && durLabel.textContent !== durText) durLabel.textContent = durText;
 }
 
 function updateTransport() {

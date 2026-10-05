@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=17">
+    <link rel="stylesheet" href="css/styles.css?v=18">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -1125,7 +1125,7 @@
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.
         window.openMiniPlayer = () => {
-            import('./music/mini-player.js?v=2')
+            import('./music/mini-player.js?v=3')
                 .then((mod) => mod.toggleMiniPlayer())
                 .catch((err) => console.error('[mini-player] load failed', err));
         };
