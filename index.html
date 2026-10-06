@@ -37,7 +37,7 @@
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=25">
+    <link rel="stylesheet" href="css/styles.css?v=27">
     <link rel="stylesheet" href="css/tailwind.min.css?v=3">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
@@ -1122,19 +1122,27 @@
 
 
 
-    <!-- Floating Create a Post Button -->
-    <button id="floating-create-btn" onclick="window.toggleCreateMenu()" title="Create a post">
+    <!-- Floating action stack: ONE mother button while collapsed so the three
+         tools stop crowding the feed. Pressing it fans them out at their usual
+         spots — refresh (bottom), music, create (top) — and the mother steps
+         aside; tapping a tool or anywhere outside closes the stack again. -->
+    <button id="floating-menu-btn" onclick="window.toggleFabMenu()" title="Show actions" aria-label="Show action buttons" aria-expanded="false">
+        <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+    </button>
+
+    <!-- Floating Create a Post Button (top of the open stack) -->
+    <button id="floating-create-btn" class="fab-retract" onclick="window.closeFabMenu(); window.toggleCreateMenu()" title="Create a post">
         <i class="fa-solid fa-plus"></i>
     </button>
 
-    <!-- Floating Music Button (mini player) — middle of the stack (refresh — music — create) -->
-    <button id="floating-music-btn" onclick="window.openMiniPlayer()" title="Hangout Music" aria-label="Open the music player">
+    <!-- Floating Music Button (mini player) — middle of the open stack -->
+    <button id="floating-music-btn" class="fab-retract" onclick="window.closeFabMenu(); window.openMiniPlayer()" title="Hangout Music" aria-label="Open the music player">
         <i class="fa-solid fa-music"></i>
     </button>
 
-    <!-- Floating Feed Refresh Button — bottom of the stack: scrolls the feed
-         to the top and refreshes it (never reloads the page) -->
-    <button id="floating-refresh-btn" onclick="window.refreshFeedFromTop()" title="Refresh feed" aria-label="Scroll up and refresh the feed">
+    <!-- Floating Feed Refresh Button — bottom of the open stack: scrolls the
+         feed to the top and refreshes it (never reloads the page) -->
+    <button id="floating-refresh-btn" class="fab-retract" onclick="window.closeFabMenu(); window.refreshFeedFromTop()" title="Refresh feed" aria-label="Scroll up and refresh the feed">
         <i class="fa-solid fa-arrows-rotate"></i>
     </button>
 
@@ -1146,12 +1154,12 @@
     <script type="module" src="js/games.js?v=61"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=28"></script>
-    <script type="module" src="js/main.js?v=86"></script>
+    <script type="module" src="js/main.js?v=87"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.
         window.openMiniPlayer = () => {
-            import('./music/mini-player.js?v=4')
+            import('./music/mini-player.js?v=5')
                 .then((mod) => mod.toggleMiniPlayer())
                 .catch((err) => console.error('[mini-player] load failed', err));
         };

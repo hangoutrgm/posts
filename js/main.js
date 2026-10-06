@@ -223,6 +223,25 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
     });
 });
 
+// Floating action stack (mother button + three tools). Collapsed, only the
+// mother (#floating-menu-btn) shows; body.fab-open fans the tools out at their
+// fixed spots (refresh 24px → music 84px → create 144px) and hides the mother.
+// Tapping a tool runs window.closeFabMenu() first (inline in index.html);
+// tapping anywhere outside or pressing Escape closes the stack too.
+const _setFabOpen = (open) => {
+    document.body.classList.toggle('fab-open', open);
+    const mother = document.getElementById('floating-menu-btn');
+    if (mother) mother.setAttribute('aria-expanded', open ? 'true' : 'false');
+};
+window.toggleFabMenu = () => _setFabOpen(!document.body.classList.contains('fab-open'));
+window.closeFabMenu = () => _setFabOpen(false);
+document.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('fab-open')) return;
+    if (e.target && e.target.closest && e.target.closest('#floating-menu-btn, .fab-retract')) return;
+    window.closeFabMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.closeFabMenu(); });
+
 // Floating "back to top" refresh button (bottom-right, above the music button):
 // smooth-scrolls the feed to the top, then refreshes it in place — the path of
 // clicking the active category tab. ORDER MATTERS: the refresh repaint swaps the

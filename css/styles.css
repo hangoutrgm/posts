@@ -485,6 +485,116 @@ body {
 }
 
 /* ── Floating Create Button (Bottom-Right) ── */
+/* ── Floating Action Mother Button ──
+   Collapsed, only this button shows — the three tools (refresh / music /
+   create) carry .fab-retract and stay hidden so they stop crowding the feed.
+   Pressing it opens body.fab-open: the tools fan out at their usual spots
+   (refresh 24px → music 84px → create 144px) and the mother steps aside. */
+#floating-menu-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    /* The stack's own palette as one gradient — create blue → theme violet
+       (#6c63ff, also the PWA theme-color) → music purple — so the entry point
+       visually belongs to every button it opens. */
+    background: linear-gradient(135deg, #2563eb 0%, #6c63ff 52%, #a855f7 100%);
+    color: #ffffff !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    border: 3px solid #ffffff;
+    /* Layered depth: colored glow + drop shadow + glass sheen top / bottom */
+    box-shadow:
+        0 14px 30px -10px rgba(108, 99, 255, 0.65),
+        0 6px 14px -6px rgba(15, 23, 42, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 -8px 14px rgba(15, 23, 42, 0.18);
+    cursor: pointer;
+    z-index: 90;
+    transition: opacity 0.16s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0s linear 0.22s, box-shadow 0.25s ease;
+}
+/* Breathing halo ring — with the tools collapsed this is the only resting FAB,
+   so it gently advertises itself. Opacity/transform only → compositor-friendly
+   (same reasoning as the mpFloat playing pulse). */
+#floating-menu-btn::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.55), rgba(108, 99, 255, 0.55), rgba(168, 85, 247, 0.55));
+    z-index: -1;
+    pointer-events: none;
+    animation: fabBreath 3s ease-in-out infinite;
+}
+@keyframes fabBreath {
+    0%, 100% { opacity: 0.25; transform: scale(0.97); }
+    50%      { opacity: 0.6; transform: scale(1.05); }
+}
+:is(.dark *) #floating-menu-btn,
+.dark #floating-menu-btn {
+    border-color: #1e293b;
+    box-shadow:
+        0 14px 32px -8px rgba(108, 99, 255, 0.75),
+        0 6px 16px -6px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        inset 0 -8px 14px rgba(0, 0, 0, 0.3);
+}
+#floating-menu-btn:hover {
+    transform: scale(1.08);
+    box-shadow:
+        0 18px 36px -10px rgba(108, 99, 255, 0.8),
+        0 8px 18px -6px rgba(15, 23, 42, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.55),
+        inset 0 -8px 14px rgba(15, 23, 42, 0.18);
+}
+#floating-menu-btn:active { transform: scale(0.94); }
+/* While music plays the playing-halo (::before) is the signal — freeze the
+   breath so the two pulses never fight each other. */
+#floating-menu-btn.is-playing::after { animation: none; opacity: 0.45; }
+body.fab-open #floating-menu-btn {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(0.7);
+    transition: opacity 0.14s ease, transform 0.18s ease, visibility 0s;
+}
+/* Music running while collapsed: the playing halo lives on the mother button
+   (same mpFloat pulse the music button carries while the stack is open). */
+#floating-menu-btn.is-playing::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    box-shadow: 0 10px 28px -3px rgba(168, 85, 239, 0.95);
+    opacity: 0.5;
+    pointer-events: none;
+    animation: mpFloat 2s ease-in-out infinite;
+}
+/* The three tools: hidden (and unclickable / out of the a11y tree) until the
+   stack opens — visibility flips after the fade-out so closing looks smooth. */
+.fab-retract {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(16px) scale(0.7);
+    transition: opacity 0.16s ease, transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0s linear 0.24s;
+}
+body.fab-open .fab-retract {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition: opacity 0.16s ease, transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0s;
+}
+/* Fan-out stagger: the bottom tool lands first */
+body.fab-open #floating-refresh-btn { transition-delay: 0s; }
+body.fab-open #floating-music-btn { transition-delay: 0.05s; }
+body.fab-open #floating-create-btn { transition-delay: 0.1s; }
+
 #floating-create-btn {
     position: fixed;
     bottom: 144px; /* top of the stack: 24 + 48 + 12 gap (music) + 48 + 12 gap */

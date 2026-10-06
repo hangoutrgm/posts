@@ -331,6 +331,9 @@ function updateTransport() {
   if (icon) icon.className = playing ? 'fa-solid fa-pause' : 'fa-solid fa-play';
   const fab = document.getElementById('floating-music-btn');
   if (fab) fab.classList.toggle('is-playing', playing);
+  // Collapsed stack: the mother button carries the halo instead.
+  const motherFab = document.getElementById('floating-menu-btn');
+  if (motherFab) motherFab.classList.toggle('is-playing', playing);
 }
 
 function loadTrack(track) {
