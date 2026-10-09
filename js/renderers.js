@@ -361,6 +361,22 @@ window.openEditProfile = () => {
     document.getElementById('profile-bio').value = cache.bio || '';
     document.getElementById('profile-relationship').dispatchEvent(new Event('change'));
 
+    // Removal state + remove-button visibility (see window.removeProfilePic / removeProfileCover)
+    window._profilePicRemoved = false;
+    window._profileCoverRemoved = false;
+    const removeCoverBtn = document.getElementById('remove-cover-btn');
+    if (removeCoverBtn) removeCoverBtn.classList.toggle('hidden', !cache.cover);
+
+    // Socials tab inputs
+    const socials = cache.socials || {};
+    Object.keys(window.SOCIAL_PLATFORMS || {}).forEach((key) => {
+        const el = document.getElementById('social-' + key);
+        if (el) el.value = socials[key] || '';
+    });
+
+    // The modal always opens on the main tab.
+    window.switchEditTab('profile');
+
     // Build gallery slots
     const gallery = cache.galleryImages || [];
     const slotsContainer = document.getElementById('gallery-slots');
@@ -380,6 +396,7 @@ window.openEditProfile = () => {
                 <input type="file" accept="image/*" class="hidden gallery-file-input" data-slot="${i}">
             </label>
             <input type="text" placeholder="or paste URL..." value="${existingUrl}" class="gallery-url-input absolute bottom-0 left-0 right-0 text-[9px] p-1 bg-black/60 text-white placeholder-gray-400 focus:outline-none hidden" data-slot="${i}">
+            <button type="button" onclick="event.stopPropagation(); window.removeGallerySlot(${i})" title="Remove photo" class="gallery-remove-btn absolute top-1 right-1 z-10 w-4 h-4 flex items-center justify-center rounded-full bg-black/60 text-white text-[9px] shadow-sm hover:bg-red-500 transition ${existingUrl ? '' : 'hidden'}"><i class="fa-solid fa-xmark"></i></button>
         `;
         // Click the empty area = open file picker OR show URL input on double-click
         slot.querySelector('.gallery-file-input').addEventListener('change', async function() {
@@ -398,6 +415,7 @@ window.openEditProfile = () => {
                     slot.querySelector('.w-full.h-full').appendChild(prev);
                 }
                 prev.src = compressed;
+                slot.querySelector('.gallery-remove-btn')?.classList.remove('hidden');
             } catch(e) {}
         });
         slotsContainer.appendChild(slot);
@@ -412,6 +430,111 @@ window.openEditProfile = () => {
 
     window.updateAdminButtons && window.updateAdminButtons();
     document.getElementById('profile-modal').classList.remove('hidden');
+};
+
+// ==========================================
+// Edit Profile modal: tabs, media removal, socials
+// ==========================================
+
+// Tab switcher for the edit-profile modal (Hangout profile / Socials).
+window.switchEditTab = (tab) => {
+    const isSocials = tab === 'socials';
+    const profilePanel = document.getElementById('edit-tab-profile');
+    const socialsPanel = document.getElementById('edit-tab-socials');
+    if (profilePanel) profilePanel.classList.toggle('hidden', isSocials);
+    if (socialsPanel) socialsPanel.classList.toggle('hidden', !isSocials);
+    const active = 'flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm';
+    const inactive = 'flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400';
+    const pBtn = document.getElementById('edit-tab-btn-profile');
+    const sBtn = document.getElementById('edit-tab-btn-socials');
+    if (pBtn) pBtn.className = isSocials ? inactive : active;
+    if (sBtn) sBtn.className = isSocials ? active : inactive;
+};
+
+// Remove profile photo — resets to the auto-generated avatar when saved.
+window.removeProfilePic = () => {
+    if (!window.currentUser) return;
+    window._profilePicRemoved = true;
+    const fileInput = document.getElementById('profile-pic-file');
+    if (fileInput) fileInput.value = '';
+    const preview = document.getElementById('profile-preview');
+    if (preview) preview.src = window.generateAvatar(window.currentUser.uid);
+};
+
+// Remove cover photo — cleared when saved (a fresh upload still wins).
+window.removeProfileCover = () => {
+    window._profileCoverRemoved = true;
+    const fileInput = document.getElementById('profile-cover-file');
+    if (fileInput) fileInput.value = '';
+    const prev = document.getElementById('profile-cover-preview');
+    if (prev) { prev.removeAttribute('src'); prev.style.display = 'none'; }
+    const btn = document.getElementById('remove-cover-btn');
+    if (btn) btn.classList.add('hidden');
+};
+
+// Remove a single photo-gallery slot (reset inputs + preview in place).
+window.removeGallerySlot = (i) => {
+    const urlInput = document.querySelector(`.gallery-url-input[data-slot="${i}"]`);
+    if (urlInput) urlInput.value = '';
+    const fileInput = document.querySelector(`.gallery-file-input[data-slot="${i}"]`);
+    if (fileInput) fileInput.value = '';
+    const slot = document.querySelectorAll('#gallery-slots > div')[i];
+    if (!slot) return;
+    slot.querySelector('.gallery-slot-preview')?.remove();
+    if (!slot.querySelector('.gallery-slot-empty')) {
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-image text-gray-300 dark:text-slate-600 text-2xl gallery-slot-empty';
+        icon.dataset.slot = i;
+        slot.querySelector('.w-full.h-full')?.appendChild(icon);
+    }
+    slot.querySelector('.gallery-url-input')?.classList.add('hidden');
+    slot.querySelector('.gallery-remove-btn')?.classList.add('hidden');
+};
+
+// Remove every photo-gallery slot at once.
+window.clearProfileGallery = () => {
+    for (let i = 0; i < 4; i++) window.removeGallerySlot(i);
+};
+
+// Socials tab — platform registry (icons verified against the FA 6.5.2 CDN) + link normalizer.
+// `prefix` defaults to fa-brands; `requiresUrl` marks platforms where a bare handle
+// makes no sense (a personal website must be a domain or full URL).
+window.SOCIAL_PLATFORMS = {
+    facebook:  { label: 'Facebook',  icon: 'fa-facebook-f', base: 'https://www.facebook.com/' },
+    tiktok:    { label: 'TikTok',    icon: 'fa-tiktok',     base: 'https://www.tiktok.com/@' },
+    instagram: { label: 'Instagram', icon: 'fa-instagram',  base: 'https://www.instagram.com/' },
+    threads:   { label: 'Threads',   icon: 'fa-threads',    base: 'https://www.threads.net/@' },
+    telegram:  { label: 'Telegram',  icon: 'fa-telegram',   base: 'https://t.me/' },
+    website:   { label: 'Website',   icon: 'fa-globe', prefix: 'fa-solid', requiresUrl: true }
+};
+
+// Accepts a full URL, a domain without a scheme, or a bare @handle and returns a
+// normalized https link ('' when blank / unusable). Only http(s) passes through
+// untouched, so the stored value is always safe to render as an href.
+window.normalizeSocialUrl = (platform, raw) => {
+    const p = window.SOCIAL_PLATFORMS[platform];
+    const value = String(raw || '').trim();
+    if (!p || !value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (/^(www\.|[\w-]+\.[a-z]{2,})/i.test(value)) return 'https://' + value.replace(/^\/+/, '');
+    // No scheme and not domain-like: a website needs a real URL, other platforms
+    // fall back to treating the input as a @handle on their base URL.
+    if (p.requiresUrl) return '';
+    return p.base + value.replace(/^@+/, '').replace(/\s+/g, '');
+};
+
+// Profile-page row of social icon links (returns '' when none are set).
+window.buildProfileSocials = (socials) => {
+    if (!socials) return '';
+    const links = [];
+    Object.keys(window.SOCIAL_PLATFORMS).forEach((key) => {
+        const url = socials[key];
+        if (!url) return;
+        const p = window.SOCIAL_PLATFORMS[key];
+        links.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" title="${p.label}" class="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-300 hover:text-blue-500 hover:border-blue-300 transition" style="font-size:13px"><i class="${p.prefix || 'fa-brands'} ${p.icon}"></i></a>`);
+    });
+    if (!links.length) return '';
+    return `<div class="flex items-center justify-center gap-1.5 mt-2">${links.join('')}</div>`;
 };
 
 // Rendering Engine Functions (DOM Patching)
@@ -882,6 +1005,7 @@ window.renderProfileData = (resetLimit = true) => {
             
             ${uData.bio ? `<div class="mt-2 w-fit mx-auto max-w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-slate-900/60 border-l-2 border-blue-400 dark:border-blue-500 text-[0.9rem] text-gray-600 dark:text-gray-300 italic text-center shadow-inner break-words" style="line-height: 0.9;"><i class="fa-solid fa-quote-left text-blue-300 dark:text-blue-600 mr-1 text-[9px]"></i>${uData.bio}<i class="fa-solid fa-quote-right text-blue-300 dark:text-blue-600 ml-1 text-[9px]"></i></div>` : ''}
             
+            ${window.buildProfileSocials(uData.socials)}
             ${relStr}
             <div class="flex items-center justify-center flex-wrap gap-y-2">
                 ${followBtn}

@@ -36,9 +36,9 @@
         if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
         else document.documentElement.classList.add('dark');
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=28">
-    <link rel="stylesheet" href="css/tailwind.min.css?v=3">
+    <link rel="stylesheet" href="css/tailwind.min.css?v=5">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
@@ -66,9 +66,32 @@
                         <span id="notif-badge" class="absolute -top-1 -right-0 bg-red-500 text-white text-[9px] font-bold px-1 rounded-full hidden shadow-sm border border-white dark:border-slate-800">0</span>
                     </button>
 
-                    <button onclick="window.openEditProfile()" class="hover:opacity-80 transition">
-                        <img id="nav-avatar" class="w-7 h-7 rounded-full border border-blue-500 object-cover" src="">
-                    </button>
+                    <div class="relative">
+                        <button id="nav-avatar-btn" onclick="window.toggleUserMenu(event)" class="hover:opacity-80 transition" aria-haspopup="menu" aria-expanded="false" title="Account menu">
+                            <img id="nav-avatar" class="w-7 h-7 rounded-full border border-blue-500 object-cover" src="">
+                        </button>
+
+                        <!-- Account menu under the nav avatar: username -> profile page,
+                             Edit Profile modal, Install, Logout. Logic in js/main.js. -->
+                        <div id="user-menu" class="hidden absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden z-[120]">
+                            <button onclick="window.userMenuProfile()" class="w-full flex items-center gap-2.5 p-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-b border-gray-100 dark:border-slate-700">
+                                <img id="user-menu-avatar" class="w-9 h-9 rounded-full object-cover border border-blue-500 bg-gray-100 dark:bg-slate-700" src="">
+                                <span class="min-w-0">
+                                    <span id="user-menu-name" class="block text-sm font-bold text-gray-900 dark:text-white truncate">My Profile</span>
+                                    <span class="block text-[10px] text-gray-400 dark:text-slate-400">View profile</span>
+                                </span>
+                            </button>
+                            <button onclick="window.userMenuEditProfile()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
+                                <i class="fa-solid fa-user-pen w-4 text-center text-gray-400"></i> Edit Profile
+                            </button>
+                            <button onclick="window.userMenuInstall()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-t border-gray-100 dark:border-slate-700">
+                                <i class="fa-solid fa-download w-4 text-center text-gray-400"></i> Install App
+                            </button>
+                            <button onclick="window.userMenuLogout()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition border-t border-gray-100 dark:border-slate-700">
+                                <i class="fa-solid fa-right-from-bracket w-4 text-center"></i> Logout
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -434,9 +457,18 @@
         <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-xs p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700">
             <button onclick="document.getElementById('profile-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400"><i class="fa-solid fa-xmark"></i></button>
             <h2 class="text-lg font-bold mb-3 dark:text-white text-center">Edit Profile</h2>
+
+            <!-- Tabs: Hangout profile (existing fields) + Socials. Logic in js/renderers.js -->
+            <div class="flex gap-1 mb-3 bg-gray-100 dark:bg-slate-900 p-1 rounded-lg text-xs font-bold" role="tablist">
+                <button type="button" id="edit-tab-btn-profile" onclick="window.switchEditTab('profile')" role="tab" class="flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm">Hangout</button>
+                <button type="button" id="edit-tab-btn-socials" onclick="window.switchEditTab('socials')" role="tab" class="flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400">Socials</button>
+            </div>
+
+            <div id="edit-tab-profile">
             
-            <div class="flex justify-center mb-1">
+            <div class="relative flex justify-center mb-1 w-16 mx-auto">
                 <img id="profile-preview" loading="lazy" class="w-16 h-16 rounded-full border-2 border-blue-500 object-cover bg-gray-100 dark:bg-slate-700">
+                <button type="button" id="remove-pic-btn" onclick="window.removeProfilePic()" title="Remove profile photo" class="absolute -top-1 -right-1 z-10 w-5 h-5 flex items-center justify-center rounded-full bg-white dark:bg-slate-700 border border-red-200 dark:border-red-900/60 text-red-500 text-[10px] shadow-sm hover:bg-red-500 hover:text-white transition"><i class="fa-solid fa-xmark"></i></button>
             </div>
             
             <label class="block text-center mb-3 cursor-pointer text-blue-500 text-xs font-bold hover:underline">
@@ -456,6 +488,7 @@
                 <div class="relative h-16 bg-gray-100 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden flex items-center justify-center">
                     <span id="cover-placeholder" class="text-[10px] font-bold text-gray-400 dark:text-slate-500 select-none pointer-events-none"><i class="fa-solid fa-camera mr-1"></i>Upload Cover Photo</span>
                     <img id="profile-cover-preview" class="absolute inset-0 w-full h-full object-cover" style="display:none" onload="this.style.display=''" onerror="this.style.display='none'">
+                    <button type="button" id="remove-cover-btn" onclick="window.removeProfileCover()" title="Remove cover photo" class="hidden absolute top-1 right-1 z-10 w-5 h-5 flex items-center justify-center rounded-full bg-black/60 border border-white/40 text-white text-[10px] shadow-sm hover:bg-red-500 transition"><i class="fa-solid fa-xmark"></i></button>
                     <label class="absolute inset-0 cursor-pointer flex items-center justify-center bg-black/30 text-white text-[10px] font-bold opacity-0 hover:opacity-100 transition">
                         <i class="fa-solid fa-camera mr-1"></i> Upload
                         <input type="file" id="profile-cover-file" accept="image/*" class="hidden" onchange="
@@ -496,17 +529,53 @@
             <textarea id="profile-bio" placeholder="Write a short bio about yourself..." rows="2" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg mb-2 dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700 resize-none leading-snug"></textarea>
 
             <div class="mb-3">
-                <p class="text-xs font-bold text-gray-500 mb-2"><i class="fa-solid fa-images text-blue-500 mr-1"></i> Photo Gallery (max 4)</p>
+                <p class="text-xs font-bold text-gray-500 mb-2"><i class="fa-solid fa-images text-blue-500 mr-1"></i> Photo Gallery (max 4) <button type="button" id="clear-gallery-btn" onclick="window.clearProfileGallery()" class="text-red-400 hover:text-red-500 hover:underline ml-1"><i class="fa-solid fa-trash-can mr-0.5"></i>Clear all</button></p>
                 <div class="flex gap-2" id="gallery-slots">
                     <!-- Slots rendered by JS -->
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-2">
-                <button id="view-profile-btn" class="bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white font-bold p-2 rounded-lg text-sm shadow-sm border border-gray-300 dark:border-slate-600 transition hover:bg-gray-300 dark:hover:bg-slate-600"><i class="fa-regular fa-user mr-1"></i> My Profile</button>
-                <button id="save-profile-btn" class="bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500">Save Changes</button>
-                <button id="install-pwa-btn" class="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:opacity-90"><i class="fa-solid fa-download mr-1"></i> Install</button>
-                <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold p-2 rounded-lg text-sm transition"><i class="fa-solid fa-right-from-bracket mr-1"></i> Logout</button>
+            </div><!-- /edit-tab-profile -->
+
+            <div id="edit-tab-socials" class="hidden">
+                <p class="text-xs font-bold text-gray-500 mb-2"><i class="fa-solid fa-share-nodes text-blue-500 mr-1"></i> Social Accounts</p>
+
+                <div class="flex items-center bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg mb-2 focus-within:border-blue-400 transition">
+                    <span class="pl-2.5 pr-1 w-6 text-center shrink-0 text-sm text-blue-600"><i class="fa-brands fa-facebook-f"></i></span>
+                    <input type="text" id="social-facebook" placeholder="facebook.com/yourname" autocomplete="off" class="flex-1 min-w-0 bg-transparent text-[11px] p-2.5 dark:text-white focus:outline-none">
+                </div>
+
+                <div class="flex items-center bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg mb-2 focus-within:border-blue-400 transition">
+                    <span class="pl-2.5 pr-1 w-6 text-center shrink-0 text-sm text-gray-900 dark:text-white"><i class="fa-brands fa-tiktok"></i></span>
+                    <input type="text" id="social-tiktok" placeholder="tiktok.com/@yourname" autocomplete="off" class="flex-1 min-w-0 bg-transparent text-[11px] p-2.5 dark:text-white focus:outline-none">
+                </div>
+
+                <div class="flex items-center bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg mb-2 focus-within:border-blue-400 transition">
+                    <span class="pl-2.5 pr-1 w-6 text-center shrink-0 text-sm text-pink-500"><i class="fa-brands fa-instagram"></i></span>
+                    <input type="text" id="social-instagram" placeholder="instagram.com/yourname" autocomplete="off" class="flex-1 min-w-0 bg-transparent text-[11px] p-2.5 dark:text-white focus:outline-none">
+                </div>
+
+                <div class="flex items-center bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg mb-2 focus-within:border-blue-400 transition">
+                    <span class="pl-2.5 pr-1 w-6 text-center shrink-0 text-sm text-gray-900 dark:text-white"><i class="fa-brands fa-threads"></i></span>
+                    <input type="text" id="social-threads" placeholder="threads.net/@yourname" autocomplete="off" class="flex-1 min-w-0 bg-transparent text-[11px] p-2.5 dark:text-white focus:outline-none">
+                </div>
+
+                <div class="flex items-center bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg mb-2 focus-within:border-blue-400 transition">
+                    <span class="pl-2.5 pr-1 w-6 text-center shrink-0 text-sm text-sky-500"><i class="fa-brands fa-telegram"></i></span>
+                    <input type="text" id="social-telegram" placeholder="t.me/yourname" autocomplete="off" class="flex-1 min-w-0 bg-transparent text-[11px] p-2.5 dark:text-white focus:outline-none">
+                </div>
+
+                <div class="flex items-center bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg mb-2 focus-within:border-blue-400 transition">
+                    <span class="pl-2.5 pr-1 w-6 text-center shrink-0 text-sm text-emerald-600 dark:text-emerald-400"><i class="fa-solid fa-globe"></i></span>
+                    <input type="text" id="social-website" placeholder="yourwebsite.com" autocomplete="off" class="flex-1 min-w-0 bg-transparent text-[11px] p-2.5 dark:text-white focus:outline-none">
+                </div>
+
+                <p class="text-[10px] text-gray-400 dark:text-slate-500 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Paste the full link or just your @username. Leave blank to hide.</p>
+            </div><!-- /edit-tab-socials -->
+
+            <div class="grid grid-cols-1 gap-2">
+                <!-- My Profile / Install / Logout moved to the nav avatar menu (#user-menu) -->
+                <button id="save-profile-btn" class="bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500 w-full">Save Changes</button>
             </div>
             <button id="admin-config-btn" class="hidden w-full bg-indigo-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-indigo-500 mt-2" onclick="window.location.href='config/'"><i class="fa-solid fa-sliders mr-1"></i>Admin Config</button>
         </div>
@@ -1149,12 +1218,12 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
-    <script type="module" src="js/renderers.js?v=85"></script>
+    <script type="module" src="js/renderers.js?v=87"></script>
     <script type="module" src="js/helpers.js?v=67"></script>
     <script type="module" src="js/games.js?v=61"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=28"></script>
-    <script type="module" src="js/main.js?v=87"></script>
+    <script type="module" src="js/main.js?v=89"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.

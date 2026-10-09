@@ -10,7 +10,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
 import "./helpers.js?v=67";
-import "./renderers.js?v=85";
+import "./renderers.js?v=87";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -2184,12 +2184,57 @@ document.getElementById('profile-relationship').addEventListener('change', (e) =
     }
 });
 
-document.getElementById('view-profile-btn').addEventListener('click', () => {
-    if(window.currentUser) {
-        document.getElementById('profile-modal').classList.add('hidden');
-        window.openProfile(window.currentUser.uid);
-    }
+// ==========================================
+// NAV AVATAR MENU (small dropdown under the nav avatar)
+// ==========================================
+// Items: username -> profile page, Edit Profile, Install App, Logout.
+// Markup lives in index.html (#user-menu); open/close is click-outside + Escape,
+// same pattern as the floating action stack above.
+const _userMenuEl = () => document.getElementById('user-menu');
+const _userMenuBtn = () => document.getElementById('nav-avatar-btn');
+
+window.closeUserMenu = () => {
+    const m = _userMenuEl();
+    if (!m) return;
+    m.classList.add('hidden');
+    const b = _userMenuBtn();
+    if (b) b.setAttribute('aria-expanded', 'false');
+};
+
+window.toggleUserMenu = (e) => {
+    if (e) e.stopPropagation(); // keep the document click handler below from closing it instantly
+    const m = _userMenuEl();
+    if (!m) return;
+    if (!m.classList.contains('hidden')) { window.closeUserMenu(); return; }
+    // Populate from the shared users cache (fall back to the auth record).
+    const uid = window.currentUser ? window.currentUser.uid : null;
+    const u = (uid && window.globalUsersCache[uid]) || {};
+    const name = u.name || (window.currentUser && window.currentUser.displayName) || 'My Profile';
+    const pic = u.pic || (window.currentUser && window.currentUser.photoURL) || (uid ? window.generateAvatar(uid) : '');
+    const nameEl = document.getElementById('user-menu-name');
+    const avatarEl = document.getElementById('user-menu-avatar');
+    if (nameEl) nameEl.textContent = name;
+    if (avatarEl && pic) avatarEl.src = pic;
+    m.classList.remove('hidden');
+    _userMenuBtn()?.setAttribute('aria-expanded', 'true');
+};
+
+window.userMenuProfile = () => {
+    const uid = window.currentUser ? window.currentUser.uid : null;
+    window.closeUserMenu();
+    if (uid) window.openProfile(uid);
+};
+window.userMenuEditProfile = () => { window.closeUserMenu(); window.openEditProfile(); };
+window.userMenuInstall = () => { window.closeUserMenu(); window.installHangout(); };
+window.userMenuLogout = () => { window.closeUserMenu(); window.logoutUser(); };
+
+document.addEventListener('click', (e) => {
+    const m = _userMenuEl();
+    if (!m || m.classList.contains('hidden')) return;
+    if (e.target && e.target.closest && e.target.closest('#user-menu, #nav-avatar-btn')) return;
+    window.closeUserMenu();
 });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.closeUserMenu(); });
 
 document.getElementById('save-profile-btn').addEventListener('click', async () => {
     const newNameInput = document.getElementById('profile-name').value.trim();
@@ -2220,6 +2265,8 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
         }
     } catch(e) { console.error("Compression/Upload failed", e); }
     
+    // Removal requested (and no fresh upload): fall back to the generated avatar.
+    if (!file && window._profilePicRemoved) finalPic = window.generateAvatar(window.currentUser.uid);
     if(!finalPic) finalPic = cache.pic || window.currentUser.photoURL || window.generateAvatar(window.currentUser.uid);
 
     let finalCover = ''; // new upload wins; otherwise keep existing cover
@@ -2229,6 +2276,8 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
             finalCover = await window.uploadToCloudinary(coverB64, window.currentUser.uid);
         }
     } catch(e) { console.error("Cover upload failed", e); }
+    // Removal requested (and no fresh upload): keep the cover empty.
+    if (!coverFile && window._profileCoverRemoved) finalCover = '';
     if(!finalCover) finalCover = cache.cover || '';
 
     // Collect gallery images (up to 4 slots)
@@ -2240,13 +2289,22 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
         if (url) galleryImages.push(url);
     }
 
+    // Socials tab — normalize each link to a full https URL ('' = hidden)
+    const socials = {};
+    Object.keys(window.SOCIAL_PLATFORMS || {}).forEach((key) => {
+        const el = document.getElementById('social-' + key);
+        socials[key] = window.normalizeSocialUrl(key, el ? el.value : '');
+    });
+
     if(window.currentUser) {
         try {
-            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, cover: finalCover, gender, relationship, partner, bio, galleryImages });
+            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, cover: finalCover, gender, relationship, partner, bio, galleryImages, socials });
             try { await updateProfile(window.currentUser, { displayName: finalName, photoURL: finalPic }); } catch (e) { }
             
             document.getElementById('profile-modal').classList.add('hidden');
             document.getElementById('nav-avatar').src = finalPic;
+            window._profilePicRemoved = false;
+            window._profileCoverRemoved = false;
             fileInput.value = '';
             const coverInputEl = document.getElementById('profile-cover-file');
             if (coverInputEl) coverInputEl.value = '';
@@ -2384,7 +2442,9 @@ document.getElementById('guest-login-btn').addEventListener('click', async () =>
     }
 });
 
-document.getElementById('logout-btn').addEventListener('click', async () => { 
+// Logout: used by the nav avatar menu (window.userMenuLogout) — the old
+// #logout-btn inside the edit-profile modal was removed in favor of the menu.
+window.logoutUser = async () => {
     try { await stopOwnPresence(window.currentUser); } catch(e) {}
     try { await window.logActivity("logged out"); } catch(e) {}
     // Clear session flags so the NEXT login in this tab is logged again as a fresh
@@ -2393,10 +2453,11 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
     if (window._notifPruneTimer) { clearTimeout(window._notifPruneTimer); window._notifPruneTimer = null; }
     // Close any open dialogs/views so a fresh login starts clean
     const pm = document.getElementById('profile-modal'); if (pm) pm.classList.add('hidden');
+    window.closeUserMenu && window.closeUserMenu();
     if (window.activeProfileUid && window.closeProfile) window.closeProfile();
     await signOut(auth); 
     window.showAlert("Logged out successfully!");
-});
+};
 
 onAuthStateChanged(auth, (user) => {
     window.currentUser = user;
@@ -2523,7 +2584,9 @@ window.addEventListener('beforeinstallprompt', (e) => {
     deferredPrompt = e;
 });
 
-document.getElementById('install-pwa-btn')?.addEventListener('click', async () => {
+// PWA install: used by the nav avatar menu (window.userMenuInstall) — the old
+// #install-pwa-btn inside the edit-profile modal was removed in favor of the menu.
+window.installHangout = async () => {
     try { window.requestNotificationPermission(); } catch(e) {}
     
     if (deferredPrompt) {
@@ -2536,4 +2599,4 @@ document.getElementById('install-pwa-btn')?.addEventListener('click', async () =
         if (window.showAlert) window.showAlert(msg);
         else alert(msg);
     }
-});
+};
