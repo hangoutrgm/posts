@@ -3118,14 +3118,17 @@ window.renderMembers = (resetLimit = true) => {
         }
 
         const el = document.createElement('div');
-        el.className = `flex items-center justify-between p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2 ${u.isBanned ? 'opacity-70' : ''}`;
+        // The row itself scrolls sideways: name / stats / buttons all keep their
+        // natural width (shrink-0, nowrap) so growing ⭐/🏆 numbers and extra
+        // admin buttons never squeeze the details — swipe the row to see them.
+        el.className = `flex items-center justify-between p-2 overflow-x-auto scrollbar-hide bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2 ${u.isBanned ? 'opacity-70' : ''}`;
         el.innerHTML = `
-            <div class="flex items-center space-x-3 overflow-hidden">
+            <div class="flex items-center space-x-3 shrink-0">
                 <div class="relative shrink-0">
                     <img src="${u.pic || window.generateAvatar(u.uid)}" loading="lazy" class="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80 ${u.isBanned ? 'grayscale' : ''}" onclick="window.openProfile('${u.uid}')">
                     <div class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white dark:border-slate-900 ${isOnline ? 'bg-green-500' : 'bg-gray-400'}"></div>
                 </div>
-                <div class="leading-tight truncate pr-2">
+                <div class="leading-tight pr-2 whitespace-nowrap">
                     <div class="flex items-center">
                         <h3 class="font-bold text-sm text-gray-900 dark:text-white truncate cursor-pointer hover:underline ${u.isBanned ? 'line-through text-red-500' : ''}" onclick="window.openProfile('${u.uid}')">${(u.name && u.name !== 'undefined') ? u.name : 'Unknown'}</h3>
                         ${window.getRole(u.uid).badgeHtml}
@@ -3134,7 +3137,7 @@ window.renderMembers = (resetLimit = true) => {
                     <p class="text-[10px] text-gray-500 mt-0.5"><span class="text-yellow-600 dark:text-yellow-500">⭐ ${u.points || 0}</span> • <span class="text-yellow-600 dark:text-yellow-500 ml-1">🏆 ${u.lbPoints || 0}</span> • <span class="text-blue-500">👥 ${followerCount}</span></p>
                 </div>
             </div>
-            <div class="flex items-center shrink-0">${banBtn}${modBtn}${followBtn}</div>
+            <div class="flex items-center shrink-0 ml-1">${banBtn}${modBtn}${followBtn}</div>
         `;
         fragment.appendChild(el);
     });

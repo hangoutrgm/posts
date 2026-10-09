@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v253';
+const CACHE_NAME = 'hangout-v255';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // YouTube artwork (i.ytimg.com). The music app renders one thumbnail per
@@ -30,7 +30,7 @@ const PRECACHE_ASSETS = [
   './css/tailwind.min.css?v=3',
   './css/styles.css?v=28',
   './chat/css/styles.css?v=54',
-  './js/renderers.js?v=83',
+  './js/renderers.js?v=85',
   './js/helpers.js?v=67',
   './js/games.js?v=61',
   './js/main.js?v=87',
