@@ -9,7 +9,7 @@
 //
 // Scope is deliberately simple: read conversations, open a thread
 // (text / image / voice / video inline), send text replies. Everything
-// else (compose-new, search, streaks, typing, reactions, replies, games,
+// else (compose-new, search, typing, replies, games,
 // media upload) stays in the full /chat app — linked from the header.
 //
 // Data contract is an EXACT replica of chat/js/app.js so both UIs stay in
@@ -20,7 +20,7 @@
 import { auth, db } from '../js/firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import {
-  ref, onValue, push, update, get, runTransaction, query, limitToLast
+  ref, onValue, push, update, get, set, runTransaction, query, limitToLast
 } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 const $ = (id) => document.getElementById(id);
@@ -33,11 +33,12 @@ const MC_HTML = `
       <button id="mc-back" type="button" class="mc-icon-btn mc-off" title="Back to conversations" aria-label="Back">
         <i class="fa-solid fa-arrow-left"></i>
       </button>
-      <span class="mc-head-badge"><i class="fa-solid fa-comments"></i></span>
+      <span id="mc-badge" class="mc-head-badge"><i class="fa-solid fa-comments"></i></span>
       <div class="mc-head-text">
         <h3 id="mc-title" class="mc-h3">Messages</h3>
         <p id="mc-sub" class="mc-sub">Loading…</p>
       </div>
+      <span id="mc-streak" class="mc-streak mc-off" title="Chat streak"></span>
       <a href="chat/" class="mc-icon-btn" title="Open the full chat app" aria-label="Open full chat">
         <i class="fa-solid fa-up-right-from-square"></i>
       </a>
@@ -62,7 +63,8 @@ const MC_HTML = `
       <form id="mc-form" class="mc-form" autocomplete="off">
         <input id="mc-input" class="mc-input" type="text" placeholder="Message…" maxlength="1500" aria-label="Message">
         <button id="mc-send" class="mc-send" type="submit" title="Send" aria-label="Send">
-          <i class="fa-solid fa-paper-plane"></i>
+          <span id="mc-emoji" class="mc-emoji mc-off">😊</span>
+          <i id="mc-plane" class="fa-solid fa-paper-plane"></i>
         </button>
       </form>
     </div>
@@ -85,6 +87,27 @@ const ANNOUNCE_PLACEHOLDER = {
 
 // Same 5 quick reactions as chat/js/app.js (full-app parity).
 const REACTIONS = { like: '👍', love: '❤️', laugh: '😂', wow: '😮', sad: '😢' };
+
+// Messenger-style send button — SAME constants and localStorage key as
+// chat/js/app.js, so the preferred emoji is shared with the full chat app.
+const PREFERRED_EMOJI_KEY = 'hangout-preferred-emoji';
+const EMOJI_CHOICES = ['😊','😍','🥰','😂','🤣','😎','🥳','🤗','😢','😡','👍','🙏','🎉','❤️','🔥','💯'];
+const EXTRA_EMOJIS = [
+  '😁','😅','😉','😇','🙃','😘','😭','😮',
+  '😴','🤩','🤔','😐','🙄','😱','🥺','😤',
+  '👌','👏','💪','🤝','✌️','✨','⭐','💔'
+];
+function getPreferredEmoji() { try { return localStorage.getItem(PREFERRED_EMOJI_KEY) || '😊'; } catch (e) { return '😊'; } }
+function setPreferredEmoji(emoji) { try { localStorage.setItem(PREFERRED_EMOJI_KEY, emoji); } catch (e) {} updateSendMode(); }
+
+// Streak date/path helpers — replicas of chat/js/app.js so both UIs read and
+// write ONE chatStreaks node (groups use groupStreak, DMs use the uid key).
+function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function streakPath(tid) {
+  const isGroup = Boolean(mc.inbox[tid]?.isGroup || tid.startsWith('group_') || tid === 'global_announcements');
+  return isGroup ? `chatStreaks/${tid}/groupStreak` : `chatStreaks/${tid}/${mc.user?.uid}`;
+}
 
 // Timestamp until which bubble-taps are ignored — set when long-press /
 // right-click opens the menu, so the release tap doesn't immediately close
@@ -112,6 +135,10 @@ const mc = {
   lastListHtml: '',
   lastMsgHtml: '',
   msgsPainted: false,
+  streaks: {},           // tid -> streak data (shared hangout-streaks-{uid} cache)
+  stopStreak: null,      // live chatStreaks listener for the open thread
+  emojiMode: false,      // send button is currently showing the preferred emoji
+  lastBadgeHtml: '',     // header badge markup (skip rewrite when unchanged)
   unsubAuth: null
 };
 
@@ -197,6 +224,100 @@ function linkify(escapedText) {
     `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
 }
 
+/* --------------------- messenger-style send button --------------------- */
+
+function updateSendMode() {
+  const btn = $('mc-send');
+  if (!btn) return;
+  const emoji = $('mc-emoji');
+  const plane = $('mc-plane');
+  const input = $('mc-input');
+  const empty = !(input?.value || '').trim();
+  mc.emojiMode = empty;
+  btn.classList.toggle('emoji-mode', empty);
+  if (emoji) { emoji.textContent = getPreferredEmoji(); emoji.classList.toggle('mc-off', !empty); }
+  if (plane) plane.classList.toggle('mc-off', empty);
+  const label = empty ? 'Tap to send your emoji — long-press to change it' : 'Send';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
+/* Preferred-emoji popover — simplified twin of the full app's picker (same
+   choices, same "+"/"−" extra set, same localStorage key). Painted once. */
+let _emojiPop = null;
+let _emojiPopAnchor = null;
+let _emojiPopExpanded = false;
+
+function emojiRowHtml() {
+  const btn = (e) => `<button type="button" data-emoji="${e}">${e}</button>`;
+  return EMOJI_CHOICES.map(btn).join('')
+    + `<span class="mc-emoji-extra">${EXTRA_EMOJIS.map(btn).join('')}</span>`
+    + `<button type="button" class="mc-emoji-more" data-more="1" aria-label="More emojis" title="More emojis">+</button>`;
+}
+
+function positionEmojiPop() {
+  if (!_emojiPop || !_emojiPopAnchor) return;
+  _emojiPop.classList.remove('mc-off');
+  const r = _emojiPopAnchor.getBoundingClientRect();
+  const pw = _emojiPop.offsetWidth || 250;
+  const ph = _emojiPop.offsetHeight || 120;
+  const x = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+  let y = r.top - ph - 8;
+  if (y < 8) y = r.bottom + 8;
+  _emojiPop.style.left = `${x}px`;
+  _emojiPop.style.top = `${y}px`;
+}
+
+function applyEmojiExpanded() {
+  if (!_emojiPop) return;
+  _emojiPop.classList.toggle('expanded', _emojiPopExpanded);
+  const toggle = _emojiPop.querySelector('.mc-emoji-more');
+  if (!toggle) return;
+  toggle.textContent = _emojiPopExpanded ? '−' : '+';
+}
+
+function closeEmojiPicker() {
+  if (!_emojiPop) return;
+  _emojiPop.classList.add('mc-off');
+  _emojiPopExpanded = false;
+  applyEmojiExpanded();
+}
+
+function openEmojiPicker(anchor) {
+  if (!_emojiPop) {
+    _emojiPop = document.createElement('div');
+    _emojiPop.className = 'mc-emoji-pop mc-off';
+    _emojiPop.innerHTML = emojiRowHtml(); // painted once, never rebuilt
+    _emojiPop.addEventListener('mousedown', (e) => e.preventDefault()); // keep composer focus
+    _emojiPop.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.dataset.more) {
+        _emojiPopExpanded = !_emojiPopExpanded;
+        applyEmojiExpanded();
+        positionEmojiPop();
+        return;
+      }
+      if (!btn.dataset.emoji) return;
+      setPreferredEmoji(btn.dataset.emoji);
+      closeEmojiPicker();
+      notify('Preferred emoji updated!');
+    });
+    document.body.appendChild(_emojiPop);
+    document.addEventListener('click', (e) => {
+      if (!_emojiPop || _emojiPop.classList.contains('mc-off')) return;
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : null;
+      const inside = path ? path.includes(_emojiPop) : _emojiPop.contains(e.target);
+      if (inside || e.target.closest('#mc-send')) return;
+      closeEmojiPicker();
+    });
+  }
+  _emojiPopAnchor = anchor;
+  _emojiPopExpanded = false;
+  applyEmojiExpanded();
+  positionEmojiPop();
+}
+
 /* ------------------------------- shell ------------------------------- */
 
 function build() {
@@ -230,6 +351,49 @@ function build() {
   $('mc-form').addEventListener('submit', send);
   $('mc-reply-cancel').addEventListener('click', clearReply);
   $('mc-edit-cancel').addEventListener('click', cancelEdit);
+
+  // Messenger-style send button (replica of chat/js/app.js): empty composer →
+  // preferred emoji, typing → paper plane; long-press / right-click the emoji
+  // opens the preferred-emoji picker. Same touch-vs-click guards as the full
+  // app so a long-press never also submits.
+  $('mc-input').addEventListener('input', updateSendMode);
+  const sendBtn = $('mc-send');
+  let pressTimer = null;
+  let longPressed = false;
+  sendBtn.addEventListener('mousedown', (e) => {
+    e.preventDefault(); // keep composer focus (keyboard stays up)
+    longPressed = false;
+    if (mc.emojiMode) pressTimer = setTimeout(() => { longPressed = true; openEmojiPicker(sendBtn); }, 500);
+  });
+  sendBtn.addEventListener('mouseup', () => clearTimeout(pressTimer));
+  sendBtn.addEventListener('click', (e) => {
+    if (longPressed) { e.preventDefault(); e.stopPropagation(); longPressed = false; }
+  });
+  sendBtn.addEventListener('contextmenu', (e) => {
+    if (!mc.emojiMode) return;
+    e.preventDefault();
+    openEmojiPicker(sendBtn);
+  });
+  sendBtn.addEventListener('touchstart', (e) => {
+    if (e.cancelable) e.preventDefault(); // suppress the synthetic click — we drive submit below
+    longPressed = false;
+    if (sendBtn.disabled) return;
+    if (mc.emojiMode) {
+      pressTimer = setTimeout(() => { longPressed = true; openEmojiPicker(sendBtn); }, 500);
+    } else {
+      $('mc-form').requestSubmit();
+    }
+  }, { passive: false });
+  sendBtn.addEventListener('touchend', (e) => {
+    clearTimeout(pressTimer);
+    if (longPressed) { if (e.cancelable) e.preventDefault(); longPressed = false; return; }
+    // Non-emoji taps already submitted on touchstart; emoji taps never do, so
+    // exactly ONE submit happens per tap (the full app's unconditional submit
+    // here can race a second one on touch devices — don't copy that).
+    if (mc.emojiMode && !sendBtn.disabled) $('mc-form').requestSubmit();
+  });
+  sendBtn.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+  updateSendMode(); // empty composer on first paint → emoji mode
 
   // Touch origin for the tap-vs-scroll guard: browsers suppress clicks after
   // a drag, but a fast flick can still slip one through on some devices —
@@ -332,9 +496,11 @@ function build() {
       detachAll();
       mc.inbox = {};
       mc.ready = false;
+      mc.streaks = {}; // never leak the previous account's 🔥 badges
       if (mc.open) {
         if (mc.showThread) backToList();
-        hydrateInboxCache(); // instant paint from the NEW uid's shared cache
+        hydrateStreaksCache(); // instant paint from the NEW uid's shared cache
+        hydrateInboxCache();
         attachInbox();
         attachClears();
       }
@@ -354,7 +520,13 @@ function open() {
   if (window.ensureUsersFresh) {
     Promise.resolve(window.ensureUsersFresh()).then(() => { if (mc.open) renderList(); }).catch(() => {});
   }
-  if (mc.user) { hydrateInboxCache(); attachInbox(); attachClears(); }
+  if (mc.user) {
+    hydrateStreaksCache(); // instant 🔥 badges from the shared cache
+    hydrateInboxCache();
+    attachInbox();
+    attachClears();
+    refreshStreaks();      // then refresh every inbox thread's streak
+  }
   else { renderList(); renderHeader(); }
 }
 
@@ -367,6 +539,7 @@ function close() {
   clearComposerModes();
   const input = $('mc-input');
   if (input) input.value = '';
+  updateSendMode();
   // Reset view state so reopening always starts from the conversation list.
   mc.showThread = false;
   mc.tid = null;
@@ -379,10 +552,10 @@ function close() {
 }
 
 function detachAll() {
-  [mc.stopInbox, mc.stopMessages, mc.stopClears].forEach((fn) => {
+  [mc.stopInbox, mc.stopMessages, mc.stopClears, mc.stopStreak].forEach((fn) => {
     try { if (fn) fn(); } catch (_) { /* already gone */ }
   });
-  mc.stopInbox = mc.stopMessages = mc.stopClears = null;
+  mc.stopInbox = mc.stopMessages = mc.stopClears = mc.stopStreak = null;
   Object.values(mc.threadStops).forEach((fn) => { try { fn(); } catch (_) {} });
   mc.threadStops = {};
 }
@@ -467,12 +640,15 @@ function handleInbox(snap) {
       ? { ...ANNOUNCE_PLACEHOLDER, ...prev }
       : { ...ANNOUNCE_PLACEHOLDER };
   }
+  const firstReady = !mc.ready;
   mc.inbox = next;
   mc.ready = true;
   saveInboxCache();
   syncThreadWatchers();
   renderList();
   renderHeader();
+  // First authoritative inbox snapshot (no usable cache) → fetch streak badges.
+  if (firstReady) refreshStreaks();
 
   if (!mc.showThread) return;
   if (!mc.tid || !mc.inbox[mc.tid]) { backToList(); return; }
@@ -562,11 +738,13 @@ function renderList() {
       ? `You: ${it.lastMessage || ''}`
       : (it.lastMessage || 'Start chatting');
     const online = !it.isGroup && it.peerId && it.peerId !== uid && isOnline(it.peerId);
+    const streak = mc.streaks[it.tid];
+    const streakHtml = streak && streak.count >= 1 ? `<b class="mc-streak-badge">🔥${streak.count}</b>` : '';
     return `<button type="button" class="mc-row${unread ? ' mc-unread' : ''}" data-tid="${esc(it.tid)}">
       <span class="mc-ava-wrap">${avatarHtml(it.tid, it)}${online ? '<i class="mc-dot"></i>' : ''}</span>
       <span class="mc-copy">
         <span class="mc-top">
-          <span class="mc-name">${it.pinned ? '📌 ' : ''}${esc(nameOf(it.tid, it))}</span>
+          <span class="mc-name">${it.pinned ? '📌 ' : ''}${esc(nameOf(it.tid, it))}</span>${streakHtml}
           <span class="mc-time">${esc(fmtTime(it.lastTimestamp))}</span>
         </span>
         <span class="mc-prev">
@@ -586,10 +764,15 @@ function renderList() {
 function renderHeader() {
   const title = $('mc-title');
   const sub = $('mc-sub');
+  const badge = $('mc-badge');
   if (!title || !sub) return;
 
   if (mc.showThread && mc.tid) {
     const it = mc.inbox[mc.tid] || {};
+    // Header icon follows the conversation: peer avatar / group pic (the same
+    // avatarHtml the list rows use) instead of the generic comments glyph.
+    const bh = avatarHtml(mc.tid, it);
+    if (badge && bh !== mc.lastBadgeHtml) { mc.lastBadgeHtml = bh; badge.innerHTML = bh; }
     title.textContent = nameOf(mc.tid, it);
     if (it.isGroup) {
       const n = Object.keys(it.members || {}).length;
@@ -599,9 +782,13 @@ function renderHeader() {
     } else {
       sub.textContent = 'Conversation';
     }
+    renderStreakBadge();
     return;
   }
 
+  const defBadge = '<i class="fa-solid fa-comments"></i>';
+  if (badge && mc.lastBadgeHtml !== defBadge) { mc.lastBadgeHtml = defBadge; badge.innerHTML = defBadge; }
+  renderStreakBadge(); // hides the pill outside a thread
   title.textContent = 'Messages';
   if (!mc.user) sub.textContent = 'Sign in to chat';
   else if (!mc.ready) sub.textContent = 'Loading…';
@@ -625,6 +812,7 @@ function openThread(tid) {
   mc.messages = {};
   mc.lastMsgHtml = '';
   mc.msgsPainted = false;
+  loadMsgsCache(tid); // instant paint: last known snapshot (live data replaces it)
 
   $('mc-list').classList.add('mc-off');
   $('mc-thread').classList.remove('mc-off');
@@ -638,20 +826,36 @@ function openThread(tid) {
     update(ref(db, `chatInboxes/${mc.user.uid}/${tid}`), { unreadCount: 0 }).catch(() => {});
   }
 
+  // Live streak for this thread (same path rule as the full app's watchStreak).
+  try { if (mc.stopStreak) mc.stopStreak(); } catch (_) {}
+  mc.stopStreak = onValue(ref(db, streakPath(tid)), (snap) => {
+    const data = snap.val() || null;
+    if (data && data.count >= 1) mc.streaks[tid] = data;
+    else delete mc.streaks[tid];
+    if (mc.showThread && mc.tid === tid) renderStreakBadge();
+    renderList();
+  }, () => { /* read errors leave the cached badge in place */ });
+
   try { if (mc.stopMessages) mc.stopMessages(); } catch (_) {}
   mc.stopMessages = onValue(query(ref(db, `chatMessages/${tid}`), limitToLast(30)), (snap) => {
     mc.messages = snap.val() || {};
-    if (mc.showThread && mc.tid === tid) renderMessages();
+    if (mc.showThread && mc.tid === tid) {
+      renderMessages();
+      saveMsgsCache(tid, mc.messages);
+    }
   }, (err) => console.warn('[mini-chat] messages read failed:', err));
 }
 
 function backToList() {
   try { if (mc.stopMessages) mc.stopMessages(); } catch (_) {}
   mc.stopMessages = null;
+  try { if (mc.stopStreak) mc.stopStreak(); } catch (_) {}
+  mc.stopStreak = null;
   closeMsgMenu();
   clearComposerModes();
   const input = $('mc-input');
   if (input) input.value = '';
+  updateSendMode();
   mc.showThread = false;
   mc.tid = null;
   mc.messages = {};
@@ -891,6 +1095,7 @@ function startEdit(m, mid) {
   mc.editMid = mid;
   const input = $('mc-input');
   if (input) { input.value = m.text; input.focus(); }
+  updateSendMode(); // text present → paper plane
   $('mc-edit-banner')?.classList.remove('mc-off');
 }
 
@@ -899,6 +1104,7 @@ function cancelEdit() {
   $('mc-edit-banner')?.classList.add('mc-off');
   const input = $('mc-input');
   if (input) input.value = '';
+  updateSendMode();
 }
 
 // Save an in-progress edit: owner-only write (server rule) + preview refresh,
@@ -946,7 +1152,141 @@ function confirmDelete(m, mid) {
 
 
 
+/* ------------------------------- streaks -------------------------------
+   Replicas of chat/js/app.js: same chatStreaks nodes, same shared localStorage
+   cache (hangout-streaks-{uid}) so the full app and this widget light up each
+   other's 🔥 badges instantly. Restore stays in the full app (scope note above). */
+
+const streaksCacheKey = () => `hangout-streaks-${mc.user?.uid || 'anon'}`;
+
+function hydrateStreaksCache() {
+  if (!mc.user) return;
+  try {
+    const raw = localStorage.getItem(streaksCacheKey());
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === 'object') mc.streaks = { ...parsed, ...mc.streaks };
+  } catch (_) { /* corrupted cache — live data will refill */ }
+}
+
+function saveStreaksCache() {
+  if (!mc.user) return;
+  try {
+    let base = {};
+    try { base = JSON.parse(localStorage.getItem(streaksCacheKey())) || {}; } catch (_) {}
+    if (!base || typeof base !== 'object') base = {};
+    // Merge (not replace): the full chat app writes the same key, and neither
+    // side should drop entries the other knows about.
+    localStorage.setItem(streaksCacheKey(), JSON.stringify({ ...base, ...mc.streaks }));
+  } catch (_) { /* quota / private mode — best-effort */ }
+}
+
+// One get() per inbox thread — runs when the widget opens and on the first
+// live inbox snapshot only (never later: inbox changes fire on every message,
+// which would refetch N streaks constantly).
+function refreshStreaks() {
+  if (!mc.user) return;
+  const tids = Object.keys(mc.inbox);
+  if (!tids.length) return;
+  Promise.all(tids.map((tid) =>
+    get(ref(db, streakPath(tid)))
+      .then((s) => ({ tid, ok: true, data: s.val() || null }))
+      .catch(() => ({ tid, ok: false }))
+  )).then((rows) => {
+    rows.forEach((r) => {
+      if (!r.ok) return;
+      if (r.data && r.data.count >= 1) mc.streaks[r.tid] = r.data;
+      else delete mc.streaks[r.tid];
+    });
+    saveStreaksCache();
+    renderList();
+  }).catch(() => { /* individual rows keep their cached badge */ });
+}
+
+function renderStreakBadge() {
+  const el = $('mc-streak');
+  if (!el) return;
+  const data = mc.tid ? mc.streaks[mc.tid] : null;
+  if (!data || !data.count || data.count < 1) {
+    el.classList.add('mc-off');
+    el.textContent = '';
+    return;
+  }
+  el.textContent = `🔥 ${data.count}`;
+  el.classList.remove('mc-off');
+}
+
+/* ------------------------- messages cache -------------------------
+   Instant re-entry paint: the last snapshot of the most recently opened
+   threads lives in localStorage (250ms debounced writes, max 8 threads).
+   openThread() fills mc.messages from it BEFORE the live listener attaches —
+   the listener's first snapshot then replaces it with authoritative state. */
+const MSG_CACHE_MAX = 8;
+const _pendingMsgWrites = {};
+let _saveMsgsTimer = null;
+const msgsCacheKey = () => `hangout-mc-msgs-${mc.user?.uid || 'anon'}`;
+
+function saveMsgsCache(tid, msgs) {
+  if (!mc.user || !tid) return;
+  _pendingMsgWrites[tid] = { at: Date.now(), msgs };
+  if (_saveMsgsTimer) return;
+  _saveMsgsTimer = setTimeout(() => {
+    _saveMsgsTimer = null;
+    try {
+      let store = {};
+      try { store = JSON.parse(localStorage.getItem(msgsCacheKey())) || {}; } catch (_) {}
+      if (!store || typeof store !== 'object' || Array.isArray(store)) store = {};
+      Object.assign(store, _pendingMsgWrites);
+      Object.keys(_pendingMsgWrites).forEach((k) => delete _pendingMsgWrites[k]);
+      Object.keys(store)
+        .sort((a, b) => ((store[b]?.at) || 0) - ((store[a]?.at) || 0))
+        .slice(MSG_CACHE_MAX)
+        .forEach((k) => delete store[k]);
+      localStorage.setItem(msgsCacheKey(), JSON.stringify(store));
+    } catch (_) { /* quota / private mode — best-effort */ }
+  }, 250);
+}
+
+function loadMsgsCache(tid) {
+  if (!mc.user || !tid) return;
+  try {
+    const store = JSON.parse(localStorage.getItem(msgsCacheKey())) || {};
+    const entry = store[tid];
+    if (entry && entry.msgs && typeof entry.msgs === 'object') mc.messages = entry.msgs;
+  } catch (_) { /* corrupted — start empty */ }
+}
+
 /* ------------------------------- sending ------------------------------- */
+
+// Replica of chat/js/app.js updateStreak: count once per day per thread,
+// extend when the last one was yesterday, otherwise restart at 1 (previousCount
+// saved so the full app can offer its restore flow). Fire-and-forget after send.
+async function updateStreak(tid) {
+  if (!mc.user || !tid) return;
+  try {
+    const snap = await get(ref(db, streakPath(tid)));
+    const data = snap.val() || {};
+    const today = todayStr();
+    const yesterday = yesterdayStr();
+    const lastDate = data.lastDate || '';
+    if (lastDate === today) return; // already counted today
+    const out = { lastDate: today, lastSenderId: mc.user.uid };
+    let count = data.count || 0;
+    if (lastDate === yesterday) {
+      count += 1;
+    } else {
+      if (count > 1) { out.previousCount = count; out.brokenDate = today; }
+      count = 1;
+    }
+    out.count = count;
+    await set(ref(db, streakPath(tid)), { ...data, ...out });
+    mc.streaks[tid] = { ...data, ...out };
+    saveStreaksCache();
+    renderList();
+    if (mc.showThread && mc.tid === tid) renderStreakBadge();
+  } catch (err) {
+    console.warn('[mini-chat] streak update failed:', err);
+  }
+}
 
 // Replica of chat/js/app.js checkChatCooldown (same settings node mirrored
 // into window.siteSettings; fail-open on read errors).
@@ -1010,7 +1350,7 @@ async function send(e) {
   if (!uid || !tid) return;
 
   const input = $('mc-input');
-  const text = (input?.value || '').trim();
+  let text = (input?.value || '').trim(); // re-assigned by the emoji fallback below
 
   // Edit mode: saving replaces sending (no cooldown — the full app doesn't
   // apply one to edits either; the server enforces owner-only).
@@ -1024,7 +1364,12 @@ async function send(e) {
   if (tid === 'global_announcements' && !(u.isAdmin === true || u.isCreator === true)) {
     return notify('Only admins can post announcements.');
   }
-  if (!text) return;
+  if (!text) {
+    // Messenger-style: tapping the emoji button with an empty composer sends
+    // the user's preferred emoji (same behaviour as the full app).
+    if (!mc.emojiMode) return;
+    text = getPreferredEmoji();
+  }
   if (!(await cooldownOk(uid))) return;
 
   const btn = $('mc-send');
@@ -1044,8 +1389,9 @@ async function send(e) {
       };
     }
     await push(ref(db, `chatMessages/${tid}`), payload);
-    if (input) input.value = '';
+    if (input) { input.value = ''; updateSendMode(); }
     clearReply();
+    updateStreak(tid); // fire-and-forget — same as the full app
     const item = mc.inbox[tid] || {};
     await updateSummaries(tid, item, text, timestamp, uid);
   } catch (err) {

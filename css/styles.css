@@ -909,11 +909,44 @@ body.fab-open #floating-create-btn { transition-delay: 0.1s; }
     justify-content: center;
     color: #fff;
     background: linear-gradient(135deg, #3b82f6, #6366f1);
+    overflow: hidden; /* holds the conversation avatar while a thread is open */
 }
+/* Thread-open state: the badge shows the peer avatar / group pic (avatarHtml
+   from mini-chat.js) instead of the comments glyph — fill the 34px tile. */
+.mc-head-badge .mc-ava { width: 100%; height: 100%; border-radius: 12px; font-size: 15px; }
 .mc-head-text { min-width: 0; flex: 1; }
 .mc-h3 { font-size: 13px; font-weight: 800; line-height: 1.2; margin: 0; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mc-sub { font-size: 10px; color: #94a3b8; margin: 1px 0 0; }
 :is(.dark *) .mc-h3, .dark .mc-h3 { color: #f8fafc; }
+
+/* Streak: live pill in the thread header + badge on conversation rows —
+   same chatStreaks data the full chat app renders (conv-streak-badge). */
+.mc-streak {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+    color: #ea580c;
+    background: rgba(249, 115, 22, 0.14);
+}
+:is(.dark *) .mc-streak, .dark .mc-streak { color: #fb923c; background: rgba(251, 146, 60, 0.16); }
+.mc-streak-badge {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 7px;
+    font-size: 9.5px;
+    font-weight: 800;
+    white-space: nowrap;
+    color: #ea580c;
+    background: rgba(249, 115, 22, 0.14);
+}
+:is(.dark *) .mc-streak-badge, .dark .mc-streak-badge { color: #fb923c; background: rgba(251, 146, 60, 0.16); }
 
 .mc-icon-btn {
     width: 30px;
@@ -1149,6 +1182,58 @@ body.fab-open #floating-create-btn { transition-delay: 0.1s; }
 .mc-send:hover { transform: scale(1.05); }
 .mc-send:active { transform: scale(0.94); }
 .mc-send:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* Messenger-style send button: empty composer → preferred emoji (tap sends
+   it, long-press / right-click changes it) — parity with the full chat app. */
+.mc-emoji { font-size: 20px; line-height: 1; user-select: none; }
+.mc-send.emoji-mode { background: rgba(148, 163, 184, 0.16); color: #475569; }
+.mc-send.emoji-mode:hover { transform: scale(1.1); }
+:is(.dark *) .mc-send.emoji-mode, .dark .mc-send.emoji-mode { color: #cbd5e1; background: rgba(148, 163, 184, 0.2); }
+
+/* Preferred-emoji popover (long-press / right-click the emoji button).
+   z-index 160: above the mini chat overlay (150), below the site toast (200). */
+.mc-emoji-pop {
+    position: fixed;
+    z-index: 160;
+    padding: 8px;
+    background: #ffffff;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 14px;
+    box-shadow: 0 12px 30px -8px rgba(15, 23, 42, 0.4);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    max-width: 250px;
+}
+:is(.dark *) .mc-emoji-pop, .dark .mc-emoji-pop {
+    background: #1e293b;
+    border-color: rgba(51, 65, 85, 0.75);
+    box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.6);
+}
+.mc-emoji-pop button {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+.mc-emoji-pop button:hover { background: rgba(148, 163, 184, 0.18); transform: scale(1.15); }
+.mc-emoji-pop .mc-emoji-more {
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    color: #64748b;
+    border: 1px dashed rgba(148, 163, 184, 0.5);
+}
+:is(.dark *) .mc-emoji-pop .mc-emoji-more, .dark .mc-emoji-pop .mc-emoji-more { color: #94a3b8; }
+.mc-emoji-pop .mc-emoji-extra { display: none; }
+.mc-emoji-pop.expanded .mc-emoji-extra { display: contents; }
+.mc-emoji-pop.expanded { max-height: min(60vh, 320px); overflow-y: auto; }
 
 /* Reply / edit banners above the composer */
 .mc-banner {
