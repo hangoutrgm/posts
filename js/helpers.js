@@ -318,7 +318,7 @@ window.canDelete = function(targetUid) {
     return window.getRole(window.currentUser.uid).level > window.getRole(targetUid).level;
 };
 
-// Toggle admin-only UI buttons (Admin Config in Edit Profile modal). Treasury is for everyone.
+// Toggle admin-only UI buttons (Admin Config in the nav avatar menu). Treasury is for everyone.
 window.updateAdminButtons = () => {
     const uid = window.currentUser?.uid;
     const isAdmin = uid === 'IrcAY3gUELNjiRUhMkr7muxNIpm2' || (uid && window.getRole ? window.getRole(uid).level === 3 : false);

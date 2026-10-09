@@ -172,6 +172,7 @@ window.openProfile = (uid) => {
     window.postLimit = 15;
     window.hasMorePosts = true;
     window.renderProfileData(true);
+    window.switchProfileTab('hangout'); // profiles always open on the Hangout tab
     window.scrollTo(0,0);
 };
 
@@ -183,6 +184,148 @@ window.closeProfile = () => {
     window.hasMorePosts = true;
     window.history.replaceState({}, document.title, window.location.pathname);
     if (window.renderFeed) window.renderFeed(false);
+};
+
+// ==========================================
+// Profile: Gaming tab (MLBB details entered in Edit Profile > Gaming)
+// ==========================================
+window.switchProfileTab = (tab) => {
+    const isGaming = tab === 'gaming';
+    const hangoutPanel = document.getElementById('profile-tab-hangout');
+    const gamingPanel = document.getElementById('profile-tab-gaming');
+    if (hangoutPanel) hangoutPanel.classList.toggle('hidden', isGaming);
+    if (gamingPanel) gamingPanel.classList.toggle('hidden', !isGaming);
+    const hangoutActive = 'flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm';
+    const gamingActive = 'flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm';
+    const inactive = 'flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400';
+    const hangoutBtn = document.getElementById('profile-tab-btn-hangout');
+    const gamingBtn = document.getElementById('profile-tab-btn-gaming');
+    if (hangoutBtn) hangoutBtn.className = isGaming ? inactive : hangoutActive;
+    if (gamingBtn) gamingBtn.className = isGaming ? gamingActive : inactive;
+};
+
+// MLBB rank -> badge colors (light / dark), one gaming accent per tier.
+const RANK_BADGES = {
+    'Warrior':          'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/50',
+    'Elite':            'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800/50',
+    'Master':           'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50',
+    'Grandmaster':      'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50',
+    'Epic':             'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/50',
+    'Legend':           'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800/50',
+    'Mythic':           'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/50',
+    'Mythical Honor':   'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400 border-pink-200 dark:border-pink-800/50',
+    'Mythical Glory':   'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50',
+    'Mythical Immortal':'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border-teal-200 dark:border-teal-800/50'
+};
+
+// MLBB lane roles -> FA icon for the gaming profile tiles and lobby card chips.
+const ROLE_ICONS = {
+    'Gold Laner': 'fa-bullseye',
+    'Jungler': 'fa-tree',
+    'Mid Laner': 'fa-bolt',
+    'EXP Laner': 'fa-hand-fist',
+    'Roamer': 'fa-compass'
+};
+
+// Full "Gaming Profile" for the profile view's Gaming tab: neon hero banner,
+// tier-colored rank cards, role tiles and a numbered main-hero list.
+window.buildProfileGaming = (mlbb) => {
+    const g = mlbb || {};
+    const uid = window.activeProfileUid;
+    const me = window.globalUsersCache[uid] || {};
+    const heroes = (Array.isArray(g.heroes) ? g.heroes : Object.values(g.heroes || {}))
+        .map(h => String(h || '').trim()).filter(Boolean).slice(0, 3);
+    const ign = String(g.ign || '').trim();
+    const gameId = String(g.gameId || '').trim();
+    const server = String(g.server || '').trim();
+    const idText = [gameId, server ? ` (${server})` : ''].filter(Boolean).join('');
+    const hasAny = !!(ign || gameId || server || g.currentRank || g.highestRank || g.primaryRole || g.secondaryRole || heroes.length);
+    const isOwn = !!(window.currentUser && uid === window.currentUser.uid);
+    const editBtn = `<button onclick="window.openEditProfile(); window.switchEditTab('gaming')" class="mt-4 bg-gradient-to-r from-purple-500 to-fuchsia-600 hover:from-purple-400 hover:to-fuchsia-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg shadow-purple-500/25 transition"><i class="fa-solid fa-pencil mr-1.5"></i>Edit gaming profile</button>`;
+
+    if (!hasAny) {
+        return `<div class="relative overflow-hidden rounded-xl border border-dashed border-purple-400/40 bg-gradient-to-br from-slate-900 via-purple-950/70 to-slate-900 p-8 text-center">
+            <i class="fa-solid fa-gamepad absolute -left-6 -bottom-8 text-[110px] text-white/5"></i>
+            <div class="relative">
+                <div class="w-16 h-16 mx-auto rounded-full bg-purple-500/15 border border-purple-400/40 flex items-center justify-center text-purple-300 text-2xl shadow-[0_0_25px_rgba(168,85,247,0.35)] mb-3"><i class="fa-solid fa-gamepad"></i></div>
+                <p class="text-sm font-bold text-white">No gaming profile yet</p>
+                <p class="text-xs text-purple-200/70 mt-1 max-w-[240px] mx-auto">Add your MLBB IGN, rank, roles and main heroes to show them off here.</p>
+                ${isOwn ? editBtn : ''}
+            </div>
+        </div>`;
+    }
+
+    const chip = (extra) => `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${extra}`;
+    const avatar = me.pic || window.generateAvatar(uid);
+
+    // Hero banner — glowing avatar, neon IGN, crown + Game ID chips.
+    const hero = `
+    <div class="relative overflow-hidden rounded-xl border border-purple-500/30 bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 shadow-[0_0_30px_rgba(147,51,234,0.25)]">
+        <i class="fa-solid fa-gamepad absolute -right-4 -top-6 text-[110px] text-white/5 rotate-12"></i>
+        <div class="relative p-4 flex items-center gap-4">
+            <img src="${escapeHtml(avatar)}" loading="lazy" class="w-16 h-16 shrink-0 rounded-full object-cover ring-2 ring-fuchsia-400/70 shadow-[0_0_18px_rgba(232,121,249,0.5)]">
+            <div class="min-w-0 flex-1">
+                <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-fuchsia-300/80">Mobile Legends: Bang Bang</p>
+                <h2 class="text-lg font-extrabold text-white truncate" style="text-shadow:0 0 14px rgba(232,121,249,.45)">${escapeHtml(ign || 'Player')}</h2>
+                <div class="mt-1.5 flex flex-wrap gap-1.5">
+                    ${g.highestRank ? `<span class="${chip('border-amber-300/40 bg-amber-400/15 text-amber-200')}"><i class="fa-solid fa-crown"></i>${escapeHtml(g.highestRank)}</span>` : ''}
+                    ${gameId ? `<span class="${chip('border-white/15 bg-white/10 text-slate-200')}"><i class="fa-solid fa-id-badge"></i>${escapeHtml(idText)}</span><button type="button" onclick="window.copyLobbyId(this)" data-id="${escapeHtml(idText)}" data-toast="User ID" title="Copy User ID" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border border-white/25 bg-white/15 text-white hover:bg-white/25 transition"><i class="fa-solid fa-copy"></i>Copy ID</button>` : ''}
+                    ${(!gameId && server) ? `<span class="${chip('border-white/15 bg-white/10 text-slate-200')}"><i class="fa-solid fa-server"></i>${escapeHtml(server)}</span>` : ''}
+                </div>
+            </div>
+            ${isOwn ? `<button onclick="window.openEditProfile(); window.switchEditTab('gaming')" title="Edit gaming profile" class="shrink-0 w-8 h-8 rounded-full bg-white/10 border border-white/20 text-white/80 hover:text-white hover:bg-white/20 transition flex items-center justify-center"><i class="fa-solid fa-pencil text-xs"></i></button>` : ''}
+        </div>
+    </div>`;
+    // Rank cards — tier colors from RANK_BADGES (shield = current, crown = highest).
+    const rankCard = (label, rank, icon) => !rank ? '' : `
+        <div class="rounded-xl border p-3 text-center ${RANK_BADGES[rank] || 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-slate-600'}">
+            <i class="fa-solid ${icon} mb-1"></i>
+            <p class="text-[9px] font-bold uppercase tracking-wide opacity-70">${label}</p>
+            <p class="text-sm font-extrabold leading-tight">${escapeHtml(rank)}</p>
+        </div>`;
+    const ranks = (g.currentRank || g.highestRank) ? `
+        <div class="grid grid-cols-2 gap-3">
+            ${rankCard('Current Rank', g.currentRank, 'fa-shield-halved')}
+            ${rankCard('Highest Rank', g.highestRank, 'fa-crown')}
+        </div>` : '';
+
+    // Role tiles — gradient icon tile + role name.
+    const roleTile = (label, role) => !role ? '' : `
+        <div class="rounded-xl border border-indigo-200 dark:border-indigo-800/50 bg-indigo-50 dark:bg-indigo-900/30 p-3 flex items-center gap-3">
+            <span class="w-9 h-9 shrink-0 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md"><i class="fa-solid ${ROLE_ICONS[role] || 'fa-gamepad'}"></i></span>
+            <div class="min-w-0">
+                <p class="text-[9px] font-bold uppercase tracking-wide text-indigo-400 dark:text-indigo-500">${label}</p>
+                <p class="text-sm font-extrabold text-indigo-700 dark:text-indigo-300 truncate">${escapeHtml(role)}</p>
+            </div>
+        </div>`;
+    const roles = (g.primaryRole || g.secondaryRole) ? `
+        <div class="grid grid-cols-2 gap-3">
+            ${roleTile('Primary Role', g.primaryRole)}
+            ${roleTile('Secondary Role', g.secondaryRole)}
+        </div>` : '';
+
+    // Top 3 main heroes — numbered gradient ranks on a card.
+    const heroList = heroes.length ? `
+    <div class="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+        <div class="bg-gradient-to-r from-fuchsia-600 to-purple-600 px-4 py-2.5 text-white text-xs font-bold flex items-center">
+            <i class="fa-solid fa-medal mr-1.5"></i> Top 3 Main Heroes
+        </div>
+        <div class="p-3 space-y-2">
+            ${heroes.map((h, i) => `
+            <div class="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-slate-900/60 border border-gray-100 dark:border-slate-700">
+                <span class="w-7 h-7 shrink-0 rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white text-xs font-extrabold flex items-center justify-center shadow">${i + 1}</span>
+                <span class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">${escapeHtml(h)}</span>
+                <i class="fa-solid fa-star text-amber-400 ml-auto text-xs"></i>
+            </div>`).join('')}
+        </div>
+    </div>` : '';
+
+    return `<div class="space-y-3">
+        ${hero}
+        ${ranks}
+        ${roles}
+        ${heroList}
+    </div>`;
 };
 
 window.goToPost = (postId) => {
@@ -377,6 +520,21 @@ window.openEditProfile = () => {
     // The modal always opens on the main tab.
     window.switchEditTab('profile');
 
+    // Gaming (MLBB) tab inputs
+    const mlbb = cache.mlbb || {};
+    const setMlbb = (id, val) => { const el = document.getElementById(id); if (!el) return; el.value = val || ''; if (el.selectedIndex === -1) el.value = ''; };
+    setMlbb('mlbb-ign', mlbb.ign);
+    setMlbb('mlbb-id', mlbb.gameId);
+    setMlbb('mlbb-server', mlbb.server);
+    setMlbb('mlbb-current-rank', mlbb.currentRank);
+    setMlbb('mlbb-highest-rank', mlbb.highestRank);
+    setMlbb('mlbb-primary-role', mlbb.primaryRole);
+    setMlbb('mlbb-secondary-role', mlbb.secondaryRole);
+    const savedHeroes = Array.isArray(mlbb.heroes) ? mlbb.heroes : Object.values(mlbb.heroes || {});
+    setMlbb('mlbb-hero-1', savedHeroes[0]);
+    setMlbb('mlbb-hero-2', savedHeroes[1]);
+    setMlbb('mlbb-hero-3', savedHeroes[2]);
+
     // Build gallery slots
     const gallery = cache.galleryImages || [];
     const slotsContainer = document.getElementById('gallery-slots');
@@ -436,19 +594,17 @@ window.openEditProfile = () => {
 // Edit Profile modal: tabs, media removal, socials
 // ==========================================
 
-// Tab switcher for the edit-profile modal (Hangout profile / Socials).
+// Tab switcher for the edit-profile modal (Hangout profile / Socials / Gaming).
 window.switchEditTab = (tab) => {
-    const isSocials = tab === 'socials';
-    const profilePanel = document.getElementById('edit-tab-profile');
-    const socialsPanel = document.getElementById('edit-tab-socials');
-    if (profilePanel) profilePanel.classList.toggle('hidden', isSocials);
-    if (socialsPanel) socialsPanel.classList.toggle('hidden', !isSocials);
+    const panels = { profile: 'edit-tab-profile', socials: 'edit-tab-socials', gaming: 'edit-tab-gaming' };
     const active = 'flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm';
     const inactive = 'flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400';
-    const pBtn = document.getElementById('edit-tab-btn-profile');
-    const sBtn = document.getElementById('edit-tab-btn-socials');
-    if (pBtn) pBtn.className = isSocials ? inactive : active;
-    if (sBtn) sBtn.className = isSocials ? active : inactive;
+    Object.keys(panels).forEach((key) => {
+        const panel = document.getElementById(panels[key]);
+        if (panel) panel.classList.toggle('hidden', key !== tab);
+        const btn = document.getElementById('edit-tab-btn-' + key);
+        if (btn) btn.className = key === tab ? active : inactive;
+    });
 };
 
 // Remove profile photo — resets to the auto-generated avatar when saved.
@@ -1034,6 +1190,10 @@ window.renderProfileData = (resetLimit = true) => {
         </div>
     `;
 
+    // Gaming tab card (MLBB details saved from Edit Profile > Gaming)
+    const gamingPanel = document.getElementById('profile-gaming-panel');
+    if (gamingPanel) gamingPanel.innerHTML = window.buildProfileGaming(uData.mlbb);
+
     // My Day Collections — this user's archived My Day photos / videos.
     if (window.MyDay && window.MyDay.renderCollections) {
         window.MyDay.renderCollections('profile-myday-collections', window.activeProfileUid);
@@ -1151,6 +1311,124 @@ window.renderProfileData = (resetLimit = true) => {
     window.scrollTo(0, currentScroll);
     requestAnimationFrame(() => pFeed.style.minHeight = '');
     if (window.processBingoAnimations) window.processBingoAnimations();
+};
+
+// Lobby (LFG) card — eye-catching matchmaking card for `isLobby` posts. Returns ''
+// for every other post so it can be dropped into the standard post body.
+window.renderLobbyCard = (post) => {
+    if (!post.isLobby || !post.lobby) return '';
+    const l = post.lobby;
+    const mode = String(l.mode || 'Ranked');
+    const lookingFor = String(l.lookingFor || 'Duo');
+    const rankReq = String(l.rankReq || 'Any');
+    const roles = Array.isArray(l.roles) ? l.roles : [];
+    const note = String(post.text || '').trim();
+    const author = window.globalUsersCache[post.authorId] || {};
+    const ign = String(l.ign || '').trim() || author.name || 'Player';
+    const gameId = String(l.gameId || '').trim();
+    const server = String(l.server || '').trim();
+    const idText = [gameId, server ? `(${server})` : ''].filter(Boolean).join(' ');
+    const game = String(l.game || 'Mobile Legends: Bang Bang').trim();
+    const joins = (l.joins && typeof l.joins === 'object') ? l.joins : {};
+    const isHost = !!(window.currentUser && window.currentUser.uid === post.authorId);
+    const isJoined = !!(window.currentUser && joins[window.currentUser.uid]);
+
+    // All modes share the Ranked header gradient — one look for every lobby.
+
+    // Ranked/Classic show the host's Game ID + server (one Copy button);
+    // Custom shows room ID and password, each with its own Copy button.
+    const roomId = String(l.roomId || '').trim();
+    const roomPass = String(l.roomPass || '').trim();
+    const isCustom = mode === 'Custom';
+    const copyBtn = (val, label = 'Copy', toast = 'Game ID') => `<button onclick="window.copyLobbyId(this)" data-id="${escapeHtml(val)}" data-toast="${escapeHtml(toast)}" class="shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full transition shadow-sm"><i class="fa-solid fa-copy mr-1"></i>${label}</button>`;
+    const infoRow = (value, copyValue, toast) => `
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-xs font-extrabold font-mono text-gray-800 dark:text-gray-100 truncate">${escapeHtml(value)}</p>
+                    ${copyBtn(copyValue, 'Copy', toast)}
+                </div>`;
+    const detailBar = isCustom
+        ? `<div class="bg-white/80 dark:bg-slate-900/70 border border-gray-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 space-y-1">
+                <p class="text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Room · ${escapeHtml(ign)}</p>
+                ${roomId ? infoRow(`Room ${roomId}`, roomId, 'Room ID') : '<p class="text-[10px] text-gray-400">No Room ID set</p>'}
+                ${roomId && roomPass ? `<div class="border-t border-gray-100 dark:border-slate-700 pt-1">${infoRow(`Pass ${roomPass}`, roomPass, 'Password')}</div>` : ''}
+            </div>`
+        : (gameId
+            ? `<div class="flex items-center justify-between gap-2 bg-white/80 dark:bg-slate-900/70 border border-gray-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5">
+                <div class="min-w-0">
+                    <p class="text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Host · ${escapeHtml(ign)}</p>
+                    <p class="text-xs font-extrabold font-mono text-gray-800 dark:text-gray-100 truncate">${escapeHtml(idText)}</p>
+                </div>
+                ${copyBtn(idText, 'Copy ID', 'Game ID')}
+            </div>`
+            : `<div class="flex items-center justify-between gap-2 bg-white/80 dark:bg-slate-900/70 border border-gray-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5">
+                <div class="min-w-0">
+                    <p class="text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Host · ${escapeHtml(ign)}</p>
+                    <p class="text-[10px] text-gray-400">No Game ID set</p>
+                </div>
+            </div>`);
+    const roleChip = (role) => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300"><i class="fa-solid ${ROLE_ICONS[role] || 'fa-user-group'}"></i>${escapeHtml(role)}</span>`;
+
+    // Squad list — everyone who tapped Join, with their position, rank and Game ID
+    // (rank/ID pulled live from each player's gaming profile in the users cache).
+    const squadUids = Object.keys(joins);
+    const squadHtml = squadUids.length ? `
+        <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/50 bg-white/80 dark:bg-slate-900/60 overflow-hidden">
+            <p class="px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40"><i class="fa-solid fa-user-group mr-1"></i>Squad — ${squadUids.length} joined</p>
+            ${squadUids.map(uid => {
+                const p = window.globalUsersCache[uid] || {};
+                const pmlbb = p.mlbb || {};
+                const pos = (joins[uid] && joins[uid].role) || '';
+                const prank = String(pmlbb.currentRank || pmlbb.highestRank || '').trim();
+                const pid = [String(pmlbb.gameId || '').trim(), pmlbb.server ? `(${pmlbb.server})` : ''].filter(Boolean).join(' ');
+                const pcls = RANK_BADGES[prank] || 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600';
+                return `<div onclick="window.openProfile('${uid}')" title="View profile" class="flex items-center gap-2 px-2.5 py-1.5 border-t border-gray-100 dark:border-slate-700 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
+                    <img src="${escapeHtml(p.pic || window.generateAvatar(uid))}" loading="lazy" class="w-6 h-6 rounded-full object-cover shrink-0">
+                    <span class="text-[11px] font-bold text-gray-800 dark:text-gray-100 truncate max-w-[86px]">${escapeHtml(p.name || 'Player')}</span>
+                    ${pos ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60 shrink-0">${escapeHtml(pos)}</span>` : ''}
+                    <span class="ml-auto flex items-center gap-1.5 shrink-0">
+                        ${prank ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${pcls}">${escapeHtml(prank)}</span>` : ''}
+                        ${pid ? `<span class="text-[9px] font-mono font-bold text-gray-500 dark:text-gray-400">${escapeHtml(pid)}</span>` : ''}
+                    </span>
+                </div>`;
+            }).join('')}
+        </div>` : '';
+
+    // Join / Leave / host states.
+    const joinArea = isHost
+        ? `<p class="text-center text-[10px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800/50 rounded-lg py-2"><i class="fa-solid fa-crown mr-1"></i>You are the host of this lobby</p>`
+        : (window.currentUser
+            ? (isJoined
+                ? `<button onclick="window.leaveLobby('${post.id}')" class="w-full border-2 border-red-300 dark:border-red-700 bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 font-bold text-xs py-2 rounded-lg transition"><i class="fa-solid fa-right-from-bracket mr-1.5"></i>Leave Squad</button>`
+                : `<button onclick="window.openLobbyJoin('${post.id}')" class="w-full bg-gradient-to-r from-teal-600 to-indigo-600 hover:opacity-90 text-white font-bold text-xs py-2 rounded-lg shadow-md transition"><i class="fa-solid fa-user-plus mr-1.5"></i>Join Game</button>`)
+            : `<button onclick="document.getElementById('auth-modal').classList.remove('hidden')" class="w-full bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 font-bold text-xs py-2 rounded-lg border border-gray-200 dark:border-slate-700 transition"><i class="fa-solid fa-right-to-bracket mr-1.5"></i>Log in to join</button>`);
+
+    return `
+    <div class="mt-1 mb-2 rounded-xl border-2 border-indigo-300/70 dark:border-indigo-700/70 bg-gradient-to-br from-indigo-50 via-purple-50 to-fuchsia-50 dark:from-indigo-950/60 dark:via-purple-950/50 dark:to-fuchsia-950/50 overflow-hidden shadow-[0_2px_14px_rgba(99,102,241,0.15)]">
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-3 py-2.5 relative overflow-hidden">
+            <i class="fa-solid fa-gamepad absolute -right-2 -top-3 text-[64px] text-white/10 rotate-12"></i>
+            <div class="relative flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                    <p class="text-[9px] font-bold uppercase tracking-widest text-white/70">Looking for Group</p>
+                    <p class="text-sm font-extrabold uppercase text-white truncate">${escapeHtml(game)}</p>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                    <span class="text-[9px] font-black uppercase text-white bg-white/20 border border-white/30 px-1.5 py-0.5 rounded-full">${escapeHtml(mode)}</span>
+                    <span class="text-[9px] font-black text-white bg-white/20 border border-white/30 px-1.5 py-0.5 rounded-full">${escapeHtml(lookingFor)}</span>
+                </div>
+            </div>
+        </div>
+        <div class="p-3 space-y-2">
+            <div class="flex flex-wrap gap-1.5 items-center">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-300/70 bg-amber-100 text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-300"><i class="fa-solid ${rankReq === 'Any' ? 'fa-shield-halved' : 'fa-crown'}"></i>${rankReq === 'Any' ? 'Any Rank' : 'Min. ' + escapeHtml(rankReq)}</span>
+                <span class="text-[9px] font-bold uppercase text-gray-400 dark:text-gray-500">Needs:</span>
+                ${roles.length ? roles.map(roleChip).join('') : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-200 dark:border-slate-600 bg-white/70 dark:bg-slate-800 text-gray-500 dark:text-gray-400">Any role</span>'}
+            </div>
+            ${note ? `<p class="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words leading-snug">${escapeHtml(note)}</p>` : ''}
+            ${detailBar}
+            ${squadHtml}
+            ${joinArea}
+        </div>
+    </div>`;
 };
 
 window.generatePostHTML = function(post, prefix, filterContext) {
@@ -3114,7 +3392,8 @@ window.generatePostHTML = function(post, prefix, filterContext) {
         </div>
         
         <div id="post-body-${prefix}-${post.id}">
-            ${post.text ? `<p class="text-sm text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-wrap break-words leading-snug">${safePostText} ${post.edited ? '<span class="text-[10px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>${window.generateEmbed(post.text)}` : ''}
+            ${window.renderLobbyCard(post)}
+            ${post.text && !post.isLobby ? `<p class="text-sm text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-wrap break-words leading-snug">${safePostText} ${post.edited ? '<span class="text-[10px] italic text-gray-400 ml-1 font-normal">(edited)</span>' : ''}</p>${window.generateEmbed(post.text)}` : ''}
             ${window.renderPostMedia(post)}
             ${post.audio ? `<audio controls preload="metadata" src="${escapeHtml(post.audio)}" class="w-full h-9 mt-1 mb-1 rounded-lg" style="max-width:260px;"></audio>` : ''}
             ${gameHtml}

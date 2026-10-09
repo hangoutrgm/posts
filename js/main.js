@@ -9,8 +9,8 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=67";
-import "./renderers.js?v=87";
+import "./helpers.js?v=68";
+import "./renderers.js?v=96";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -1431,6 +1431,204 @@ window.closeAppsModal = () => {
 window.openCreatePoll = () => { window.closeCreateMenu(); window.openPostGameModal('poll'); };
 window.openCreateEvent = () => { window.closeCreateMenu(); window.openPostGameModal('event'); };
 
+// ==========================================
+// LOBBY (LFG) POSTS — structured MLBB matchmaking posts
+// ==========================================
+window.closeLobbyModal = () => document.getElementById('lobby-modal').classList.add('hidden');
+
+// Custom lobbies need a room ID + password — show those fields only for Custom.
+window.toggleLobbyRoomFields = () => {
+    const fields = document.getElementById('lobby-room-fields');
+    const modeSel = document.getElementById('lobby-mode');
+    if (!fields || !modeSel) return;
+    fields.classList.toggle('hidden', modeSel.value !== 'Custom');
+};
+
+window.openCreateLobby = () => {
+    window.closeCreateMenu();
+    if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+    if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
+
+    // Fresh form state
+    document.getElementById('lobby-mode').value = 'Ranked';
+    document.getElementById('lobby-looking').value = 'Duo';
+    document.getElementById('lobby-rank').value = '';
+    document.querySelectorAll('#lobby-roles .lobby-role').forEach(c => { c.checked = false; });
+    document.getElementById('lobby-note').value = '';
+    document.getElementById('lobby-room-id').value = '';
+    document.getElementById('lobby-room-pass').value = '';
+    document.getElementById('lobby-game').value = 'Mobile Legends: Bang Bang';
+    window.toggleLobbyRoomFields();
+
+    // Auto-pull the host's MLBB IGN + Game ID (saved via Edit Profile > Gaming)
+    const mlbb = (window.globalUsersCache[window.currentUser.uid] || {}).mlbb || {};
+    const ign = String(mlbb.ign || '').trim();
+    const gameId = String(mlbb.gameId || '').trim();
+    const server = String(mlbb.server || '').trim();
+    window._lobbyIdText = gameId ? [gameId, server ? `(${server})` : ''].filter(Boolean).join(' ') : '';
+    const hostLine = document.getElementById('lobby-host-line');
+    const copyBtn = document.getElementById('lobby-copy-btn');
+    if (ign || gameId) {
+        hostLine.textContent = `${ign || 'Player'}${gameId ? ` · ${window._lobbyIdText}` : ''}`;
+        hostLine.className = 'text-xs font-bold text-gray-800 dark:text-gray-100 truncate';
+        copyBtn.classList.toggle('hidden', !gameId);
+    } else {
+        hostLine.textContent = 'Set your IGN & Game ID in Edit Profile → Gaming';
+        hostLine.className = 'text-[11px] font-semibold text-gray-400 truncate';
+        copyBtn.classList.add('hidden');
+    }
+
+    document.getElementById('lobby-modal').classList.remove('hidden');
+};
+
+// Copy a lobby value: accepts a raw string, a button carrying [data-id] (+ optional
+// [data-toast] label for the confirmation), or falls back to the modal's Game ID.
+window.copyLobbyId = async (value) => {
+    const isEl = value && typeof value === 'object';
+    const text = (typeof value === 'string' ? value : (isEl ? value.dataset.id : '')) || window._lobbyIdText || '';
+    if (!text) return window.showAlert('Nothing to copy yet.');
+    const label = (isEl && value.dataset.toast) || 'Game ID';
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e2) {}
+        ta.remove();
+    }
+    window.showAlert(`${label} copied!`);
+};
+
+window.submitLobbyPost = async () => {
+    if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+    if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
+    const mode = document.getElementById('lobby-mode').value;
+    const roomId = (document.getElementById('lobby-room-id').value || '').trim();
+    const roomPass = (document.getElementById('lobby-room-pass').value || '').trim();
+    if (mode === 'Custom' && !roomId) return window.showAlert('Add your Room ID for custom games.');
+    // Same cooldown bucket as regular posts so lobbies can't be spammed either.
+    if (!(await window.checkActionCooldown('post'))) return;
+
+    const roles = Array.from(document.querySelectorAll('#lobby-roles .lobby-role:checked')).map(c => c.value);
+    const note = (document.getElementById('lobby-note').value || '').trim();
+    const mlbb = (window.globalUsersCache[window.currentUser.uid] || {}).mlbb || {};
+
+    const btn = document.getElementById('lobby-submit-btn');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+
+    try {
+        const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
+        const postData = {
+            authorId: window.currentUser.uid,
+            text: note,
+            image: '', hasPhoto: false,
+            category: 'Lobby',
+            isLobby: true,
+            lobby: {
+                game: (document.getElementById('lobby-game').value || '').trim() || 'Mobile Legends: Bang Bang',
+                mode: document.getElementById('lobby-mode').value,
+                lookingFor: document.getElementById('lobby-looking').value,
+                rankReq: document.getElementById('lobby-rank').value || 'Any',
+                roles,
+                ign: String(mlbb.ign || '').trim(),
+                gameId: String(mlbb.gameId || '').trim(),
+                server: String(mlbb.server || '').trim(),
+                roomId, roomPass,
+                joins: {}
+            },
+            timestamp: Date.now(), pinned: false, edited: false, locked: false, reactions: {},
+            visibility: 'public',
+            _dbSource: dbSource
+        };
+        const newPostRef = await addDoc(collection(targetFs, 'community_posts'), postData);
+        window._postDbMap.set(newPostRef.id, dbSource);
+
+        const pointsToAdd = window.siteSettings.starsPerPost ?? 10;
+        update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
+        if (note) window.notifyMentions(note, newPostRef.id);
+        window.logActivity("posted a lobby");
+
+        window.closeLobbyModal();
+        window.clearIsolatedPost();
+        window.showAlert("Lobby posted! Good luck 🎮");
+    } catch (error) {
+        console.error("Lobby post failed", error);
+        window.showAlert("Failed to post lobby. Please try again.");
+    } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    }
+};
+
+// ==========================================
+// LOBBY JOINING — pick a position, show up in the squad list
+// ==========================================
+window.closeLobbyJoin = () => document.getElementById('lobby-join-modal').classList.add('hidden');
+
+window.openLobbyJoin = (postId) => {
+    if (!window.currentUser) return document.getElementById('auth-modal').classList.remove('hidden');
+    if (window.checkBan()) return;
+    if (window.checkSitePaused && window.checkSitePaused('post')) return;
+    const post = (window.allPosts || []).find(p => p.id === postId)
+        || (window.isolatedPostData && window.isolatedPostData.id === postId ? window.isolatedPostData : null);
+    if (!post || !post.isLobby) return;
+    if (post.authorId === window.currentUser.uid) return;
+    window._lobbyJoinPostId = postId;
+
+    const l = post.lobby || {};
+    document.getElementById('lobby-join-info').textContent = [l.game || 'Mobile Legends', l.mode, l.lookingFor].filter(Boolean).join(' · ');
+    document.getElementById('lobby-join-position').value = '';
+
+    // Preview exactly what will be shared: your rank + Game ID from the gaming profile.
+    const mlbb = (window.globalUsersCache[window.currentUser.uid] || {}).mlbb || {};
+    const rank = String(mlbb.currentRank || mlbb.highestRank || '').trim();
+    const id = [String(mlbb.gameId || '').trim(), mlbb.server ? `(${mlbb.server})` : ''].filter(Boolean).join(' ');
+    document.getElementById('lobby-join-preview').textContent = [rank || 'No rank set', id].filter(Boolean).join(' · ');
+
+    document.getElementById('lobby-join-modal').classList.remove('hidden');
+};
+
+window.confirmJoinLobby = async () => {
+    if (!window.currentUser || !window._lobbyJoinPostId) return;
+    const position = document.getElementById('lobby-join-position').value;
+    if (!position) return window.showAlert('Pick the position you want to play.');
+
+    const btn = document.getElementById('lobby-join-confirm');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+    try {
+        await updateDoc(getPostDocRef(window._lobbyJoinPostId), {
+            [`lobby.joins.${window.currentUser.uid}`]: { role: position, joinedAt: Date.now() }
+        });
+        window.closeLobbyJoin();
+        window.showAlert(`You're in! See you as ${position} 🎮`);
+    } catch (error) {
+        console.error('Join lobby failed', error);
+        window.showAlert('Could not join the lobby. Please try again.');
+    } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    }
+};
+
+window.leaveLobby = async (postId) => {
+    if (!window.currentUser) return;
+    try {
+        await updateDoc(getPostDocRef(postId), { [`lobby.joins.${window.currentUser.uid}`]: deleteField() });
+        window.showAlert('You left the squad.');
+    } catch (error) {
+        console.error('Leave lobby failed', error);
+        window.showAlert('Could not leave the squad. Please try again.');
+    }
+};
+
 window.clearPendingVoice = () => {
     if (window._pendingVoiceObjectUrl) {
         URL.revokeObjectURL(window._pendingVoiceObjectUrl);
@@ -2076,7 +2274,9 @@ window.openEditModal = (targetData, currentText) => {
                 || (window.isolatedPostData && window.isolatedPostData.id === targetData.postId ? window.isolatedPostData : null);
             const roleLevel = window.currentUser ? window.getRole(window.currentUser.uid).level : 1;
             const currentCat = post ? post.category : null;
-            if (post && !post.isGame && currentCat !== 'Games' && roleLevel >= 2) {
+            // Lobby posts are locked to their category — never offer a category change
+            // for them (same treatment as game posts), so Lobby can't drift to General.
+            if (post && !post.isGame && !post.isLobby && currentCat !== 'Games' && currentCat !== 'Lobby' && roleLevel >= 2) {
                 allowed = roleLevel >= 3 ? ['General', 'Announcements', 'Rules', 'Reels'] : ['General', 'Announcements', 'Reels'];
                 allowed.forEach(cat => {
                     const opt = document.createElement('option');
@@ -2296,9 +2496,21 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
         socials[key] = window.normalizeSocialUrl(key, el ? el.value : '');
     });
 
+    // Gaming (MLBB) tab
+    const mlbb = {
+        ign: (document.getElementById('mlbb-ign')?.value || '').trim(),
+        gameId: (document.getElementById('mlbb-id')?.value || '').trim(),
+        server: (document.getElementById('mlbb-server')?.value || '').trim(),
+        currentRank: document.getElementById('mlbb-current-rank')?.value || '',
+        highestRank: document.getElementById('mlbb-highest-rank')?.value || '',
+        primaryRole: document.getElementById('mlbb-primary-role')?.value || '',
+        secondaryRole: document.getElementById('mlbb-secondary-role')?.value || '',
+        heroes: [1, 2, 3].map(n => (document.getElementById(`mlbb-hero-${n}`)?.value || '').trim())
+    };
+
     if(window.currentUser) {
         try {
-            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, cover: finalCover, gender, relationship, partner, bio, galleryImages, socials });
+            await update(ref(db, `users/${window.currentUser.uid}`), { name: finalName, pic: finalPic, cover: finalCover, gender, relationship, partner, bio, galleryImages, socials, mlbb });
             try { await updateProfile(window.currentUser, { displayName: finalName, photoURL: finalPic }); } catch (e) { }
             
             document.getElementById('profile-modal').classList.add('hidden');

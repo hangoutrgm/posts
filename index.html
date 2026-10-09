@@ -38,7 +38,7 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=28">
-    <link rel="stylesheet" href="css/tailwind.min.css?v=5">
+    <link rel="stylesheet" href="css/tailwind.min.css?v=11">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
@@ -72,7 +72,8 @@
                         </button>
 
                         <!-- Account menu under the nav avatar: username -> profile page,
-                             Edit Profile modal, Install, Logout. Logic in js/main.js. -->
+                             Edit Profile modal, Admin Config (admins only), Install, Logout.
+                             Logic in js/main.js. -->
                         <div id="user-menu" class="hidden absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden z-[120]">
                             <button onclick="window.userMenuProfile()" class="w-full flex items-center gap-2.5 p-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-b border-gray-100 dark:border-slate-700">
                                 <img id="user-menu-avatar" class="w-9 h-9 rounded-full object-cover border border-blue-500 bg-gray-100 dark:bg-slate-700" src="">
@@ -84,6 +85,8 @@
                             <button onclick="window.userMenuEditProfile()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
                                 <i class="fa-solid fa-user-pen w-4 text-center text-gray-400"></i> Edit Profile
                             </button>
+                            <!-- Admin only — shown/hidden by window.updateAdminButtons() (js/helpers.js) -->
+                            <button id="admin-config-btn" onclick="window.closeUserMenu(); window.location.href='config/'" class="hidden w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition border-t border-gray-100 dark:border-slate-700"><i class="fa-solid fa-sliders w-4 text-center"></i> Admin Config</button>
                             <button onclick="window.userMenuInstall()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-t border-gray-100 dark:border-slate-700">
                                 <i class="fa-solid fa-download w-4 text-center text-gray-400"></i> Install App
                             </button>
@@ -126,6 +129,7 @@
                 <button class="filter-btn active snap-start bg-blue-600 text-white px-3 py-1 rounded-full font-semibold whitespace-nowrap shadow-sm" data-cat="All">All</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="My Posts">👤 My Posts</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="General">General</button>
+                <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Lobby">🤝 Lobby</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Reels">🎬 Reels</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Games">🎮 Games</button>
                 <button class="filter-btn snap-start bg-gray-200 text-gray-700 dark:bg-slate-800 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap" data-cat="Announcements">📢 Announcements</button>
@@ -181,11 +185,22 @@
 
         <main id="profile-view" class="hidden">
             <button onclick="window.closeProfile()" class="mb-3 text-xs font-bold text-gray-500 hover:text-blue-500 transition flex items-center"><i class="fa-solid fa-arrow-left mr-1"></i> Back to Feed</button>
-            <div id="profile-header"></div>
-            <div class="flex items-center space-x-2 mb-3 mt-4">
-                <i class="fa-solid fa-layer-group text-blue-500"></i><h2 class="font-bold dark:text-white text-sm">Posts</h2>
+            <!-- Two profiles: Hangout (as-is) | Gaming (artistic MLBB profile) -->
+            <div class="flex gap-1 mb-3 bg-gray-100 dark:bg-slate-900 p-1 rounded-lg text-xs font-bold" role="tablist">
+                <button type="button" id="profile-tab-btn-hangout" onclick="window.switchProfileTab('hangout')" role="tab" class="flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"><i class="fa-solid fa-user mr-1"></i>Hangout</button>
+                <button type="button" id="profile-tab-btn-gaming" onclick="window.switchProfileTab('gaming')" role="tab" class="flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400"><i class="fa-solid fa-gamepad mr-1"></i>Gaming</button>
             </div>
-            <div id="profile-feed" class="space-y-3"></div>
+
+            <div id="profile-tab-hangout">
+                <div id="profile-header"></div>
+                <div class="flex items-center space-x-2 mb-3 mt-4">
+                    <i class="fa-solid fa-layer-group text-blue-500"></i><h2 class="font-bold dark:text-white text-sm">Posts</h2>
+                </div>
+                <div id="profile-feed" class="space-y-3"></div>
+            </div>
+            <div id="profile-tab-gaming" class="hidden">
+                <div id="profile-gaming-panel"><!-- rendered by js/renderers.js (window.buildProfileGaming) --></div>
+            </div>
         </main>
     </div>
 
@@ -220,7 +235,139 @@
                     <span class="create-type-icon bg-orange-100 dark:bg-orange-900/30 text-orange-500"><i class="fa-solid fa-calendar-days"></i></span>
                     <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Event</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Schedule a community event</span></span>
                 </button>
+                <button class="create-type-btn" onclick="window.openCreateLobby()">
+                    <span class="create-type-icon bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400"><i class="fa-solid fa-user-group"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="block text-sm font-bold dark:text-white">Lobby</span><span class="block text-[11px] text-gray-500 dark:text-gray-400">Find MLBB teammates (LFG)</span></span>
+                </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Create Lobby (LFG) modal — structured MLBB matchmaking post. Logic in js/main.js -->
+    <div id="lobby-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.closeLobbyModal()">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <button onclick="window.closeLobbyModal()" class="absolute top-3 right-3 text-gray-400"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="text-sm font-bold dark:text-white mb-3"><i class="fa-solid fa-gamepad text-teal-500 mr-1.5"></i>Create Lobby</h3>
+
+            <!-- Host strip: MLBB IGN + Game ID auto-pulled from Edit Profile > Gaming -->
+            <div class="flex items-center gap-2 p-2.5 rounded-lg bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/50 dark:to-purple-950/50 border border-indigo-200/70 dark:border-indigo-800/40 mb-3">
+                <div class="min-w-0 flex-1">
+                    <p class="text-[9px] font-bold uppercase tracking-wide text-indigo-500 dark:text-indigo-400">Your MLBB ID</p>
+                    <p id="lobby-host-line" class="text-xs font-bold text-gray-800 dark:text-gray-100 truncate">—</p>
+                </div>
+                <button id="lobby-copy-btn" onclick="window.copyLobbyId()" class="shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-full transition shadow-sm"><i class="fa-solid fa-copy mr-1"></i>Copy ID</button>
+            </div>
+
+            <div class="mb-2">
+                <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Game</p>
+                <input type="text" id="lobby-game" list="lobby-game-options" value="Mobile Legends: Bang Bang" placeholder="Which game is this lobby for?" autocomplete="off" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                <datalist id="lobby-game-options">
+                    <option value="Mobile Legends: Bang Bang"></option>
+                    <option value="Valorant"></option>
+                    <option value="Wild Rift"></option>
+                    <option value="PUBG Mobile"></option>
+                    <option value="Call of Duty Mobile"></option>
+                    <option value="Honor of Kings"></option>
+                    <option value="Free Fire"></option>
+                </datalist>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Game Mode</p>
+                    <select id="lobby-mode" onchange="window.toggleLobbyRoomFields()" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                        <option value="Ranked">Ranked</option>
+                        <option value="Classic">Classic</option>
+                        <option value="Custom">Custom</option>
+                    </select>
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Looking For</p>
+                    <select id="lobby-looking" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                        <option value="Duo">Duo (+1)</option>
+                        <option value="Trio">Trio (+2)</option>
+                        <option value="Full Squad">Full Squad (+4)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Rank Requirement</p>
+                <select id="lobby-rank" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                    <option value="">Any Rank</option>
+                    <option value="Warrior">Warrior</option>
+                    <option value="Elite">Elite</option>
+                    <option value="Master">Master</option>
+                    <option value="Grandmaster">Grandmaster</option>
+                    <option value="Epic">Epic</option>
+                    <option value="Legend">Legend</option>
+                    <option value="Mythic">Mythic</option>
+                    <option value="Mythical Honor">Mythical Honor</option>
+                    <option value="Mythical Glory">Mythical Glory</option>
+                    <option value="Mythical Immortal">Mythical Immortal</option>
+                </select>
+            </div>
+
+            <!-- Custom games only: room ID + password (toggled by window.toggleLobbyRoomFields) -->
+            <div id="lobby-room-fields" class="hidden grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Room ID</p>
+                    <input type="text" id="lobby-room-id" placeholder="e.g. 12345678" autocomplete="off" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Password</p>
+                    <input type="text" id="lobby-room-pass" placeholder="Optional" autocomplete="off" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                </div>
+            </div>
+            <div class="mb-2">
+                <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5">Roles Needed</p>
+                <div class="flex flex-wrap gap-1.5" id="lobby-roles">
+                    <label class="cursor-pointer"><input type="checkbox" value="Gold Laner" class="peer sr-only lobby-role"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 transition">Gold Laner</span></label>
+                    <label class="cursor-pointer"><input type="checkbox" value="Jungler" class="peer sr-only lobby-role"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 transition">Jungler</span></label>
+                    <label class="cursor-pointer"><input type="checkbox" value="Mid Laner" class="peer sr-only lobby-role"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 transition">Mid Laner</span></label>
+                    <label class="cursor-pointer"><input type="checkbox" value="EXP Laner" class="peer sr-only lobby-role"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 transition">EXP Laner</span></label>
+                    <label class="cursor-pointer"><input type="checkbox" value="Roamer" class="peer sr-only lobby-role"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:border-teal-600 transition">Roamer</span></label>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Note</p>
+                <textarea id="lobby-note" rows="2" maxlength="250" placeholder="e.g. Push to Mythic tonight, mic on — add me!" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700 resize-none leading-snug"></textarea>
+            </div>
+
+            <button id="lobby-submit-btn" onclick="window.submitLobbyPost()" class="w-full bg-gradient-to-r from-teal-600 to-indigo-600 hover:opacity-90 text-white font-bold p-2.5 rounded-lg text-sm shadow-md transition"><i class="fa-solid fa-user-group mr-1.5"></i>Post Lobby</button>
+            <p class="text-[10px] text-gray-400 dark:text-slate-500 text-center mt-2">Your Game ID stays visible so teammates can add you in-game.</p>
+        </div>
+    </div>
+
+
+    <!-- Join Lobby modal — pick your position; shows the rank/ID that will be shared -->
+    <div id="lobby-join-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.closeLobbyJoin()">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-xs p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700" onclick="event.stopPropagation()">
+            <button onclick="window.closeLobbyJoin()" class="absolute top-3 right-3 text-gray-400"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="text-sm font-bold dark:text-white"><i class="fa-solid fa-user-plus text-teal-500 mr-1.5"></i>Join Lobby</h3>
+            <p id="lobby-join-info" class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 mb-3 truncate">—</p>
+
+            <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Position You Want</p>
+            <select id="lobby-join-position" class="w-full bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700 mb-3">
+                <option value="">Select position</option>
+                <option value="Gold Laner">Gold Laner</option>
+                <option value="Jungler">Jungler</option>
+                <option value="Mid Laner">Mid Laner</option>
+                <option value="EXP Laner">EXP Laner</option>
+                <option value="Roamer">Roamer</option>
+            </select>
+
+            <div class="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/50 dark:to-purple-950/50 border border-indigo-200/70 dark:border-indigo-800/40 mb-3">
+                <div class="min-w-0">
+                    <p class="text-[9px] font-bold uppercase tracking-wide text-indigo-500 dark:text-indigo-400">Shown in squad</p>
+                    <p id="lobby-join-preview" class="text-[11px] font-bold text-gray-800 dark:text-gray-100 truncate">—</p>
+                </div>
+                <i class="fa-solid fa-shield-halved text-indigo-300 dark:text-indigo-600 text-lg shrink-0"></i>
+            </div>
+
+            <button id="lobby-join-confirm" onclick="window.confirmJoinLobby()" class="w-full bg-gradient-to-r from-teal-600 to-indigo-600 hover:opacity-90 text-white font-bold p-2.5 rounded-lg text-sm shadow-md transition"><i class="fa-solid fa-user-plus mr-1.5"></i>Confirm Join</button>
+            <p class="text-[10px] text-gray-400 dark:text-slate-500 text-center mt-2">Your rank and Game ID will be visible to everyone in the lobby.</p>
         </div>
     </div>
 
@@ -462,6 +609,7 @@
             <div class="flex gap-1 mb-3 bg-gray-100 dark:bg-slate-900 p-1 rounded-lg text-xs font-bold" role="tablist">
                 <button type="button" id="edit-tab-btn-profile" onclick="window.switchEditTab('profile')" role="tab" class="flex-1 py-1.5 rounded-md transition bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm">Hangout</button>
                 <button type="button" id="edit-tab-btn-socials" onclick="window.switchEditTab('socials')" role="tab" class="flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400">Socials</button>
+                <button type="button" id="edit-tab-btn-gaming" onclick="window.switchEditTab('gaming')" role="tab" class="flex-1 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400">Gaming</button>
             </div>
 
             <div id="edit-tab-profile">
@@ -573,11 +721,89 @@
                 <p class="text-[10px] text-gray-400 dark:text-slate-500 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Paste the full link or just your @username. Leave blank to hide.</p>
             </div><!-- /edit-tab-socials -->
 
+            <div id="edit-tab-gaming" class="hidden">
+                <div class="rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden mb-2">
+                    <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-3 py-2 text-white text-xs font-bold flex items-center">
+                        <i class="fa-solid fa-gamepad mr-1.5"></i> Mobile Legends: Bang Bang
+                    </div>
+                    <div class="p-3 bg-gray-50 dark:bg-slate-900/60">
+                        <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">In-Game Name (IGN)</p>
+                        <input type="text" id="mlbb-ign" placeholder="e.g. ShadowKnight" autocomplete="off" class="w-full bg-white dark:bg-slate-800 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700 mb-2">
+
+                        <div class="flex space-x-2 mb-2">
+                            <div class="w-1/2">
+                                <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Game ID</p>
+                                <input type="text" id="mlbb-id" inputmode="numeric" placeholder="12345678" autocomplete="off" class="w-full bg-white dark:bg-slate-800 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                            </div>
+                            <div class="w-1/2">
+                                <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Server / Zone</p>
+                                <input type="text" id="mlbb-server" placeholder="e.g. 1234" autocomplete="off" class="w-full bg-white dark:bg-slate-800 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                            </div>
+                        </div>
+
+                        <div class="flex space-x-2 mb-2">
+                            <select id="mlbb-current-rank" class="w-1/2 bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                                <option value="">Current Rank (Hidden)</option>
+                                <option value="Warrior">Warrior</option>
+                                <option value="Elite">Elite</option>
+                                <option value="Master">Master</option>
+                                <option value="Grandmaster">Grandmaster</option>
+                                <option value="Epic">Epic</option>
+                                <option value="Legend">Legend</option>
+                                <option value="Mythic">Mythic</option>
+                                <option value="Mythical Honor">Mythical Honor</option>
+                                <option value="Mythical Glory">Mythical Glory</option>
+                                <option value="Mythical Immortal">Mythical Immortal</option>
+                            </select>
+                            <select id="mlbb-highest-rank" class="w-1/2 bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                                <option value="">Highest Rank (Hidden)</option>
+                                <option value="Warrior">Warrior</option>
+                                <option value="Elite">Elite</option>
+                                <option value="Master">Master</option>
+                                <option value="Grandmaster">Grandmaster</option>
+                                <option value="Epic">Epic</option>
+                                <option value="Legend">Legend</option>
+                                <option value="Mythic">Mythic</option>
+                                <option value="Mythical Honor">Mythical Honor</option>
+                                <option value="Mythical Glory">Mythical Glory</option>
+                                <option value="Mythical Immortal">Mythical Immortal</option>
+                            </select>
+                        </div>
+
+                        <div class="flex space-x-2 mb-2">
+                            <select id="mlbb-primary-role" class="w-1/2 bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                                <option value="">Primary Role</option>
+                                <option value="Gold Laner">Gold Laner</option>
+                                <option value="Jungler">Jungler</option>
+                                <option value="Mid Laner">Mid Laner</option>
+                                <option value="EXP Laner">EXP Laner</option>
+                                <option value="Roamer">Roamer</option>
+                            </select>
+                            <select id="mlbb-secondary-role" class="w-1/2 bg-gray-100 dark:bg-slate-900 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                                <option value="">Secondary Role</option>
+                                <option value="Gold Laner">Gold Laner</option>
+                                <option value="Jungler">Jungler</option>
+                                <option value="Mid Laner">Mid Laner</option>
+                                <option value="EXP Laner">EXP Laner</option>
+                                <option value="Roamer">Roamer</option>
+                            </select>
+                        </div>
+
+                        <p class="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">Top 3 Main Heroes</p>
+                        <div class="flex space-x-2">
+                            <input type="text" id="mlbb-hero-1" placeholder="Hero 1" autocomplete="off" class="flex-1 min-w-0 bg-white dark:bg-slate-800 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                            <input type="text" id="mlbb-hero-2" placeholder="Hero 2" autocomplete="off" class="flex-1 min-w-0 bg-white dark:bg-slate-800 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                            <input type="text" id="mlbb-hero-3" placeholder="Hero 3" autocomplete="off" class="flex-1 min-w-0 bg-white dark:bg-slate-800 text-[11px] p-2.5 rounded-lg dark:text-white focus:outline-none border border-gray-200 dark:border-slate-700">
+                        </div>
+                    </div>
+                </div>
+                <p class="text-[10px] text-gray-400 dark:text-slate-500 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Shown on your profile's Gaming tab. Leave anything blank to hide it.</p>
+            </div><!-- /edit-tab-gaming -->
+
             <div class="grid grid-cols-1 gap-2">
                 <!-- My Profile / Install / Logout moved to the nav avatar menu (#user-menu) -->
                 <button id="save-profile-btn" class="bg-blue-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-blue-500 w-full">Save Changes</button>
             </div>
-            <button id="admin-config-btn" class="hidden w-full bg-indigo-600 text-white font-bold p-2 rounded-lg text-sm shadow-md transition hover:bg-indigo-500 mt-2" onclick="window.location.href='config/'"><i class="fa-solid fa-sliders mr-1"></i>Admin Config</button>
         </div>
     </div>
 
@@ -1218,12 +1444,12 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
-    <script type="module" src="js/renderers.js?v=87"></script>
-    <script type="module" src="js/helpers.js?v=67"></script>
+    <script type="module" src="js/renderers.js?v=96"></script>
+    <script type="module" src="js/helpers.js?v=68"></script>
     <script type="module" src="js/games.js?v=61"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=28"></script>
-    <script type="module" src="js/main.js?v=89"></script>
+    <script type="module" src="js/main.js?v=98"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.
