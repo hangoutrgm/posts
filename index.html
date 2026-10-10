@@ -38,7 +38,7 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=28">
-    <link rel="stylesheet" href="css/tailwind.min.css?v=11">
+    <link rel="stylesheet" href="css/tailwind.min.css?v=13">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
@@ -476,8 +476,11 @@
         </div>
     </div>
 
-    <div id="image-viewer-modal" class="hidden fixed inset-0 z-[120] flex flex-col items-center justify-center p-2 bg-black/95 backdrop-blur-sm" onclick="window.closeImageViewer()">
+    <div id="image-viewer-modal" class="hidden fixed inset-0 z-[170] flex flex-col items-center justify-center p-2 bg-black/95 backdrop-blur-sm" onclick="window.closeImageViewer()">
         <button onclick="window.closeImageViewer()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10 transition p-2"><i class="fa-solid fa-xmark text-2xl"></i></button>
+        <span id="viewer-count" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-10 text-white/90 text-xs font-bold bg-black/40 px-2.5 py-1 rounded-full"></span>
+        <button id="viewer-prev" onclick="event.stopPropagation(); window.stepViewer(-1)" class="hidden absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-black/40 hover:bg-black/70 text-white w-10 h-10 rounded-full flex items-center justify-center transition" aria-label="Previous photo"><i class="fa-solid fa-chevron-left"></i></button>
+        <button id="viewer-next" onclick="event.stopPropagation(); window.stepViewer(1)" class="hidden absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-black/40 hover:bg-black/70 text-white w-10 h-10 rounded-full flex items-center justify-center transition" aria-label="Next photo"><i class="fa-solid fa-chevron-right"></i></button>
         <img id="viewer-img" src="" class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl transition-transform mb-4" onclick="event.stopPropagation()">
         <video id="viewer-video" src="" controls autoplay playsinline class="hidden max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl bg-black" onclick="event.stopPropagation()"></video>
         <a id="viewer-download-btn" href="#" onclick="event.stopPropagation()" class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-full font-bold text-sm transition shadow-lg flex items-center space-x-2 border border-gray-700">
@@ -1444,8 +1447,8 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
-    <script type="module" src="js/renderers.js?v=96"></script>
-    <script type="module" src="js/helpers.js?v=68"></script>
+    <script type="module" src="js/renderers.js?v=97"></script>
+    <script type="module" src="js/helpers.js?v=69"></script>
     <script type="module" src="js/games.js?v=61"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=28"></script>
@@ -1465,7 +1468,7 @@
         // The button keeps href="chat/" — ctrl/middle-click still opens the
         // full app, and a failed import falls back to navigating there.
         window.openMiniChat = () => {
-            import('./chat/mini-chat.js?v=6')
+            import('./chat/mini-chat.js?v=8')
                 .then((mod) => mod.openMiniChat())
                 .catch((err) => {
                     console.error('[mini-chat] load failed', err);

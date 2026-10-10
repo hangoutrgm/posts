@@ -3384,7 +3384,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
                             <span class="text-[9px] text-yellow-600 dark:text-yellow-500 shrink-0 whitespace-nowrap">🏆 ${authorInfo.lbPoints || 0}</span>
                             <span class="text-[9px] text-blue-500 font-bold shrink-0 whitespace-nowrap">👥 ${followerCount}</span>
                         </div>
-                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • ${post.isMyDay ? `<span class="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-semibold"><i class="fa-solid fa-bolt mr-1"></i>My Day</span>` : `<span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span>`}</p>
+                        <p class="text-[10px] text-gray-500 truncate">${timeStr} • ${post.isMyDay ? `<span class="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-semibold">My Day</span>` : `<span class="bg-gray-100 dark:bg-slate-700 px-1 rounded">${post.category}</span>`}</p>
                     </div>
                 </div>
                 <div class="shrink-0 ml-1 flex items-start">${adminControls}</div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v270';
+const CACHE_NAME = 'hangout-v276';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // YouTube artwork (i.ytimg.com). The music app renders one thumbnail per
@@ -27,18 +27,18 @@ const PRECACHE_ASSETS = [
   './',
   './index.html',
   './chat/index.html',
-  './css/tailwind.min.css?v=11',
+  './css/tailwind.min.css?v=13',
   './css/styles.css?v=28',
   './chat/css/styles.css?v=54',
-  './js/renderers.js?v=96',
-  './js/helpers.js?v=68',
+  './js/renderers.js?v=97',
+  './js/helpers.js?v=69',
   './js/games.js?v=61',
   './js/main.js?v=98',
   './js/myday.js?v=28',
   './js/voice-recorder.js?v=3',
   './chat/js/app.js?v=107',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.
-  './chat/mini-chat.js?v=6',
+  './chat/mini-chat.js?v=8',
   './music/mini-player.js?v=5',
   // Standalone Music SPA (/music) — keep these ?v= in sync with music/index.html
   './music/index.html',

@@ -360,6 +360,7 @@ function build() {
   const sendBtn = $('mc-send');
   let pressTimer = null;
   let longPressed = false;
+  let emojiTap = false; // emoji-mode as it was when the tap STARTED (see touchend)
   sendBtn.addEventListener('mousedown', (e) => {
     e.preventDefault(); // keep composer focus (keyboard stays up)
     longPressed = false;
@@ -377,6 +378,7 @@ function build() {
   sendBtn.addEventListener('touchstart', (e) => {
     if (e.cancelable) e.preventDefault(); // suppress the synthetic click — we drive submit below
     longPressed = false;
+    emojiTap = mc.emojiMode; // capture mode at tap start — an edit-save below mutates it
     if (sendBtn.disabled) return;
     if (mc.emojiMode) {
       pressTimer = setTimeout(() => { longPressed = true; openEmojiPicker(sendBtn); }, 500);
@@ -388,9 +390,11 @@ function build() {
     clearTimeout(pressTimer);
     if (longPressed) { if (e.cancelable) e.preventDefault(); longPressed = false; return; }
     // Non-emoji taps already submitted on touchstart; emoji taps never do, so
-    // exactly ONE submit happens per tap (the full app's unconditional submit
-    // here can race a second one on touch devices — don't copy that).
-    if (mc.emojiMode && !sendBtn.disabled) $('mc-form').requestSubmit();
+    // exactly ONE submit happens per tap. Use the mode captured at touchstart:
+    // an edit-save on touchstart clears the composer (finishEdit → cancelEdit),
+    // which flips mc.emojiMode to true — reading it live here would race a
+    // second submit that sends the preferred emoji as a new message.
+    if (emojiTap && !sendBtn.disabled) $('mc-form').requestSubmit();
   });
   sendBtn.addEventListener('touchcancel', () => clearTimeout(pressTimer));
   updateSendMode(); // empty composer on first paint → emoji mode
@@ -868,8 +872,9 @@ function backToList() {
 }
 
 // Media block: voice notes, videos and images — same detection as the full
-// app. Images open the raw asset in a new tab (the full app's viewer is out
-// of scope for this widget); videos/players stay inline with native controls.
+// app. Images and videos open the main site's shared viewer modal
+// (window.viewImage — same #image-viewer-modal the feed/My Day use), matching
+// the full chat's tap-to-view behaviour. Voice notes stay inline.
 function mediaHtml(m) {
   const imageSrc = m.image || '';
   const isVoice = Boolean(m.audio || (imageSrc && /\.(mp3|wav|ogg|m4a|aac|opus)$/i.test(imageSrc)));
@@ -880,10 +885,10 @@ function mediaHtml(m) {
   if (imageSrc.includes('/video/upload/') || /\.(mp4|webm|mov|ogg)$/i.test(imageSrc)) {
     const vid = window.optVideo ? window.optVideo(imageSrc, 720) : imageSrc;
     const poster = window.optVideoPoster ? window.optVideoPoster(imageSrc, 480) : '';
-    return `<video class="mc-media" preload="none" controls src="${esc(vid)}"${poster ? ` poster="${esc(poster)}"` : ''}></video>`;
+    return `<video class="mc-media" preload="none" controls src="${esc(vid)}"${poster ? ` poster="${esc(poster)}"` : ''} onclick="event.stopPropagation(); window.viewImage('${esc(imageSrc)}')"></video>`;
   }
   const img = window.optMedia ? window.optMedia(imageSrc, { width: 600 }) : imageSrc;
-  return `<a href="${esc(imageSrc)}" target="_blank" rel="noopener"><img class="mc-media" loading="lazy" src="${esc(img)}" alt=""></a>`;
+  return `<img class="mc-media" loading="lazy" src="${esc(img)}" alt="" onclick="event.stopPropagation(); window.viewImage('${esc(imageSrc)}')">`;
 }
 
 function msgRowHtml(id, m) {

@@ -499,7 +499,28 @@ window.pokeUser = async function(targetUid) {
     }
 };
 
-window.viewImage = (src) => {
+// Multi-image gallery state for the shared viewer. Set by window.viewImage when
+// it is opened from a photo collage (see renderPostMedia); empty = no navigation.
+let _viewerGallery = [];
+let _viewerIndex = 0;
+
+function _syncViewerNav() {
+    const prev = document.getElementById('viewer-prev');
+    const next = document.getElementById('viewer-next');
+    const count = document.getElementById('viewer-count');
+    const show = _viewerGallery.length > 1;
+    if (prev) prev.classList.toggle('hidden', !show);
+    if (next) next.classList.toggle('hidden', !show);
+    if (count) {
+        count.classList.toggle('hidden', !show);
+        if (show) count.textContent = `${_viewerIndex + 1} / ${_viewerGallery.length}`;
+    }
+}
+
+window.viewImage = (src, gallery, index) => {
+    _viewerGallery = Array.isArray(gallery) && gallery.length > 1 ? gallery : [];
+    _viewerIndex = Number.isInteger(index) ? index : 0;
+    _syncViewerNav();
     const isVideo = /\.(mp4|webm|mov|ogg|m4v)(\?|#|$)/i.test(String(src || '')) || String(src || '').includes('/video/upload/');
     const imgEl = document.getElementById('viewer-img');
     const vidEl = document.getElementById('viewer-video');
@@ -545,7 +566,18 @@ window.viewImage = (src) => {
         });
 };
 
+// Left/right navigation for multi-photo posts — wired to #viewer-prev / #viewer-next.
+window.stepViewer = (delta) => {
+    const n = _viewerGallery.length;
+    if (n < 2) return;
+    _viewerIndex = (_viewerIndex + delta + n) % n; // wrap around
+    window.viewImage(_viewerGallery[_viewerIndex], _viewerGallery, _viewerIndex);
+};
+
 window.closeImageViewer = () => {
+    _viewerGallery = [];
+    _viewerIndex = 0;
+    _syncViewerNav();
     const downloadBtn = document.getElementById('viewer-download-btn');
     // Revoke any blob URL to free memory
     if (downloadBtn.href && downloadBtn.href.startsWith('blob:')) {
@@ -1125,9 +1157,13 @@ window.renderPostMedia = function(post) {
     // Geometry uses inline styles (not utility classes) so the grid shapes are
     // guaranteed: 2 = side-by-side · 3 = big + 2 equal stacked · 4 = 2x2 grid.
     if (imgs.length >= 2) {
-        const imgTag = (u) => {
+        // JS array literal of raw URLs for the inline onclick. The attribute is
+        // double-quoted, so single-quoted strings inside it are safe (the existing
+        // code already assumes URLs carry no single quotes).
+        const galleryJs = '[' + imgs.map(u => `'${u}'`).join(',') + ']';
+        const imgTag = (u, i) => {
             const optU = window.optMedia ? window.optMedia(u, { width: 600 }) : u;
-            return `<img src="${optU}" loading="lazy" class="cursor-pointer hover:opacity-90 transition" style="width:100%;height:100%;object-fit:cover;min-height:0;" onclick="window.viewImage('${u}')">`;
+            return `<img src="${optU}" loading="lazy" class="cursor-pointer hover:opacity-90 transition" style="width:100%;height:100%;object-fit:cover;min-height:0;" onclick="window.viewImage('${u}', ${galleryJs}, ${i})">`;
         };
         const wrapStyle = (extra, height) => `style="display:grid;${extra}gap:2px;height:${height}px;border-radius:8px;overflow:hidden;border:1px solid rgba(128,128,128,0.25);margin-top:8px;"`;
         let inner = '';
@@ -1137,10 +1173,10 @@ window.renderPostMedia = function(post) {
             </div>`;
         } else if (imgs.length === 3) {
             inner = `<div ${wrapStyle('grid-template-columns:1fr 1fr;', 280)}>
-                ${imgTag(imgs[0])}
+                ${imgTag(imgs[0], 0)}
                 <div style="display:grid;grid-template-rows:1fr 1fr;gap:2px;min-height:0;overflow:hidden;">
-                    ${imgTag(imgs[1])}
-                    ${imgTag(imgs[2])}
+                    ${imgTag(imgs[1], 1)}
+                    ${imgTag(imgs[2], 2)}
                 </div>
             </div>`;
         } else {

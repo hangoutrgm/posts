@@ -9,8 +9,8 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=68";
-import "./renderers.js?v=96";
+import "./helpers.js?v=69";
+import "./renderers.js?v=97";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
