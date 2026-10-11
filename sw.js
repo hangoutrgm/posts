@@ -1,6 +1,20 @@
-const CACHE_NAME = 'hangout-v305';
+const CACHE_NAME = 'hangout-v308';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
+// Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
+// pinned Firebase SDK, DiceBear): cache-first so repeat visits paint instantly
+// without touching the network. API hosts are NOT listed — auth/db traffic
+// is never intercepted. Bump the version suffix to force a re-download.
+const CDN_CACHE_NAME = 'hangout-cdn-v1';
+const MAX_CDN_ITEMS = 150;
+const STATIC_CDN_HOSTS = [
+  'cdn.tailwindcss.com',
+  'cdnjs.cloudflare.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'www.gstatic.com',
+  'api.dicebear.com'
+];
 // YouTube artwork (i.ytimg.com). The music app renders one thumbnail per
 // library row, so caching these locally removes nearly all repeat image
 // traffic. Bump the version suffix if the caching strategy ever changes.
@@ -8,7 +22,7 @@ const YTIMG_CACHE_NAME = 'hangout-ytimg-v1';
 const MAX_YTIMG_ITEMS = 200;
 
 // Caches that must survive an activate() sweep.
-const PERSISTENT_CACHES = [CACHE_NAME, MEDIA_CACHE_NAME, YTIMG_CACHE_NAME];
+const PERSISTENT_CACHES = [CACHE_NAME, MEDIA_CACHE_NAME, YTIMG_CACHE_NAME, CDN_CACHE_NAME];
 
 /** Trims any cache to its newest `maxItems` entries (oldest evicted first). */
 async function trimCache(cacheName, maxItems) {
@@ -28,7 +42,7 @@ const PRECACHE_ASSETS = [
   './index.html',
   './chat/index.html',
   './css/tailwind.min.css?v=15',
-  './css/styles.css?v=28',
+  './css/styles.css?v=29',
   // Arena SPA (/arena) — tournament hub, lobby bridge, brackets
   './arena/index.html',
   './arena/arena.css?v=15',
@@ -50,6 +64,9 @@ const PRECACHE_ASSETS = [
   './music/music.css?v=6',
   './music/music-app.js?v=12',
   './music/youtube-player.js?v=7',
+  // Standalone Pet SPA (/pet) — account gate + RTDB 3 cloud saves
+  './pet/index.html',
+  './pet/pet.js?v=3',
   './js/users-cache.js?v=6',
   './config/emoji_riddles.json',
   './config/flags.json',
@@ -143,6 +160,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Third-party static assets (SDK/CDN): cache-first for instant repeat paints.
+  // Guarded to GET + specific hosts/paths so auth (identitytoolkit), DB traffic
+  // and mutable gstatic content are never cached.
+  if (request.method === 'GET' && STATIC_CDN_HOSTS.includes(url.hostname)) {
+    if (url.hostname === 'www.gstatic.com' && !url.pathname.startsWith('/firebasejs/')) return;
+    event.respondWith(
+      caches.open(CDN_CACHE_NAME).then((cache) => cache.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response && (response.ok || response.type === 'opaque')) {
+            const copy = response.clone();
+            cache.put(request, copy).then(() => trimCache(CDN_CACHE_NAME, MAX_CDN_ITEMS)).catch(() => {});
+          }
+          return response;
+        });
+      }))
+    );
+    return;
+  }
+
   // Only handle same-origin GET requests
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
@@ -166,6 +203,22 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         });
+      })
+    );
+  } else if (isHtml && (url.pathname === '/pet' || url.pathname.startsWith('/pet/'))) {
+    // Pet shell — INSTANT paint: stale-while-revalidate scoped to /pet only.
+    // Cached HTML renders immediately while a background fetch refreshes it for
+    // the next visit; the versioned pet.js?v= assets still resolve cache-first.
+    event.respondWith(
+      caches.match(request).then((cached) => cached || caches.match('./pet/index.html')).then((cached) => {
+        const refresh = fetch(request, { cache: 'no-store' }).then((response) => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || refresh;
       })
     );
   } else if (isHtml) {

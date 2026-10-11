@@ -20,7 +20,7 @@
       ]
     },
     {
-      "source": "/(arena|treasury|config|chat|music)",
+      "source": "/(arena|treasury|config|chat|music|pet)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -29,7 +29,7 @@
       ]
     },
     {
-      "source": "/(arena|treasury|config|chat|music)/",
+      "source": "/(arena|treasury|config|chat|music|pet)/",
       "headers": [
         {
           "key": "Cache-Control",

@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hangout Pet - Virtual Pet Companion</title>
+    <link rel="icon" href="../favicon.ico">
+    <!-- Instant theme paint: restore the saved theme before the first frame
+         so light-theme users don't get a dark flash. -->
+    <script>
+        try {
+            var _ppSave = JSON.parse(localStorage.getItem('pocketPalCelestialSave') || 'null');
+            if (_ppSave && _ppSave.theme === 'light') document.documentElement.classList.remove('dark');
+            else document.documentElement.classList.add('dark');
+        } catch (e) {}
+    </script>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        fredoka: ['Fredoka', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Warm up the render-critical CDNs before the parser reaches them -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+
+    <!-- Google Fonts: Fredoka for Playful, Highly Legible Aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #e2f1ff 0%, #fce7f3 45%, #fef3c7 100%);
+            --card-bg: rgba(255, 255, 255, 0.85);
+            --card-interactive: rgba(255, 255, 255, 0.95);
+            --card-border: rgba(255, 255, 255, 0.9);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --accent-glow: rgba(168, 85, 247, 0.22);
+            --card-shadow: 0 16px 40px 0 rgba(148, 163, 184, 0.35);
+            --habitat-bg: linear-gradient(to bottom, rgba(224, 242, 254, 0.85), rgba(250, 232, 255, 0.95));
+            --meter-track: rgba(203, 213, 225, 0.6);
+            --orb-1: rgba(168, 85, 247, 0.22);
+            --orb-2: rgba(56, 189, 248, 0.25);
+        }
+
+        .dark {
+            --bg-gradient: linear-gradient(135deg, #070511 0%, #0d091f 50%, #16102e 100%);
+            --card-bg: rgba(23, 18, 46, 0.78);
+            --card-interactive: rgba(29, 23, 58, 0.88);
+            --card-border: rgba(255, 255, 255, 0.15);
+            --text-primary: #ffffff;
+            --text-secondary: #cbd5e1;
+            --accent-glow: rgba(168, 85, 247, 0.35);
+            --card-shadow: 0 20px 50px 0 rgba(0, 0, 0, 0.55);
+            --habitat-bg: linear-gradient(to bottom, rgba(88, 28, 135, 0.35), rgba(13, 9, 31, 0.92));
+            --meter-track: rgba(15, 11, 32, 0.85);
+            --orb-1: rgba(168, 85, 247, 0.25);
+            --orb-2: rgba(56, 189, 248, 0.2);
+        }
+
+        body {
+            font-family: 'Fredoka', cursive, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+            transition: background 0.4s ease, color 0.3s ease;
+        }
+
+        /* Glassmorphism Cards with Elevated Depth */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1.5px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .glass-card-interactive {
+            background: var(--card-interactive);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1.5px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .glass-card-interactive:hover {
+            border-color: rgba(168, 85, 247, 0.6);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 16px 40px 0 var(--accent-glow);
+        }
+
+        /* Background Glow Orbs */
+        .glow-orb-1 {
+            position: fixed;
+            top: -10%;
+            left: -10%;
+            width: 55vw;
+            height: 55vw;
+            background: radial-gradient(circle, var(--orb-1) 0%, rgba(0,0,0,0) 70%);
+            pointer-events: none;
+            z-index: 0;
+            transition: background 0.4s ease;
+        }
+
+        .glow-orb-2 {
+            position: fixed;
+            bottom: -15%;
+            right: -10%;
+            width: 60vw;
+            height: 60vw;
+            background: radial-gradient(circle, var(--orb-2) 0%, rgba(0,0,0,0) 70%);
+            pointer-events: none;
+            z-index: 0;
+            transition: background 0.4s ease;
+        }
+
+        /* Shimmer Button Effect */
+        .btn-shimmer {
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-shimmer::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(60deg, transparent, rgba(255,255,255,0.28), transparent);
+            transform: rotate(30deg);
+            transition: all 0.75s ease;
+        }
+        .btn-shimmer:hover::after {
+            left: 100%;
+        }
+
+        /* Floating Text Particle FX */
+        @keyframes floatUpFade {
+            0% { transform: translateY(0px) scale(0.85); opacity: 1; }
+            100% { transform: translateY(-85px) scale(1.2); opacity: 0; }
+        }
+        .floating-text-fx {
+            animation: floatUpFade 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            pointer-events: none;
+        }
+
+        /* Pulsing Warning Border FX */
+        @keyframes pulseWarning {
+            0%, 100% { border-color: rgba(244, 63, 94, 0.9); box-shadow: 0 0 18px rgba(244, 63, 94, 0.5); }
+            50% { border-color: rgba(244, 63, 94, 0.3); box-shadow: 0 0 6px rgba(244, 63, 94, 0.15); }
+        }
+        .status-danger-pulse {
+            animation: pulseWarning 1.8s infinite;
+        }
+
+        /* Zzz Sleeping FX */
+        @keyframes zzzFloat {
+            0% { transform: translate(0, 0) scale(0.7) rotate(-5deg); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translate(45px, -65px) scale(1.35) rotate(12deg); opacity: 0; }
+        }
+        .zzz-anim {
+            animation: zzzFloat 2.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 11, 32, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(168, 85, 247, 0.5);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(168, 85, 247, 0.8);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between relative selection:bg-purple-500 selection:text-white">
+
+    <canvas id="bgBokehCanvas" class="fixed inset-0 pointer-events-none z-0 w-full h-full"></canvas>
+    <div class="glow-orb-1"></div>
+    <div class="glow-orb-2"></div>
+
+    <!-- HANGOUT ACCOUNT GATE (driven by pet.js) — visible until a Hangout
+         account is signed in and the RTDB 3 cloud save has been merged. -->
+    <div id="petAuthGate" class="fixed inset-0 z-[100] flex items-center justify-center p-4" style="background: var(--bg-gradient);">
+        <div class="glass-card rounded-3xl w-full max-w-sm p-7 text-center space-y-5 shadow-2xl border border-purple-500/30">
+            <div class="w-16 h-16 rounded-3xl bg-gradient-to-tr from-purple-500 via-indigo-500 to-pink-500 text-white mx-auto flex items-center justify-center text-3xl shadow-xl shadow-purple-500/40 border border-white/40">
+                <i class="fa-solid fa-paw"></i>
+            </div>
+            <div>
+                <h2 id="petGateTitle" class="text-xl font-black tracking-tight">Sign in to Hangout Pet</h2>
+                <p class="text-xs opacity-60 font-bold mt-1">Use your Hangout RPW account — your pet saves to the cloud.</p>
+            </div>
+
+            <div id="petGateLoading" class="py-3">
+                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-purple-400"></i>
+                <p class="text-[11px] opacity-60 font-bold mt-2">Checking your account…</p>
+            </div>
+
+            <div id="petGatePanel" class="hidden space-y-4 text-left">
+                <button id="petGateGoogle" type="button" class="w-full flex items-center justify-center gap-2.5 bg-white/90 dark:bg-white/10 hover:bg-white dark:hover:bg-white/15 border border-purple-500/30 font-black py-3 rounded-2xl text-sm transition-all active:scale-95">
+                    <svg class="w-4 h-4 shrink-0" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>
+                    Continue with Google
+                </button>
+                <div class="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest opacity-50"><span class="h-px flex-1 bg-purple-500/30"></span>or<span class="h-px flex-1 bg-purple-500/30"></span></div>
+                <form id="petGateForm" class="space-y-3" autocomplete="on">
+                    <input id="petGateEmail" type="email" placeholder="Email address" autocomplete="email" class="w-full bg-[var(--card-interactive)] border-2 border-purple-500/30 rounded-2xl px-5 py-3.5 font-bold focus:outline-none focus:ring-4 focus:ring-purple-500/30 transition-all text-sm placeholder:opacity-40">
+                    <input id="petGatePassword" type="password" placeholder="Password" autocomplete="current-password" class="w-full bg-[var(--card-interactive)] border-2 border-purple-500/30 rounded-2xl px-5 py-3.5 font-bold focus:outline-none focus:ring-4 focus:ring-purple-500/30 transition-all text-sm placeholder:opacity-40">
+                    <button id="petGateSubmit" type="submit" class="btn-shimmer w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 text-white font-black py-3.5 rounded-2xl shadow-xl shadow-purple-600/30 transition-all active:scale-95">Sign In</button>
+                </form>
+                <p id="petGateError" class="hidden text-center text-xs font-bold text-rose-500"></p>
+                <button id="petGateToggle" type="button" class="w-full text-center text-xs font-bold text-purple-500 dark:text-purple-300 hover:underline">Need an account? Create one</button>
+                <a href="../" class="flex items-center justify-center gap-1.5 text-[11px] font-bold opacity-50 hover:opacity-100 transition"><i class="fa-solid fa-arrow-left text-[9px]"></i>Back to Hangout</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP NAVIGATION HEADER -->
+    <header class="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-3 z-20 relative">
+        <div class="glass-card rounded-3xl px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+            <!-- Pet Brand & Title Info -->
+            <div class="flex items-center space-x-4">
+                <!-- Back to Hangout (same pattern as Arena / Music) -->
+                <a href="../" class="w-12 h-12 shrink-0 rounded-2xl bg-white/10 hover:bg-purple-500/20 flex items-center justify-center transition-all border border-white/20 shadow-sm" title="Back to Hangout" aria-label="Back to Hangout">
+                    <i class="fa-solid fa-arrow-left text-base"></i>
+                </a>
+                <!-- Hangout Pet logo -->
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-500 via-indigo-500 to-pink-500 text-white flex items-center justify-center text-2xl shadow-xl shadow-purple-500/30 border border-white/40">
+                    <i class="fa-solid fa-paw animate-pulse"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-3">
+                        <h1 id="hdrPetName" class="font-extrabold text-2xl sm:text-3xl tracking-tight leading-tight">Hangout Pet</h1>
+                        <span id="hdrStageTag" class="bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 font-extrabold text-xs sm:text-sm px-3 py-1 rounded-full uppercase tracking-wider">
+                            Hatchling
+                        </span>
+                    </div>
+                    <p class="text-sm opacity-80 font-bold">Level <span id="hdrPetLevel" class="font-black text-purple-600 dark:text-purple-400 text-base">1</span> Celestial Companion</p>
+                </div>
+            </div>
+
+            <!-- Top Right Info Controls -->
+            <div class="flex items-center space-x-3">
+                <!-- Coin Display Pill -->
+                <div class="flex items-center space-x-2.5 bg-amber-500/15 border border-amber-500/30 px-4 py-2.5 rounded-2xl shadow-inner">
+                    <i class="fa-solid fa-coins text-amber-500 text-lg animate-bounce"></i>
+                    <span id="hdrCoinDisplay" class="font-black text-amber-600 dark:text-amber-300 text-base sm:text-lg tracking-wide">150</span>
+                </div>
+
+                <!-- Theme Toggle Button -->
+                <button onclick="toggleThemeMode()" id="hdrThemeBtn" class="w-12 h-12 rounded-2xl bg-white/10 hover:bg-purple-500/20 flex items-center justify-center transition-all border border-white/20 shadow-sm" title="Toggle Light / Dark Theme">
+                    <i id="hdrThemeIcon" class="fa-solid fa-moon text-purple-500 text-base"></i>
+                </button>
+
+                <!-- Audio Toggle Button -->
+                <button onclick="toggleAudio()" id="hdrSoundBtn" class="w-12 h-12 rounded-2xl bg-white/10 hover:bg-purple-500/20 flex items-center justify-center transition-all border border-white/20 shadow-sm" title="Toggle Sound">
+                    <i id="hdrSoundIcon" class="fa-solid fa-volume-high text-base"></i>
+                </button>
+
+                <!-- Co-Parenting Modal Trigger -->
+                <button onclick="window.PetPartner.open()" class="w-12 h-12 rounded-2xl bg-white/10 hover:bg-purple-500/20 flex items-center justify-center transition-all border border-white/20 shadow-sm" title="Co-Parenting">
+                    <i class="fa-solid fa-user-group text-base"></i>
+                </button>
+
+                <!-- Reset Modal Trigger -->
+                <button onclick="openModal('resetModal')" class="w-12 h-12 rounded-2xl bg-white/10 hover:bg-rose-500/20 opacity-80 hover:opacity-100 text-rose-500 flex items-center justify-center transition-all border border-white/20" title="Reset Pet">
+                    <i class="fa-solid fa-rotate-right text-base"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 z-10 relative flex-1 flex flex-col justify-center">
+
+        <!-- SETUP & ADOPTION SCREEN (Shown when pet does not exist) -->
+        <div id="setupScreen" class="glass-card rounded-3xl p-8 sm:p-10 max-w-lg mx-auto w-full text-center space-y-7 shadow-2xl my-auto border border-white/20">
+            <div class="w-28 h-28 bg-gradient-to-tr from-purple-500 via-indigo-500 to-pink-500 text-white rounded-3xl mx-auto flex items-center justify-center text-5xl shadow-2xl shadow-purple-500/40 border border-white/40">
+                <i class="fa-solid fa-egg animate-bounce"></i>
+            </div>
+            
+            <div class="space-y-2">
+                <h2 class="text-3xl font-black tracking-tight">Adopt Celestial Pet</h2>
+                <p class="text-sm opacity-80 font-bold">Name your companion and pick its initial dye color to begin!</p>
+            </div>
+
+            <!-- Pet Name Input -->
+            <div class="space-y-2 text-left">
+                <label class="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-300">Pet Name</label>
+                <input type="text" id="setupPetNameInput" maxlength="12" placeholder="e.g. Starlet" class="w-full bg-[var(--card-interactive)] border-2 border-purple-500/40 rounded-2xl px-5 py-4 font-black focus:outline-none focus:ring-4 focus:ring-purple-500/30 transition-all text-center text-xl placeholder:opacity-40">
+            </div>
+
+            <!-- Color Palette Selector -->
+            <div class="space-y-2.5 text-left">
+                <label class="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-300">Starting Color Dye</label>
+                <div class="grid grid-cols-6 gap-3" id="setupColorGrid">
+                    <button type="button" onclick="selectSetupColor('#f472b6')" class="w-12 h-12 rounded-2xl bg-pink-400 border-2 border-white/80 shadow-md hover:scale-110 transition-transform"></button>
+                    <button type="button" onclick="selectSetupColor('#06b6d4')" class="w-12 h-12 rounded-2xl bg-cyan-400 border-2 border-white/80 shadow-md hover:scale-110 transition-transform"></button>
+                    <button type="button" onclick="selectSetupColor('#a855f7')" class="w-12 h-12 rounded-2xl bg-purple-500 border-2 border-white/80 shadow-md hover:scale-110 transition-transform"></button>
+                    <button type="button" onclick="selectSetupColor('#eab308')" class="w-12 h-12 rounded-2xl bg-yellow-500 border-2 border-white/80 shadow-md hover:scale-110 transition-transform"></button>
+                    <button type="button" onclick="selectSetupColor('#10b981')" class="w-12 h-12 rounded-2xl bg-emerald-400 border-2 border-white/80 shadow-md hover:scale-110 transition-transform"></button>
+                    <button type="button" onclick="selectSetupColor('#334155')" class="w-12 h-12 rounded-2xl bg-slate-700 border-2 border-white/80 shadow-md hover:scale-110 transition-transform"></button>
+                </div>
+            </div>
+
+            <button onclick="executeHatching()" class="btn-shimmer w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-purple-600/30 transition-all transform active:scale-95 flex items-center justify-center space-x-3 text-xl">
+                <span>Hatch Companion</span>
+                <i class="fa-solid fa-sparkles text-base"></i>
+            </button>
+        </div>
+
+        <!-- ACTIVE GAMEPLAY DASHBOARD (GRID SPLIT) -->
+        <div id="gameplayDashboard" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6 my-auto">
+
+            <!-- LEFT/CENTER: Expanded Hero Pet Stage (7 Cols) -->
+            <div class="lg:col-span-7 flex flex-col space-y-4">
+
+                <!-- Habitat Stage Box -->
+                <div id="habitatStage" class="glass-card rounded-3xl p-6 sm:p-8 relative flex flex-col items-center justify-between min-h-[440px] sm:min-h-[480px] shadow-2xl overflow-hidden border border-white/20 transition-all duration-700">
+                    
+                    <!-- Atmospheric Room Overlay -->
+                    <div id="habitatAtmosphere" class="absolute inset-0 transition-colors duration-1000 pointer-events-none" style="background: var(--habitat-bg)"></div>
+
+                    <!-- Floating FX Layer -->
+                    <div id="floatingFxLayer" class="absolute inset-0 pointer-events-none z-30 flex items-center justify-center"></div>
+
+                    <!-- Level & EXP Progress Bar Header -->
+                    <div class="w-full flex items-center justify-between z-10 bg-white/15 dark:bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/20 shadow-sm">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="text-sm font-black text-purple-600 dark:text-purple-300 uppercase tracking-wider">EXP</span>
+                            <span id="expTextVal" class="text-xs sm:text-sm font-extrabold opacity-90">0 / 100</span>
+                        </div>
+                        <div class="w-44 sm:w-64 bg-[var(--meter-track)] h-4 rounded-full overflow-hidden p-0.5 border border-white/10">
+                            <div id="expBarFill" class="bg-gradient-to-r from-purple-500 via-indigo-400 to-pink-500 h-full rounded-full w-0 transition-all duration-500 shadow-[0_0_15px_rgba(168,85,247,0.7)]"></div>
+                        </div>
+                    </div>
+
+                    <!-- Zzz Sleep Visual Overlay -->
+                    <div id="sleepZzzOverlay" class="absolute top-24 z-20 pointer-events-none hidden">
+                        <span class="absolute zzz-anim text-indigo-400 font-black text-4xl">Z</span>
+                        <span class="absolute zzz-anim text-purple-400 font-black text-3xl" style="animation-delay: 0.8s;">Z</span>
+                        <span class="absolute zzz-anim text-pink-400 font-black text-2xl" style="animation-delay: 1.6s;">Z</span>
+                    </div>
+
+                    <!-- Speech Bubble -->
+                    <div id="speechBubble" class="z-20 bg-white/95 dark:bg-slate-900/90 text-slate-900 dark:text-white border-2 border-purple-400 dark:border-purple-500/50 shadow-2xl px-6 py-3 rounded-2xl text-sm sm:text-base font-extrabold text-center transition-all transform scale-100 max-w-sm mt-3 flex items-center space-x-2.5">
+                        <span id="speechEmoji" class="text-xl">✨</span>
+                        <span id="speechText">"Hello! Tap me to play and interact!"</span>
+                    </div>
+
+                    <!-- Scaled Canvas Pet Render Area -->
+                    <div class="relative flex items-center justify-center my-auto cursor-pointer z-10 py-3 group" onclick="handlePetInteraction(event)">
+                        <!-- Glowing Pedestal Shadow -->
+                        <div class="absolute bottom-2 w-64 h-12 bg-gradient-to-r from-purple-500/40 via-indigo-500/40 to-pink-500/40 rounded-full blur-lg group-hover:scale-110 transition-transform"></div>
+                        <canvas id="petCanvas" width="420" height="360" class="drop-shadow-[0_20px_30px_rgba(0,0,0,0.35)] transition-transform active:scale-95 w-full max-w-[420px] h-auto"></canvas>
+                    </div>
+
+                    <!-- Room Cleaning Floating Button -->
+                    <button id="cleanRoomBtn" onclick="cleanPetMess()" class="hidden absolute top-20 right-6 z-20 bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-white font-black text-sm px-5 py-3 rounded-2xl shadow-xl transition-all flex items-center space-x-2.5 animate-bounce border border-white/30">
+                        <i class="fa-solid fa-soap text-base"></i>
+                        <span>Clean Room!</span>
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- RIGHT: Vital Need Meters & Big Action Buttons (5 Cols) -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-4">
+
+                <!-- Chunky Status Meters Card -->
+                <div class="glass-card rounded-3xl p-6 shadow-2xl border border-white/20 space-y-4">
+                    <div class="flex items-center justify-between border-b border-white/10 pb-3.5">
+                        <h3 class="font-black text-base sm:text-lg tracking-wide flex items-center space-x-2.5">
+                            <i class="fa-solid fa-heart-pulse text-rose-500 text-xl animate-pulse"></i>
+                            <span>Vital Status</span>
+                        </h3>
+                        <span id="moodBadge" class="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 px-3.5 py-1.5 rounded-xl border border-emerald-500/30">
+                            Overjoyed ✨
+                        </span>
+                    </div>
+
+                    <div class="space-y-4">
+                        <!-- Hunger Meter -->
+                        <div id="cardHunger" class="space-y-1.5 p-2 rounded-2xl transition-all">
+                            <div class="flex justify-between text-xs sm:text-sm font-black">
+                                <span class="flex items-center space-x-2.5"><i class="fa-solid fa-apple-whole text-amber-500 text-base w-5"></i><span>Hunger</span></span>
+                                <span id="valHunger" class="text-amber-500 font-extrabold text-sm sm:text-base">80%</span>
+                            </div>
+                            <div class="w-full bg-[var(--meter-track)] h-5 sm:h-6 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
+                                <div id="barHunger" class="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500" style="width: 80%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Happiness Meter -->
+                        <div id="cardHappiness" class="space-y-1.5 p-2 rounded-2xl transition-all">
+                            <div class="flex justify-between text-xs sm:text-sm font-black">
+                                <span class="flex items-center space-x-2.5"><i class="fa-solid fa-heart text-pink-500 text-base w-5"></i><span>Happiness</span></span>
+                                <span id="valHappiness" class="text-pink-500 font-extrabold text-sm sm:text-base">85%</span>
+                            </div>
+                            <div class="w-full bg-[var(--meter-track)] h-5 sm:h-6 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
+                                <div id="barHappiness" class="bg-gradient-to-r from-pink-500 to-rose-400 h-full rounded-full transition-all duration-500" style="width: 85%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Energy Meter -->
+                        <div id="cardEnergy" class="space-y-1.5 p-2 rounded-2xl transition-all">
+                            <div class="flex justify-between text-xs sm:text-sm font-black">
+                                <span class="flex items-center space-x-2.5"><i class="fa-solid fa-bolt text-cyan-500 text-base w-5"></i><span>Energy</span></span>
+                                <span id="valEnergy" class="text-cyan-500 font-extrabold text-sm sm:text-base">90%</span>
+                            </div>
+                            <div class="w-full bg-[var(--meter-track)] h-5 sm:h-6 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
+                                <div id="barEnergy" class="bg-gradient-to-r from-cyan-500 to-blue-400 h-full rounded-full transition-all duration-500" style="width: 90%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Hygiene Meter -->
+                        <div id="cardHygiene" class="space-y-1.5 p-2 rounded-2xl transition-all">
+                            <div class="flex justify-between text-xs sm:text-sm font-black">
+                                <span class="flex items-center space-x-2.5"><i class="fa-solid fa-pump-soap text-teal-500 text-base w-5"></i><span>Hygiene</span></span>
+                                <span id="valHygiene" class="text-teal-500 font-extrabold text-sm sm:text-base">95%</span>
+                            </div>
+                            <div class="w-full bg-[var(--meter-track)] h-5 sm:h-6 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
+                                <div id="barHygiene" class="bg-gradient-to-r from-teal-500 to-emerald-400 h-full rounded-full transition-all duration-500" style="width: 95%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Big Tactile Care Action Grid -->
+                <div class="glass-card rounded-3xl p-5 shadow-2xl border border-white/20">
+                    <div class="grid grid-cols-3 gap-3">
+                        <!-- Feed -->
+                        <button onclick="openModal('feedModal')" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-amber-600 dark:text-amber-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-amber-500/30">
+                            <i class="fa-solid fa-utensils text-2xl sm:text-3xl text-amber-500"></i>
+                            <span class="text-xs sm:text-sm font-black">Feed</span>
+                        </button>
+
+                        <!-- Pet -->
+                        <button onclick="handlePlayAction()" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-pink-600 dark:text-pink-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-pink-500/30">
+                            <i class="fa-solid fa-hand-holding-heart text-2xl sm:text-3xl text-pink-500"></i>
+                            <span class="text-xs sm:text-sm font-black">Pet</span>
+                        </button>
+
+                        <!-- Bathe -->
+                        <button onclick="executeBathing()" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-teal-600 dark:text-teal-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-teal-500/30">
+                            <i class="fa-solid fa-shower text-2xl sm:text-3xl text-teal-500"></i>
+                            <span class="text-xs sm:text-sm font-black">Bathe</span>
+                        </button>
+
+                        <!-- Sleep -->
+                        <button onclick="toggleSleepMode()" id="btnSleepAction" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-indigo-600 dark:text-indigo-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-indigo-500/30">
+                            <i id="iconSleepBtn" class="fa-solid fa-moon text-2xl sm:text-3xl text-indigo-500"></i>
+                            <span id="textSleepBtn" class="text-xs sm:text-sm font-black">Sleep</span>
+                        </button>
+
+                        <!-- Arcade -->
+                        <button onclick="startArcadeMinigame()" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-purple-600 dark:text-purple-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-purple-500/30">
+                            <i class="fa-solid fa-gamepad text-2xl sm:text-3xl text-purple-500"></i>
+                            <span class="text-xs sm:text-sm font-black">Arcade</span>
+                        </button>
+
+                        <!-- Wardrobe -->
+                        <button onclick="openModal('shopModal')" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-cyan-600 dark:text-cyan-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-cyan-500/30">
+                            <i class="fa-solid fa-shirt text-2xl sm:text-3xl text-cyan-500"></i>
+                            <span class="text-xs sm:text-sm font-black">Wardrobe</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- FOOD FEEDING DRAWER MODAL -->
+    <div id="feedModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-white/30 space-y-6">
+            <div class="flex justify-between items-center border-b border-white/10 pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center text-2xl border border-amber-500/30">
+                        <i class="fa-solid fa-apple-whole"></i>
+                    </div>
+                    <h3 class="font-black text-xl">Feed Companion</h3>
+                </div>
+                <button onclick="closeModal('feedModal')" class="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div id="foodInventoryList" class="grid grid-cols-1 gap-3 max-h-80 overflow-y-auto pr-1">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- WARDROBE & SHOP MODAL -->
+    <div id="shopModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-white/30 space-y-6">
+            <div class="flex justify-between items-center border-b border-white/10 pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-500 flex items-center justify-center text-2xl border border-purple-500/30">
+                        <i class="fa-solid fa-store"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-xl">Emporium & Wardrobe</h3>
+                        <p class="text-xs opacity-80 font-bold">Customize dyes, hats & accessories</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('shopModal')" class="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Tabs Navigation -->
+            <div class="flex border-b border-white/10 pb-3 space-x-2">
+                <button onclick="switchShopTab('food')" id="tabBtnFood" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all">Food Shop</button>
+                <button onclick="switchShopTab('accessories')" id="tabBtnAcc" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all">Hats & Glasses</button>
+                <button onclick="switchShopTab('dyes')" id="tabBtnDye" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all">Color Dyes</button>
+            </div>
+
+            <div id="shopContentGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-80 overflow-y-auto pr-1">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ENLARGED STAR CATCHER ARCADE MINIGAME MODAL -->
+    <div id="minigameModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col items-center space-y-5 border border-white/20">
+            <div class="w-full flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <i class="fa-solid fa-star text-amber-400 text-2xl animate-spin"></i>
+                    <h3 class="font-black text-xl">Star Catcher Arcade</h3>
+                </div>
+                <div class="text-sm font-bold opacity-80">Time: <span id="arcadeTimer" class="text-amber-500 font-mono text-lg font-black">20</span>s</div>
+            </div>
+
+            <!-- Scaled Arcade Canvas -->
+            <div class="relative w-full rounded-2xl overflow-hidden bg-gradient-to-b from-slate-900 to-indigo-950 border border-purple-500/40 shadow-inner">
+                <canvas id="arcadeCanvas" width="480" height="340" class="w-full h-[320px] touch-none cursor-crosshair"></canvas>
+            </div>
+
+            <div class="w-full flex justify-between items-center text-sm font-black">
+                <span>Stars Caught: <span id="arcadeScore" class="text-emerald-400 font-mono text-xl">0</span></span>
+                <button onclick="endArcadeMinigame(true)" class="bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 border border-rose-500/40 px-5 py-2 rounded-xl text-xs font-black">Exit Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EVOLUTION CELEBRATION MODAL -->
+    <div id="evolutionModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl space-y-6 relative overflow-hidden border border-purple-500/50">
+            <canvas id="confettiCanvas" class="absolute inset-0 pointer-events-none z-0"></canvas>
+
+            <div class="relative z-10 space-y-3">
+                <div class="w-24 h-24 bg-gradient-to-tr from-amber-400 via-pink-500 to-purple-600 text-white rounded-3xl mx-auto flex items-center justify-center text-4xl shadow-2xl shadow-purple-500/50 animate-bounce border border-white/40">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </div>
+                <h3 class="font-black text-3xl text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-pink-500 to-purple-500 tracking-tight">EVOLUTION!</h3>
+                <p class="text-sm opacity-90 font-bold leading-relaxed" id="evolutionModalDesc">Your pet has evolved!</p>
+            </div>
+
+            <button onclick="closeModal('evolutionModal')" class="btn-shimmer relative z-10 w-full bg-gradient-to-r from-amber-400 to-pink-500 hover:from-amber-500 hover:to-pink-600 text-slate-900 font-black py-4 rounded-2xl shadow-xl shadow-amber-500/20 transition-all text-base">
+                Magnificent! ✨
+            </button>
+        </div>
+    </div>
+
+    <!-- CO-PARENTING MODAL -->
+    <div id="partnerModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-md w-full p-6 shadow-2xl border border-purple-500/30 space-y-5">
+            <div class="flex justify-between items-center border-b border-white/10 pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-500 flex items-center justify-center text-2xl border border-purple-500/30">
+                        <i class="fa-solid fa-user-group"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-xl">Co-Parenting</h3>
+                        <p class="text-xs opacity-80 font-bold">Raise your Hangout Pet together</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('partnerModal')" class="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Current status (filled by pet.js) -->
+            <div class="text-center space-y-1.5">
+                <p id="partnerStatusName" class="font-black text-base">Raising alone</p>
+                <p id="partnerStatusHint" class="text-xs opacity-70 font-bold">Invite a partner to co-raise this pet — it shows on both accounts.</p>
+            </div>
+
+            <!-- Owner section: invite a partner -->
+            <div id="partnerOwnerBox" class="hidden space-y-3">
+                <button id="btnGenInvite" type="button" class="btn-shimmer w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 text-white font-black py-3 rounded-2xl shadow-lg shadow-purple-600/30 transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-link"></i> <span>Generate Invite Code</span>
+                </button>
+                <div id="inviteCodeRow" class="hidden items-center justify-between gap-3 bg-white/10 border border-purple-500/30 rounded-2xl px-4 py-3">
+                    <code id="inviteCodeText" class="font-mono font-black text-lg tracking-[0.3em] text-purple-600 dark:text-purple-300 select-all"></code>
+                    <button id="btnCopyInvite" type="button" class="text-xs font-black bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl transition">Copy</button>
+                </div>
+                <p class="text-[11px] opacity-60 font-bold text-center">Single-use code — share it with your partner, they enter it below.</p>
+            </div>
+
+            <!-- Join section: enter a partner's code -->
+            <div id="partnerJoinBox" class="space-y-3">
+                <div class="flex gap-2">
+                    <input id="inviteInput" type="text" maxlength="6" placeholder="Enter code" class="flex-1 bg-[var(--card-interactive)] border-2 border-purple-500/30 rounded-2xl px-4 py-3 font-mono font-black text-center uppercase tracking-[0.2em] focus:outline-none focus:ring-4 focus:ring-purple-500/30 transition-all text-sm placeholder:opacity-40 placeholder:tracking-normal placeholder:font-bold">
+                    <button id="btnJoinInvite" type="button" class="bg-purple-600 hover:bg-purple-500 text-white font-black px-5 py-3 rounded-2xl text-sm transition-all active:scale-95">Join</button>
+                </div>
+                <p id="partnerError" class="hidden text-center text-xs font-bold text-rose-500"></p>
+            </div>
+
+            <!-- Linked section: unlink -->
+            <div id="partnerLinkedBox" class="hidden">
+                <button id="btnUnlink" type="button" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-sm transition-all active:scale-95">
+                    <i class="fa-solid fa-link-slash mr-1.5"></i> <span id="btnUnlinkLabel">Leave Co-Parenting</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESET CONFIRMATION MODAL -->
+    <div id="resetModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-sm w-full p-7 shadow-2xl border border-rose-500/40 text-center space-y-5">
+            <div class="w-14 h-14 bg-rose-500/20 text-rose-500 rounded-2xl mx-auto flex items-center justify-center text-2xl border border-rose-500/40">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="space-y-1.5">
+                <h3 class="font-black text-xl">Reset Hangout Pet?</h3>
+                <p class="text-xs opacity-80 font-bold">All stats, levels, coins, and accessories will be permanently deleted!</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="closeModal('resetModal')" class="bg-white/10 hover:bg-white/20 font-black py-3 rounded-xl text-xs">Cancel</button>
+                <button onclick="executeResetAll()" class="bg-rose-600 hover:bg-rose-700 text-white font-black py-3 rounded-xl text-xs shadow-lg shadow-rose-600/30">Reset All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastNotification" class="fixed bottom-6 right-6 glass-card px-5 py-3.5 rounded-2xl shadow-2xl z-50 transform translate-y-28 opacity-0 transition-all duration-300 flex items-center space-x-3 text-sm font-black border border-white/30 backdrop-blur-md">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-500 text-base"></i>
+        <span id="toastMessage">Notification message</span>
+    </div>
+
+    <script>
+        /* SYNTHETIC PROCEDURAL AUDIO ENGINE (Web Audio API) */
+        let audioCtx = null;
+        let soundEnabled = localStorage.getItem('petSound') !== '0';   // persisted across visits
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function toggleAudio() {
+            soundEnabled = !soundEnabled;
+            localStorage.setItem('petSound', soundEnabled ? '1' : '0');
+            const icon = document.getElementById('hdrSoundIcon');
+            icon.className = soundEnabled ? "fa-solid fa-volume-high text-base" : "fa-solid fa-volume-xmark text-base text-rose-500";
+            showToast(soundEnabled ? "Audio Effects Enabled" : "Audio Muted", "info");
+        }
+
+        function playSynthSfx(type) {
+            if (!soundEnabled) return;
+            initAudio();
+            if (!audioCtx) return;
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'tap') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(820, now + 0.09);
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.09);
+            } 
+            else if (type === 'feed') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(580, now + 0.14);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.14);
+            }
+            else if (type === 'coin') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(987.77, now);
+                osc.frequency.setValueAtTime(1318.51, now + 0.07);
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.22);
+            }
+            else if (type === 'clean') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.linearRampToValueAtTime(950, now + 0.16);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.16);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.16);
+            }
+            else if (type === 'levelup') {
+                const arpeggio = [523.25, 659.25, 783.99, 1046.50];
+                arpeggio.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.09);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.09 + 0.25);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.09);
+                    osc.stop(now + idx * 0.09 + 0.25);
+                });
+            }
+        }
+
+        let petState = {
+            petName: "",
+            level: 1,
+            xp: 0,
+            maxXp: 100,
+            coins: 150,
+            hunger: 80,
+            happiness: 85,
+            energy: 90,
+            hygiene: 95,
+            isSleeping: false,
+            hasMess: false,
+            bodyColor: "#a855f7",
+            equippedHat: "none",
+            equippedGlasses: "none",
+            theme: "dark",
+            lastSaved: Date.now(),
+            inventory: { apple: 3, cookie: 2 }
+        };
+        // Snapshot of the untouched defaults + whether a localStorage save was
+        // found — both used by the pet.js cloud merge (see window.__petMergeCloud).
+        const defaultPetState = { ...petState };
+        let hadLocalSave = false;
+
+        const foodsCatalog = [
+            { id: 'apple', name: 'Crunchy Apple', icon: '🍎', hunger: 25, happiness: 5, cost: 12 },
+            { id: 'cookie', name: 'Sweet Cookie', icon: '🍪', hunger: 35, happiness: 15, cost: 20 },
+            { id: 'pizza', name: 'Cheesy Pizza', icon: '🍕', hunger: 60, happiness: 20, cost: 45 },
+            { id: 'cake', name: 'Cosmic Cake', icon: '🎂', hunger: 90, happiness: 40, cost: 85 }
+        ];
+
+        const accessoriesCatalog = [
+            { id: 'none', name: 'None', type: 'hat', icon: '❌', cost: 0 },
+            { id: 'party', name: 'Party Hat', type: 'hat', icon: '🎉', cost: 50 },
+            { id: 'tophat', name: 'Top Hat', type: 'hat', icon: '🎩', cost: 100 },
+            { id: 'crown', name: 'Royal Crown', type: 'hat', icon: '👑', cost: 200 },
+            { id: 'glasses_none', name: 'None', type: 'glasses', icon: '❌', cost: 0 },
+            { id: 'sunglasses', name: 'Cool Shades', type: 'glasses', icon: '🕶️', cost: 80 },
+            { id: 'bowtie', name: 'Red Bowtie', type: 'glasses', icon: '🎀', cost: 60 }
+        ];
+
+        const dyesCatalog = [
+            { color: '#f472b6', name: 'Sakura Pink', cost: 30 },
+            { color: '#06b6d4', name: 'Cyber Cyan', cost: 30 },
+            { color: '#a855f7', name: 'Amethyst Purple', cost: 30 },
+            { color: '#eab308', name: 'Golden Glow', cost: 30 },
+            { color: '#10b981', name: 'Minty Green', cost: 30 },
+            { color: '#334155', name: 'Cosmic Black', cost: 30 }
+        ];
+
+        let setupSelectedColor = '#a855f7';
+
+        function toggleThemeMode() {
+            petState.theme = petState.theme === 'dark' ? 'light' : 'dark';
+            applyTheme(petState.theme);
+            saveGameToStorage();
+            showToast(`Switched to ${petState.theme === 'dark' ? 'Dark' : 'Light'} Theme`, "info");
+        }
+
+        function applyTheme(themeMode) {
+            const html = document.documentElement;
+            const icon = document.getElementById('hdrThemeIcon');
+            if (themeMode === 'light') {
+                html.classList.remove('dark');
+                icon.className = "fa-solid fa-sun text-amber-500 text-base";
+            } else {
+                html.classList.add('dark');
+                icon.className = "fa-solid fa-moon text-purple-400 text-base";
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadGameFromStorage();
+            applyTheme(petState.theme || 'dark');
+            initBokehBackground();
+            initPetCanvas();
+            // pet.js owns the account gate: boot only after sign-in + cloud merge.
+            // If pet.js never loads, the gate stays up — no play without auth.
+            if (window.PetCloud && window.PetCloud.waitForGate) {
+                window.PetCloud.waitForGate().then(() => {
+                    if (!petState.petName) return;   // fresh account → adoption screen stays
+                    document.getElementById('setupScreen').classList.add('hidden');
+                    document.getElementById('gameplayDashboard').classList.remove('hidden');
+                    updateUIState();
+                    startSimulationTick();
+                });
+            }
+        });
+
+        // ── Scroll smoothness ──────────────────────────────────────────────
+        // Both canvas loops (full-screen bokeh + pet renderer) repaint behind
+        // cards that use backdrop-filter, forcing an expensive re-blur every
+        // frame — worst while scrolling. Freeze the FX during a scroll and
+        // throttle bokeh to ~30fps (slow drift — visually identical).
+        let isScrollingFX = false;
+        let scrollFxTimer = 0;
+        window.addEventListener('scroll', () => {
+            isScrollingFX = true;
+            clearTimeout(scrollFxTimer);
+            scrollFxTimer = setTimeout(() => { isScrollingFX = false; }, 160);
+        }, { passive: true });
+
+        function initBokehBackground() {
+            const canvas = document.getElementById('bgBokehCanvas');
+            const ctx = canvas.getContext('2d');
+            let particles = [];
+
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            for (let i = 0; i < 40; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    radius: Math.random() * 4 + 1.5,
+                    alpha: Math.random() * 0.4 + 0.1,
+                    speedY: Math.random() * 0.45 + 0.12
+                });
+            }
+
+            let lastBokehFrame = 0;
+            function animateBokeh(timestamp) {
+                requestAnimationFrame(animateBokeh);
+                if (isScrollingFX) return;                        // free the thread while scrolling
+                if (timestamp - lastBokehFrame < 33) return;      // ~30fps cap
+                lastBokehFrame = timestamp;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particles.forEach(p => {
+                    p.y -= p.speedY;
+                    if (p.y < 0) p.y = canvas.height;
+                    ctx.fillStyle = petState.theme === 'light' ? `rgba(168, 85, 247, ${p.alpha * 0.7})` : `rgba(168, 85, 247, ${p.alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+            requestAnimationFrame(animateBokeh);
+        }
+
+        let petCanvas, petCtx;
+
+        function initPetCanvas() {
+            petCanvas = document.getElementById('petCanvas');
+            petCtx = petCanvas.getContext('2d');
+            requestAnimationFrame(renderPetLoop);
+        }
+
+        function getEvolutionStage() {
+            if (petState.level >= 15) return 4; // Celestial Mythic
+            if (petState.level >= 10) return 3; // Adult Companion
+            if (petState.level >= 5) return 2;  // Juvenile
+            return 1;                           // Hatchling
+        }
+
+        function getEvolutionTitle() {
+            const stage = getEvolutionStage();
+            if (stage === 4) return "Celestial Mythic";
+            if (stage === 3) return "Adult Companion";
+            if (stage === 2) return "Juvenile";
+            return "Hatchling";
+        }
+
+        function renderPetLoop(timestamp) {
+            requestAnimationFrame(renderPetLoop);
+            if (!petCtx) return;
+            if (isScrollingFX) return;   // pause pet FX during scroll — resumes 160ms after
+            petCtx.clearRect(0, 0, petCanvas.width, petCanvas.height);
+
+            const stage = getEvolutionStage();
+            const time = timestamp * 0.003;
+            const centerX = petCanvas.width / 2;
+            const centerY = petCanvas.height / 2 + 15;
+
+            const floatY = Math.sin(time * 2) * (stage >= 3 ? 12 : 7);
+            const breatheScale = 1 + Math.sin(time * 3) * 0.035;
+
+            petCtx.save();
+            petCtx.translate(centerX, centerY + floatY);
+
+            // STAGE 4: Celestial Cosmic Halo & Orbiting Particles
+            if (stage === 4) {
+                const auraGradient = petCtx.createRadialGradient(0, 0, 30, 0, 0, 150);
+                auraGradient.addColorStop(0, 'rgba(234, 179, 8, 0.4)');
+                auraGradient.addColorStop(0.6, 'rgba(168, 85, 247, 0.25)');
+                auraGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                petCtx.fillStyle = auraGradient;
+                petCtx.beginPath();
+                petCtx.arc(0, 0, 150, 0, Math.PI * 2);
+                petCtx.fill();
+
+                // Orbiting Stars
+                for (let i = 0; i < 3; i++) {
+                    const angle = time * 2.2 + (i * Math.PI * 2 / 3);
+                    const orbX = Math.cos(angle) * 115;
+                    const orbY = Math.sin(angle) * 45;
+                    petCtx.fillStyle = '#fef08a';
+                    petCtx.beginPath();
+                    petCtx.arc(orbX, orbY, 7, 0, Math.PI * 2);
+                    petCtx.fill();
+                }
+
+                // Hovering Halo
+                petCtx.strokeStyle = '#eab308';
+                petCtx.lineWidth = 6;
+                petCtx.beginPath();
+                petCtx.ellipse(0, -130, 50, 14, 0, 0, Math.PI * 2);
+                petCtx.stroke();
+            }
+
+            // STAGE 3 & 4: Animated Wings
+            if (stage >= 3) {
+                const wingFlap = Math.sin(time * 4) * 0.22;
+                petCtx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+                
+                // Left Wing
+                petCtx.save();
+                petCtx.translate(-55, -15);
+                petCtx.rotate(-0.35 + wingFlap);
+                petCtx.beginPath();
+                petCtx.ellipse(-35, -20, 50, 24, -0.4, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.restore();
+
+                // Right Wing
+                petCtx.save();
+                petCtx.translate(55, -15);
+                petCtx.rotate(0.35 - wingFlap);
+                petCtx.beginPath();
+                petCtx.ellipse(35, -20, 50, 24, 0.4, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.restore();
+            }
+
+            // STAGE 2+: Tail
+            if (stage >= 2) {
+                const tailWag = Math.sin(time * 5) * 0.28;
+                petCtx.save();
+                petCtx.translate(50, 35);
+                petCtx.rotate(tailWag);
+                petCtx.fillStyle = petState.bodyColor;
+                petCtx.beginPath();
+                petCtx.arc(24, -8, 20, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.restore();
+            }
+
+            // MAIN PET BODY (SCALED UP)
+            petCtx.scale(breatheScale, breatheScale);
+            petCtx.fillStyle = petState.bodyColor;
+
+            let bodyRadius = 60;
+            if (stage === 2) bodyRadius = 75;
+            if (stage >= 3) bodyRadius = 90;
+
+            petCtx.beginPath();
+            petCtx.arc(0, 0, bodyRadius, 0, Math.PI * 2);
+            petCtx.fill();
+
+            // STAGE 1: Sprout Antenna
+            if (stage === 1) {
+                petCtx.fillStyle = '#4ade80';
+                petCtx.beginPath();
+                petCtx.ellipse(-12, -bodyRadius - 12, 14, 7, -0.4, 0, Math.PI * 2);
+                petCtx.ellipse(12, -bodyRadius - 12, 14, 7, 0.4, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.strokeStyle = '#22c55e';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.moveTo(0, -bodyRadius);
+                petCtx.lineTo(0, -bodyRadius - 14);
+                petCtx.stroke();
+            }
+
+            // STAGE 2+: Floppy Ears
+            if (stage >= 2) {
+                const earTwitch = Math.sin(time * 3) * 0.12;
+                petCtx.fillStyle = petState.bodyColor;
+                
+                // Left Ear
+                petCtx.save();
+                petCtx.translate(-bodyRadius * 0.7, -bodyRadius * 0.7);
+                petCtx.rotate(-0.3 + earTwitch);
+                petCtx.beginPath();
+                petCtx.ellipse(0, 0, 22, 42, -0.2, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.restore();
+
+                // Right Ear
+                petCtx.save();
+                petCtx.translate(bodyRadius * 0.7, -bodyRadius * 0.7);
+                petCtx.rotate(0.3 - earTwitch);
+                petCtx.beginPath();
+                petCtx.ellipse(0, 0, 22, 42, 0.2, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.restore();
+            }
+
+            // EXPRESSIVE EYES (SCALED UP)
+            const isBlinking = (Math.floor(time * 1.5) % 8 === 0);
+
+            if (petState.isSleeping) {
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 5;
+                petCtx.beginPath();
+                petCtx.arc(-24, -8, 14, 0.1, Math.PI - 0.1);
+                petCtx.stroke();
+                petCtx.beginPath();
+                petCtx.arc(24, -8, 14, 0.1, Math.PI - 0.1);
+                petCtx.stroke();
+            } else if (isBlinking) {
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 5;
+                petCtx.beginPath();
+                petCtx.moveTo(-38, -8); petCtx.lineTo(-10, -8);
+                petCtx.moveTo(10, -8); petCtx.lineTo(38, -8);
+                petCtx.stroke();
+            } else {
+                // Glossy Big Eyes
+                petCtx.fillStyle = '#0f172a';
+                petCtx.beginPath();
+                petCtx.arc(-24, -12, 15, 0, Math.PI * 2);
+                petCtx.arc(24, -12, 15, 0, Math.PI * 2);
+                petCtx.fill();
+
+                // Eye Highlights
+                petCtx.fillStyle = '#ffffff';
+                petCtx.beginPath();
+                petCtx.arc(-20, -17, 6, 0, Math.PI * 2);
+                petCtx.arc(28, -17, 6, 0, Math.PI * 2);
+                petCtx.fill();
+            }
+
+            // CHEEKS
+            petCtx.fillStyle = 'rgba(244, 114, 182, 0.7)';
+            petCtx.beginPath();
+            petCtx.arc(-34, 12, 12, 0, Math.PI * 2);
+            petCtx.arc(34, 12, 12, 0, Math.PI * 2);
+            petCtx.fill();
+
+            // MOUTH
+            if (!petState.isSleeping) {
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.arc(0, 14, 11, 0.2, Math.PI - 0.2);
+                petCtx.stroke();
+            }
+
+            // ACCESSORIES RENDERING
+            if (petState.equippedHat === 'party') {
+                petCtx.fillStyle = '#f43f5e';
+                petCtx.beginPath();
+                petCtx.moveTo(0, -bodyRadius - 50);
+                petCtx.lineTo(-25, -bodyRadius + 8);
+                petCtx.lineTo(25, -bodyRadius + 8);
+                petCtx.closePath();
+                petCtx.fill();
+            } else if (petState.equippedHat === 'tophat') {
+                petCtx.fillStyle = '#0f172a';
+                petCtx.fillRect(-30, -bodyRadius - 42, 60, 42);
+                petCtx.fillRect(-44, -bodyRadius, 88, 12);
+            } else if (petState.equippedHat === 'crown') {
+                petCtx.fillStyle = '#eab308';
+                petCtx.beginPath();
+                petCtx.moveTo(-28, -bodyRadius);
+                petCtx.lineTo(-35, -bodyRadius - 35);
+                petCtx.lineTo(-14, -bodyRadius - 18);
+                petCtx.lineTo(0, -bodyRadius - 42);
+                petCtx.lineTo(14, -bodyRadius - 18);
+                petCtx.lineTo(35, -bodyRadius - 35);
+                petCtx.lineTo(28, -bodyRadius);
+                petCtx.closePath();
+                petCtx.fill();
+            }
+
+            if (petState.equippedGlasses === 'sunglasses') {
+                petCtx.fillStyle = '#0f172a';
+                petCtx.fillRect(-42, -22, 36, 22);
+                petCtx.fillRect(6, -22, 36, 22);
+                petCtx.strokeStyle = '#0f172a';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath(); petCtx.moveTo(-6, -14); petCtx.lineTo(6, -14); petCtx.stroke();
+            } else if (petState.equippedGlasses === 'bowtie') {
+                petCtx.fillStyle = '#ef4444';
+                petCtx.beginPath();
+                petCtx.moveTo(0, bodyRadius - 12);
+                petCtx.lineTo(-24, bodyRadius - 28);
+                petCtx.lineTo(-24, bodyRadius + 4);
+                petCtx.lineTo(0, bodyRadius - 12);
+                petCtx.lineTo(24, bodyRadius - 28);
+                petCtx.lineTo(24, bodyRadius + 4);
+                petCtx.closePath();
+                petCtx.fill();
+            }
+
+            petCtx.restore();
+        }
+
+        let simStarted = false;
+        function startSimulationTick() {
+            if (simStarted) return;   // never run two intervals (boot + hatch)
+            simStarted = true;
+            setInterval(() => {
+                if (!petState.petName) return;
+
+                if (petState.isSleeping) {
+                    petState.energy = Math.min(100, petState.energy + 3.8);
+                    petState.hunger = Math.max(0, petState.hunger - 0.2);
+                    if (petState.energy >= 100) {
+                        toggleSleepMode();
+                        showToast(`${petState.petName} woke up refreshed! ☀️`, "success");
+                    }
+                } else {
+                    petState.hunger = Math.max(0, petState.hunger - 0.28);
+                    petState.happiness = Math.max(0, petState.happiness - 0.22);
+                    petState.energy = Math.max(0, petState.energy - 0.16);
+                    petState.hygiene = Math.max(0, petState.hygiene - 0.14);
+
+                    if (petState.hygiene < 40 && !petState.hasMess && Math.random() < 0.14) {
+                        petState.hasMess = true;
+                        showToast(`${petState.petName}'s room got dirty! 🧼`, "warning");
+                    }
+                }
+
+                updateUIState();
+                saveGameToStorage();
+            }, 2500);
+        }
+
+        function selectSetupColor(hex) {
+            setupSelectedColor = hex;
+            showToast("Color selected!", "info");
+        }
+
+        function executeHatching() {
+            const nameInput = document.getElementById('setupPetNameInput').value.trim();
+            if (!nameInput) {
+                showToast("Please enter a pet name!", "warning");
+                return;
+            }
+
+            petState.petName = nameInput;
+            petState.bodyColor = setupSelectedColor;
+            petState.level = 1;
+            petState.xp = 0;
+            petState.maxXp = 100;
+            petState.coins = 150;
+            petState.hunger = 80;
+            petState.happiness = 85;
+            petState.energy = 90;
+            petState.hygiene = 95;
+            petState.isSleeping = false;
+            petState.hasMess = false;
+            petState.equippedHat = "none";
+            petState.equippedGlasses = "none";
+
+            saveGameToStorage();
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('gameplayDashboard').classList.remove('hidden');
+            updateUIState();
+            startSimulationTick();
+            playSynthSfx('levelup');
+            showToast(`Hatched ${petState.petName}! 🎉`, "success");
+        }
+
+        function updateUIState() {
+            if (!petState.petName) return;
+
+            document.getElementById('hdrPetName').innerText = petState.petName;
+            document.getElementById('hdrPetLevel').innerText = petState.level;
+            document.getElementById('hdrStageTag').innerText = getEvolutionTitle();
+            document.getElementById('hdrCoinDisplay').innerText = Math.floor(petState.coins);
+
+            // EXP Progress
+            document.getElementById('expTextVal').innerText = `${Math.floor(petState.xp)} / ${petState.maxXp}`;
+            const xpPct = (petState.xp / petState.maxXp) * 100;
+            document.getElementById('expBarFill').style.width = `${Math.min(100, xpPct)}%`;
+
+            // Need Meters
+            updateNeedMeter('Hunger', petState.hunger, 'cardHunger');
+            updateNeedMeter('Happiness', petState.happiness, 'cardHappiness');
+            updateNeedMeter('Energy', petState.energy, 'cardEnergy');
+            updateNeedMeter('Hygiene', petState.hygiene, 'cardHygiene');
+
+            // Sleep FX UI Sync
+            const atmosphere = document.getElementById('habitatAtmosphere');
+            const sleepZzz = document.getElementById('sleepZzzOverlay');
+            const sleepText = document.getElementById('textSleepBtn');
+            const sleepIcon = document.getElementById('iconSleepBtn');
+
+            if (petState.isSleeping) {
+                atmosphere.style.background = petState.theme === 'light' ? "linear-gradient(to bottom, #1e1b4b, #312e81)" : "linear-gradient(to bottom, #070511, #0c091f)";
+                sleepZzz.classList.remove('hidden');
+                sleepText.innerText = "Wake Up";
+                sleepIcon.className = "fa-solid fa-sun text-2xl sm:text-3xl text-amber-400";
+                document.getElementById('speechEmoji').innerText = "💤";
+                document.getElementById('speechText').innerText = `Zzz... ${petState.petName} is sleeping soundly.`;
+            } else {
+                atmosphere.style.background = "var(--habitat-bg)";
+                sleepZzz.classList.add('hidden');
+                sleepText.innerText = "Sleep";
+                sleepIcon.className = "fa-solid fa-moon text-2xl sm:text-3xl text-indigo-500";
+
+                const avgState = (petState.hunger + petState.happiness + petState.energy + petState.hygiene) / 4;
+                const badge = document.getElementById('moodBadge');
+
+                if (avgState > 75) {
+                    badge.innerText = "Overjoyed ✨";
+                    badge.className = "text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 px-3.5 py-1.5 rounded-xl border border-emerald-500/30";
+                    document.getElementById('speechEmoji').innerText = "💖";
+                    document.getElementById('speechText').innerText = `${petState.petName} is having the best day!`;
+                } else if (avgState > 40) {
+                    badge.innerText = "Content 🙂";
+                    badge.className = "text-xs sm:text-sm font-black text-sky-600 dark:text-sky-400 bg-sky-500/15 px-3.5 py-1.5 rounded-xl border border-sky-500/30";
+                    document.getElementById('speechEmoji').innerText = "😊";
+                    document.getElementById('speechText').innerText = `${petState.petName} is feeling cozy and cared for.`;
+                } else {
+                    badge.innerText = "Needy 🥺";
+                    badge.className = "text-xs sm:text-sm font-black text-rose-600 dark:text-rose-400 bg-rose-500/15 px-3.5 py-1.5 rounded-xl border border-rose-500/30";
+                    document.getElementById('speechEmoji').innerText = "😢";
+                    document.getElementById('speechText').innerText = `${petState.petName} needs some food and attention!`;
+                }
+            }
+
+            // Room Mess Clean Button
+            const cleanBtn = document.getElementById('cleanRoomBtn');
+            if (petState.hasMess) cleanBtn.classList.remove('hidden');
+            else cleanBtn.classList.add('hidden');
+        }
+
+        function updateNeedMeter(id, val, cardId) {
+            const vEl = document.getElementById(`val${id}`);
+            const bEl = document.getElementById(`bar${id}`);
+            const cardEl = document.getElementById(cardId);
+            const rounded = Math.round(val);
+
+            vEl.innerText = `${rounded}%`;
+            bEl.style.width = `${rounded}%`;
+
+            if (rounded < 20) {
+                cardEl.classList.add('status-danger-pulse');
+            } else {
+                cardEl.classList.remove('status-danger-pulse');
+            }
+        }
+
+        function grantXp(amount) {
+            const prevStage = getEvolutionStage();
+            petState.xp += amount;
+            if (petState.xp >= petState.maxXp) {
+                petState.level++;
+                petState.xp -= petState.maxXp;
+                petState.maxXp = Math.floor(petState.maxXp * 1.25);
+                playSynthSfx('levelup');
+                showToast(`Level Up! ${petState.petName} reached Level ${petState.level}! 🎉`, "success");
+
+                const newStage = getEvolutionStage();
+                if (newStage > prevStage) {
+                    triggerEvolutionModal(newStage);
+                }
+            }
+        }
+
+        function triggerEvolutionModal(stageNum) {
+            const modal = document.getElementById('evolutionModal');
+            const desc = document.getElementById('evolutionModalDesc');
+            desc.innerText = `${petState.petName} evolved into a ${getEvolutionTitle()}! New attributes unlocked!`;
+            modal.classList.remove('hidden');
+            launchConfettiFX();
+        }
+
+        let arcadeCanvas, arcadeCtx;
+        let arcadeLoopId = null;
+        let arcadeTimer = 20;
+        let arcadeTimerInterval = null;
+        let arcadeScore = 0;
+        let playerBasketX = 240;
+        let fallingItems = [];
+
+        function startArcadeMinigame() {
+            if (petState.isSleeping) {
+                showToast("Wake up your pet first!", "warning");
+                return;
+            }
+
+            arcadeCanvas = document.getElementById('arcadeCanvas');
+            arcadeCtx = arcadeCanvas.getContext('2d');
+            arcadeScore = 0;
+            arcadeTimer = 20;
+            fallingItems = [];
+            playerBasketX = arcadeCanvas.width / 2;
+
+            document.getElementById('arcadeScore').innerText = arcadeScore;
+            document.getElementById('arcadeTimer').innerText = arcadeTimer;
+            document.getElementById('minigameModal').classList.remove('hidden');
+
+            arcadeCanvas.onmousemove = (e) => {
+                const rect = arcadeCanvas.getBoundingClientRect();
+                playerBasketX = (e.clientX - rect.left) * (arcadeCanvas.width / rect.width);
+            };
+            arcadeCanvas.ontouchmove = (e) => {
+                const rect = arcadeCanvas.getBoundingClientRect();
+                playerBasketX = (e.touches[0].clientX - rect.left) * (arcadeCanvas.width / rect.width);
+            };
+
+            arcadeTimerInterval = setInterval(() => {
+                arcadeTimer--;
+                document.getElementById('arcadeTimer').innerText = arcadeTimer;
+                if (arcadeTimer <= 0) endArcadeMinigame(false);
+            }, 1000);
+
+            runArcadeLoop();
+        }
+
+        function runArcadeLoop() {
+            arcadeCtx.clearRect(0, 0, arcadeCanvas.width, arcadeCanvas.height);
+
+            if (Math.random() < 0.09) {
+                fallingItems.push({
+                    x: Math.random() * (arcadeCanvas.width - 30) + 15,
+                    y: 0,
+                    speed: 2.8 + Math.random() * 2.5
+                });
+            }
+
+            // Draw Basket Player
+            arcadeCtx.fillStyle = petState.bodyColor;
+            arcadeCtx.beginPath();
+            arcadeCtx.arc(playerBasketX, arcadeCanvas.height - 25, 30, 0, Math.PI * 2);
+            arcadeCtx.fill();
+
+            // Falling Stars
+            for (let i = fallingItems.length - 1; i >= 0; i--) {
+                let item = fallingItems[i];
+                item.y += item.speed;
+
+                arcadeCtx.fillStyle = '#eab308';
+                arcadeCtx.beginPath();
+                arcadeCtx.arc(item.x, item.y, 10, 0, Math.PI * 2);
+                arcadeCtx.fill();
+
+                const dx = item.x - playerBasketX;
+                const dy = item.y - (arcadeCanvas.height - 25);
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 40) {
+                    arcadeScore++;
+                    playSynthSfx('coin');
+                    document.getElementById('arcadeScore').innerText = arcadeScore;
+                    fallingItems.splice(i, 1);
+                } else if (item.y > arcadeCanvas.height) {
+                    fallingItems.splice(i, 1);
+                }
+            }
+
+            arcadeLoopId = requestAnimationFrame(runArcadeLoop);
+        }
+
+        function endArcadeMinigame(quitEarly) {
+            cancelAnimationFrame(arcadeLoopId);
+            clearInterval(arcadeTimerInterval);
+            document.getElementById('minigameModal').classList.add('hidden');
+
+            if (!quitEarly && arcadeScore > 0) {
+                const earnedCoins = arcadeScore * 5;
+                petState.coins += earnedCoins;
+                petState.happiness = Math.min(100, petState.happiness + 25);
+                grantXp(arcadeScore * 12);
+                playSynthSfx('levelup');
+                showToast(`Game Over! Earned ${earnedCoins} coins & EXP! 🌟`, "success");
+            }
+            updateUIState();
+            saveGameToStorage();
+        }
+
+        function handlePetInteraction(e) {
+            if (petState.isSleeping) return;
+            playSynthSfx('tap');
+            petState.happiness = Math.min(100, petState.happiness + 5);
+            petState.coins += 1;
+            grantXp(6);
+
+            showFloatingTextFX("+1 Coin 🪙");
+            updateUIState();
+            saveGameToStorage();
+        }
+
+        function handlePlayAction() {
+            if (petState.isSleeping) {
+                showToast("Wake up your pet first!", "warning");
+                return;
+            }
+            handlePetInteraction(null);
+            showToast(`You petted ${petState.petName}! 💖`, "success");
+        }
+
+        function toggleSleepMode() {
+            petState.isSleeping = !petState.isSleeping;
+            playSynthSfx('tap');
+            showToast(petState.isSleeping ? `${petState.petName} is sleeping 💤` : `${petState.petName} woke up! ☀️`, "info");
+            updateUIState();
+            saveGameToStorage();
+        }
+
+        function executeBathing() {
+            if (petState.isSleeping) {
+                showToast("Can't bathe while sleeping!", "warning");
+                return;
+            }
+            playSynthSfx('clean');
+            petState.hygiene = 100;
+            petState.hasMess = false;
+            grantXp(18);
+            showFloatingTextFX("Clean & Fresh! 🧼");
+            updateUIState();
+            saveGameToStorage();
+            showToast(`${petState.petName} is sparkly clean! ✨`, "success");
+        }
+
+        function cleanPetMess() {
+            playSynthSfx('clean');
+            petState.hasMess = false;
+            petState.hygiene = Math.min(100, petState.hygiene + 35);
+            grantXp(12);
+            updateUIState();
+            saveGameToStorage();
+            showToast("Mess cleaned up!", "success");
+        }
+
+        function openModal(id) {
+            if (id === 'feedModal') {
+                if (petState.isSleeping) {
+                    showToast("Pet is sleeping!", "warning");
+                    return;
+                }
+                renderFoodInventory();
+                document.getElementById('feedModal').classList.remove('hidden');
+            } else if (id === 'shopModal') {
+                switchShopTab('food');
+                document.getElementById('shopModal').classList.remove('hidden');
+            } else if (id === 'resetModal') {
+                document.getElementById('resetModal').classList.remove('hidden');
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function renderFoodInventory() {
+            const container = document.getElementById('foodInventoryList');
+            let html = '';
+
+            foodsCatalog.forEach(item => {
+                const owned = petState.inventory[item.id] || 0;
+                html += `
+                    <div class="flex items-center justify-between p-3.5 bg-white/10 dark:bg-slate-900/80 border border-white/20 rounded-2xl">
+                        <div class="flex items-center space-x-3.5">
+                            <span class="text-3xl">${item.icon}</span>
+                            <div>
+                                <h4 class="font-extrabold text-sm">${item.name}</h4>
+                                <span class="text-xs opacity-80 font-bold">Hunger +${item.hunger} | Owned: ${owned}</span>
+                            </div>
+                        </div>
+                        <button onclick="feedPetItem('${item.id}')" class="bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-black px-5 py-2.5 rounded-xl shadow-md transition-all">Feed</button>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function feedPetItem(id) {
+            const item = foodsCatalog.find(f => f.id === id);
+            if (!item) return;
+
+            if (!petState.inventory[id] || petState.inventory[id] <= 0) {
+                showToast("Purchase food from Wardrobe shop first!", "warning");
+                return;
+            }
+
+            petState.inventory[id]--;
+            petState.hunger = Math.min(100, petState.hunger + item.hunger);
+            petState.happiness = Math.min(100, petState.happiness + item.happiness);
+            grantXp(22);
+            playSynthSfx('feed');
+            showFloatingTextFX(`+${item.hunger} Hunger 🍎`);
+
+            closeModal('feedModal');
+            updateUIState();
+            saveGameToStorage();
+        }
+
+        function switchShopTab(tab) {
+            const btnF = document.getElementById('tabBtnFood');
+            const btnA = document.getElementById('tabBtnAcc');
+            const btnD = document.getElementById('tabBtnDye');
+            const container = document.getElementById('shopContentGrid');
+
+            btnF.className = tab === 'food' ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all";
+            btnA.className = tab === 'accessories' ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all";
+            btnD.className = tab === 'dyes' ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all";
+
+            let html = '';
+
+            if (tab === 'food') {
+                foodsCatalog.forEach(item => {
+                    const owned = petState.inventory[item.id] || 0;
+                    html += `
+                        <div class="flex items-center justify-between p-3.5 bg-white/10 dark:bg-slate-900/80 border border-white/20 rounded-2xl">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl">${item.icon}</span>
+                                <div>
+                                    <h4 class="font-extrabold text-sm">${item.name}</h4>
+                                    <span class="text-xs text-amber-500 font-black">💰 ${item.cost} | Owned: ${owned}</span>
+                                </div>
+                            </div>
+                            <button onclick="buyFoodItem('${item.id}', ${item.cost})" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-black px-4 py-2 rounded-xl">Buy</button>
+                        </div>
+                    `;
+                });
+            } else if (tab === 'accessories') {
+                accessoriesCatalog.forEach(item => {
+                    const isEquipped = (petState.equippedHat === item.id || petState.equippedGlasses === item.id);
+                    html += `
+                        <div class="flex items-center justify-between p-3.5 bg-white/10 dark:bg-slate-900/80 border border-white/20 rounded-2xl">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl">${item.icon}</span>
+                                <div>
+                                    <h4 class="font-extrabold text-sm">${item.name}</h4>
+                                    <span class="text-xs text-amber-500 font-black">${item.cost > 0 ? '💰 ' + item.cost : 'Free'}</span>
+                                </div>
+                            </div>
+                            <button onclick="equipAccessoryItem('${item.id}', '${item.type}', ${item.cost})" class="${isEquipped ? 'bg-emerald-500' : 'bg-purple-600'} text-white text-xs font-black px-4 py-2 rounded-xl">
+                                ${isEquipped ? 'Equipped' : 'Equip'}
+                            </button>
+                        </div>
+                    `;
+                });
+            } else if (tab === 'dyes') {
+                dyesCatalog.forEach(item => {
+                    const isCurrent = petState.bodyColor === item.color;
+                    html += `
+                        <div class="flex items-center justify-between p-3.5 bg-white/10 dark:bg-slate-900/80 border border-white/20 rounded-2xl">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-7 h-7 rounded-full border border-white/40 shadow-sm" style="background-color: ${item.color}"></div>
+                                <div>
+                                    <h4 class="font-extrabold text-sm">${item.name}</h4>
+                                    <span class="text-xs text-amber-500 font-black">💰 ${item.cost}</span>
+                                </div>
+                            </div>
+                            <button onclick="applyDyeColor('${item.color}', ${item.cost})" class="${isCurrent ? 'bg-emerald-500' : 'bg-purple-600'} text-white text-xs font-black px-4 py-2 rounded-xl">
+                                ${isCurrent ? 'Active' : 'Apply'}
+                            </button>
+                        </div>
+                    `;
+                });
+            }
+
+            container.innerHTML = html;
+        }
+
+        function buyFoodItem(id, cost) {
+            if (petState.coins < cost) {
+                showToast("Not enough coins!", "warning");
+                return;
+            }
+            petState.coins -= cost;
+            petState.inventory[id] = (petState.inventory[id] || 0) + 1;
+            playSynthSfx('coin');
+            saveGameToStorage();
+            updateUIState();
+            switchShopTab('food');
+            showToast("Purchased food item!", "success");
+        }
+
+        function equipAccessoryItem(id, type, cost) {
+            if (cost > 0 && petState.coins < cost && (type === 'hat' ? petState.equippedHat !== id : petState.equippedGlasses !== id)) {
+                showToast("Not enough coins!", "warning");
+                return;
+            }
+
+            if (type === 'hat') petState.equippedHat = id;
+            if (type === 'glasses') petState.equippedGlasses = id;
+
+            playSynthSfx('tap');
+            saveGameToStorage();
+            switchShopTab('accessories');
+            showToast("Accessory updated!", "success");
+        }
+
+        function applyDyeColor(color, cost) {
+            if (petState.bodyColor !== color && petState.coins < cost) {
+                showToast("Not enough coins!", "warning");
+                return;
+            }
+            if (petState.bodyColor !== color) petState.coins -= cost;
+            petState.bodyColor = color;
+            playSynthSfx('clean');
+            saveGameToStorage();
+            switchShopTab('dyes');
+            showToast("Applied color dye!", "success");
+        }
+
+        function launchConfettiFX() {
+            const canvas = document.getElementById('confettiCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+
+            let particles = [];
+            for (let i = 0; i < 70; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height - canvas.height,
+                    color: ['#eab308', '#f472b6', '#06b6d4', '#10b981'][Math.floor(Math.random() * 4)],
+                    size: Math.random() * 7 + 4,
+                    speedY: Math.random() * 3.5 + 2
+                });
+            }
+
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particles.forEach(p => {
+                    p.y += p.speedY;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                });
+                if (particles.some(p => p.y < canvas.height)) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            animate();
+        }
+
+        function showFloatingTextFX(text) {
+            const layer = document.getElementById('floatingFxLayer');
+            const el = document.createElement('div');
+            el.className = 'floating-text-fx absolute font-black text-xs sm:text-sm text-purple-600 dark:text-purple-300 bg-white/95 dark:bg-slate-900/95 px-4 py-2 rounded-full shadow-2xl border border-purple-500/50';
+            el.innerText = text;
+            layer.appendChild(el);
+            setTimeout(() => el.remove(), 1300);
+        }
+
+        async function executeResetAll() {
+            // Co-parents can't wipe the shared pet — only the owner can reset.
+            if (window.PetCloud && window.PetCloud.canReset && !window.PetCloud.canReset()) {
+                showToast('Only the pet owner can reset this pet.', 'warning');
+                closeModal('resetModal');
+                return;
+            }
+            localStorage.removeItem('pocketPalCelestialSave');
+            localStorage.removeItem('pocketPalSaveOwner');
+            // Also wipe the RTDB 3 save so the pet stays reset across devices.
+            if (window.PetCloud && window.PetCloud.resetSave) {
+                try { await window.PetCloud.resetSave(); } catch (e) { console.warn(e); }
+            }
+            location.reload();
+        }
+
+        function showToast(msg, type = "info") {
+            const toast = document.getElementById('toastNotification');
+            const icon = document.getElementById('toastIcon');
+            document.getElementById('toastMessage').innerText = msg;
+
+            if (type === 'success') icon.className = "fa-solid fa-circle-check text-emerald-500 text-base";
+            else if (type === 'warning') icon.className = "fa-solid fa-triangle-exclamation text-amber-500 text-base";
+            else icon.className = "fa-solid fa-circle-info text-sky-500 text-base";
+
+            toast.classList.remove('translate-y-28', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-28', 'opacity-0');
+            }, 2600);
+        }
+
+        function saveGameToStorage() {
+            petState.lastSaved = Date.now();
+            localStorage.setItem('pocketPalCelestialSave', JSON.stringify(petState));
+            // Mirror to RTDB 3 via pet.js (throttled to ~1 write / 15s).
+            if (window.PetCloud) window.PetCloud.scheduleSave(petState);
+        }
+
+        function loadGameFromStorage() {
+            const saved = localStorage.getItem('pocketPalCelestialSave');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    petState = { ...petState, ...parsed };
+                    hadLocalSave = true;
+                } catch (e) {
+                    console.error("Failed to load save game", e);
+                }
+            }
+        }
+
+        // ── pet.js cloud-sync contract ────────────────────────────────────────
+        // Merges the RTDB 3 save fetched by pet.js. The cloud wins when it is
+        // newer than the local save (or the local save never existed); a newer
+        // local save (offline play) or an account with no cloud save yet is
+        // returned as "push me up" instead.
+        window.__petMergeCloud = function (cloudState, accountChanged) {
+            if (accountChanged) {
+                // Another account on this device: drop local, adopt that save.
+                petState = { ...defaultPetState, ...(cloudState || {}) };
+                hadLocalSave = false;
+                applyTheme(petState.theme || 'dark');
+                return false;
+            }
+            if (cloudState && (!hadLocalSave || (cloudState.lastSaved || 0) >= (petState.lastSaved || 0))) {
+                petState = { ...petState, ...cloudState };
+                applyTheme(petState.theme || 'dark');
+                return false;                                   // cloud adopted
+            }
+            return hadLocalSave && !!petState.petName;          // local ahead → push up
+        };
+        window.__petGetState = () => petState;
+        window.__petRefreshUI = function () {
+            const hasPet = !!petState.petName;
+            document.getElementById('setupScreen').classList.toggle('hidden', hasPet);
+            document.getElementById('gameplayDashboard').classList.toggle('hidden', !hasPet);
+            if (hasPet) {
+                updateUIState();
+                startSimulationTick();   // idempotent — covers account switches after boot
+            }
+        };
+    </script>
+    <script>
+        // Same registration as /music — the SW lives at the site root. No
+        // controllerchange reload here either (it would interrupt play).
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('../sw.js').catch(() => {});
+            });
+        }
+    </script>
+    <script type="module" src="pet.js?v=3"></script>
+</body>
+</html>
