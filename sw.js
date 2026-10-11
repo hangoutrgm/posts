@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v276';
+const CACHE_NAME = 'hangout-v305';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // YouTube artwork (i.ytimg.com). The music app renders one thumbnail per
@@ -27,23 +27,28 @@ const PRECACHE_ASSETS = [
   './',
   './index.html',
   './chat/index.html',
-  './css/tailwind.min.css?v=13',
+  './css/tailwind.min.css?v=15',
   './css/styles.css?v=28',
+  // Arena SPA (/arena) — tournament hub, lobby bridge, brackets
+  './arena/index.html',
+  './arena/arena.css?v=15',
+  './arena/arena.js?v=22',
+  './arena/bracket-engine.js',
   './chat/css/styles.css?v=54',
   './js/renderers.js?v=97',
   './js/helpers.js?v=69',
-  './js/games.js?v=61',
-  './js/main.js?v=98',
+  './js/games.js?v=63',
+  './js/main.js?v=101',
   './js/myday.js?v=28',
   './js/voice-recorder.js?v=3',
-  './chat/js/app.js?v=107',
+  './chat/js/app.js?v=108',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.
   './chat/mini-chat.js?v=8',
   './music/mini-player.js?v=5',
   // Standalone Music SPA (/music) — keep these ?v= in sync with music/index.html
   './music/index.html',
   './music/music.css?v=6',
-  './music/music-app.js?v=11',
+  './music/music-app.js?v=12',
   './music/youtube-player.js?v=7',
   './js/users-cache.js?v=6',
   './config/emoji_riddles.json',

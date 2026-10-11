@@ -249,6 +249,7 @@ function renderSponsorChips() {
 window.openSponsorTreasury = (uid) => switchTreasury(uid);
 
 window.removeDeputy = async (uid) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     try {
         await remove(ref(db, `treasury_deputies/${state.myUid}/${uid}`));
         toast('Treasurer removed.');
@@ -355,7 +356,10 @@ function switchTab(name) {
 }
 
 // ── Modal helpers & form field builders ──
+// Ban check — banned accounts are read-only (flag from RTDB 1 /users, cached in state.users).
+function isBannedUser() { return Boolean(state.myUid && state.users?.[state.myUid]?.isBanned === true); }
 function openModal(title, fields, submitLabel, onSubmit) {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     $('modal-title').textContent = title;
     $('modal-fields').innerHTML = fields;
     $('modal-submit').textContent = submitLabel;
@@ -449,6 +453,7 @@ function openContactsModal(editId = null) {
 }
 window.editContact = (id) => openContactsModal(id);
 window.deleteContact = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this contact?')) return;
     remove(ref(db, `${CONTACTS_PATH()}/${id}`))
         .then(() => { toast('Contact deleted.'); closeModal(); })
@@ -494,11 +499,13 @@ function openRewardForm(id = null) {
 }
 window.editReward = (id) => openRewardForm(id);
 window.setRewardStatus = (id, status) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     update(ref(db, tPath(`rewards/${id}`)), { status, updatedAt: Date.now() })
         .then(() => toast('Status updated to ' + STATUS_LABEL[status] + '.'))
         .catch(() => toast('Failed to update.'));
 };
 window.deleteReward = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this reward?')) return;
     remove(ref(db, tPath(`rewards/${id}`))).then(() => toast('Reward deleted.')).catch(() => toast('Delete failed.'));
 };
@@ -609,6 +616,7 @@ function openKeepForm(type, id = null) {
 }
 window.editKeep = (id) => { const r = state.keep[id]; if (r) openKeepForm(r.type, id); };
 window.deleteKeep = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this transaction?')) return;
     remove(ref(db, tPath(`keep/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
 };
@@ -678,6 +686,7 @@ function openLoanForm(id = null) {
 }
 window.editLoan = (id) => openLoanForm(id);
 window.toggleLoanRepaid = (id, status) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     update(ref(db, tPath(`lend/${id}`)), { status }).then(() => toast(status === 'repaid' ? 'Marked as paid.' : 'Marked as active.')).catch(() => toast('Failed to update.'));
 };
 window.openLoanRefundForm = (id) => {
@@ -698,6 +707,7 @@ window.openLoanRefundForm = (id) => {
         });
 };
 window.deleteLoan = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this loan?')) return;
     remove(ref(db, tPath(`lend/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
 };
@@ -841,6 +851,7 @@ function openSavingsForm(id = null) {
 }
 window.editSavings = (id) => openSavingsForm(id);
 window.deleteSavings = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this record?')) return;
     remove(ref(db, tPath(`savings/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
 };
@@ -879,6 +890,7 @@ function openSavingsExpenseForm(id = null) {
 }
 window.editSavingsExpense = (id) => openSavingsExpenseForm(id);
 window.deleteSavingsExpense = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this expense?')) return;
     remove(ref(db, tPath(`savingsExpenses/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
 };
@@ -936,6 +948,7 @@ function renderSavings() {
     }
 }
 window.deleteBuysell = (id) => {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
     if (!confirm('Delete this record?')) return;
     remove(ref(db, tPath(`buysell/${id}`))).then(() => toast('Deleted.')).catch(() => toast('Delete failed.'));
 };

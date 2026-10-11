@@ -520,8 +520,13 @@ async function handleSearch() {
 }
 
 /** Adds a track to the shared /global_library, guarding against duplicates. */
+// Ban check — banned accounts are read-only in the jukebox. The flag lives in
+// RTDB 1 /users/{uid}, fetched into state.profile on sign-in.
+function isBannedUser() { return Boolean(state.user && state.profile && state.profile.isBanned === true); }
+
 async function addToLibrary(track) {
   if (!requireSignIn()) return;
+  if (isBannedUser()) return toast('Your account is banned — Hangout Music is read-only.', 'err');
   if (!track || !track.youtubeId) return;
   if (state.libraryIndex.has(track.youtubeId)) {
     toast('Already in the community library');
@@ -553,6 +558,7 @@ async function addToLibrary(track) {
 /** Toggles a track in the signed-in user's personal playlist. */
 async function toggleFavorite(track) {
   if (!requireSignIn()) return;
+  if (isBannedUser()) return toast('Your account is banned — Hangout Music is read-only.', 'err');
   if (!track || !track.youtubeId) return;
   const uid = state.user.uid;
   const path = `user_playlists/${uid}/${track.youtubeId}`;
@@ -586,6 +592,7 @@ async function toggleFavorite(track) {
  */
 async function deleteTrack(track) {
   if (!requireSignIn()) return;
+  if (isBannedUser()) return toast('Your account is banned — Hangout Music is read-only.', 'err');
   if (!track || !track.youtubeId) return;
 
   const fromLibrary = state.view === 'library';

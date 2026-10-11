@@ -805,10 +805,14 @@ window.openNote = (uid, anchorEl) => {
   }
 };
 
+// Ban check — banned accounts are stripped of all chat actions.
+function isBannedUser() { return Boolean(state.user && state.users[state.user.uid]?.isBanned); }
+
 // Toggle my reaction on a note. It is stored on the note node itself, so the
 // very same react shows on My Day (both surfaces render /notes/{uid}).
 window.reactNote = async (uid, emoji) => {
   if (!state.user) return showAuth();
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   const me = state.user.uid;
   const mine = state.notes[uid]?.reactions?.[me] || null;
   const removing = mine === emoji;
@@ -858,6 +862,7 @@ window.replyToNote = async (uid) => {
 // Hangout Music community library (one-shot read of db3 /global_library).
 window.openMyNote = async () => {
   if (!state.user) return showAuth();
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   const me = state.user.uid;
   const current = state.notes[me]?.text || '';
   const currentSong = state.notes[me]?.song?.youtubeId ? { ...state.notes[me].song } : null;
@@ -2315,6 +2320,7 @@ async function startConversation(peerId) {
 
 async function startGroupConversation(peerIds) {
   if (!state.user) return showAuth();
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   const threadId = `group_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
   try {
     const members = { [state.user.uid]: true };
@@ -3825,6 +3831,7 @@ $('message-input')?.addEventListener('paste', (event) => {
 $('group-photo-input')?.addEventListener('change', async (event) => {
   const file = event.target.files[0];
   if (!file || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the creator can set the group photo.');
   try {
     const base64Img = await compressImage(file);
@@ -3914,6 +3921,7 @@ $('toggle-lb-rewards-button')?.addEventListener('click', async () => {
 $('close-auth-button').addEventListener('click', () => $('auth-dialog').close());
 
 $('toggle-group-mode')?.addEventListener('click', () => {
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   state.groupMode = !state.groupMode;
   state.groupSelection = [];
   $('group-action-bar').classList.toggle('hidden', !state.groupMode);
@@ -3921,6 +3929,7 @@ $('toggle-group-mode')?.addEventListener('click', () => {
   renderPeople();
 });
 $('start-group-btn')?.addEventListener('click', () => {
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   if (state.groupSelection.length > 0) startGroupConversation(state.groupSelection);
 });
 $('set-nickname-button')?.addEventListener('click', async () => {
@@ -3951,6 +3960,7 @@ $('set-my-nickname-button')?.addEventListener('click', async () => {
 
 async function renameGroup() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   if (state.activeInboxItem.creatorId !== state.user.uid) return showToast('Only the group creator can rename the group.');
   const current = state.activeInboxItem.name || getThreadName(state.activeInboxItem, getThreadPeers(state.activeInboxItem));
   $('conversation-dialog').close();
@@ -4014,6 +4024,7 @@ async function kickMember() {
 
 async function addMember() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   const isCreator = state.activeInboxItem.creatorId === state.user.uid;
   const isModerator = isCreator || !!state.activeInboxItem.moderators?.[state.user.uid];
   if (!isModerator) return showToast('Only the group creator or a moderator can add members.');
@@ -4109,6 +4120,7 @@ async function transferOwnership() {
 
 async function leaveGroup() {
   if (!state.user || !state.activeThreadId || !state.activeInboxItem?.isGroup) return;
+  if (isBannedUser()) return showToast('You are banned from using Hangout Chat.');
   $('conversation-dialog').close();
   const confirmed = await showAppModal({ title: 'Leave Group', message: 'Are you sure you want to leave this group chat?', confirmText: 'Leave', danger: true });
   if (!confirmed) return;

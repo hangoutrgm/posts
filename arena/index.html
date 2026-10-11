@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <title>Arena · Hangout RPW</title>
+    <script>
+        if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
+        else document.documentElement.classList.add('dark');
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://res.cloudinary.com">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Unbounded:wght@700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="../css/tailwind.min.css?v=15">
+    <link rel="stylesheet" href="./arena.css?v=15">
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-900 dark:bg-[#0b1120] dark:text-[#f8fafc] transition-colors duration-300">
+
+    <!-- Top bar -->
+    <nav class="a-topbar sticky top-0 z-50 px-3 py-2 flex justify-between items-center">
+        <div class="flex items-center gap-2 min-w-0">
+            <a href="../" class="a-back" title="Back to Hangout RPW" aria-label="Back to Hangout RPW"><i class="fa-solid fa-arrow-left text-xs"></i></a>
+            <a href="../" class="flex items-center gap-2.5 truncate">
+                <span class="a-brand-mark"><i class="fa-solid fa-shield-halved"></i></span>
+                <span class="a-brand-text text-base md:text-lg">Arena</span>
+            </a>
+        </div>
+        <div class="flex items-center gap-2">
+            <div id="arena-acct" class="relative">
+                <button id="arena-avatar" onclick="window.toggleArenaAcct(event)" class="a-avatar" title="Account menu" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
+                    <img id="arena-avatar-img" class="hidden" alt="">
+                    <span id="arena-avatar-initial" class="a-avatar-fallback hidden"></span>
+                    <img id="arena-avatar-ph" src="https://api.dicebear.com/7.x/bottts/svg?seed=hangout-arena&backgroundColor=transparent" alt="">
+                </button>
+                <div id="arena-acct-menu" class="hidden a-acct-menu">
+                    <p id="arena-acct-name" class="a-acct-name hidden"></p>
+                    <button onclick="window.toggleArenaTheme(); window.toggleArenaAcct()" class="a-acct-item">
+                        <i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:block"></i>Theme
+                    </button>
+                    <button id="menu-signin" onclick="window.toggleArenaAcct(); window.ArenaAuth()" class="a-acct-item"><i class="fa-solid fa-right-to-bracket"></i>Sign in</button>
+                    <button id="menu-signout" class="a-acct-item hidden" onclick="window.ArenaAuth()"><i class="fa-solid fa-right-from-bracket"></i>Sign out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <script>
+        // Instant avatar paint — hydrate from the cached profile BEFORE the
+        // module (and Firebase SDK) load, so the guest placeholder never shows.
+        // Same localStorage key arena.js writes (PROF_KEY); minimal inline
+        // Cloudinary transform since users-cache.js isn't loaded this early.
+        try {
+            var s = JSON.parse(localStorage.getItem('hangout-arena-profile-v1') || 'null');
+            if (s && s.p && s.p.pic) {
+                var u = String(s.p.pic);
+                if (u.indexOf('res.cloudinary.com') > -1 && u.indexOf('/image/upload/') > -1 && u.indexOf('g_face') === -1) {
+                    u = u.replace('/image/upload/', '/image/upload/f_auto,q_auto,w_96,h_96,c_fill,g_face/');
+                }
+                var ai = document.getElementById('arena-avatar-img');
+                var ap = document.getElementById('arena-avatar-ph');
+                if (ai) { ai.src = u; ai.classList.remove('hidden'); }
+                if (ap) ap.classList.add('hidden');
+            }
+        } catch (e) {}
+    </script>
+
+    <!-- Tabs -->
+    <div class="a-tabs sticky top-[41px] z-40 overflow-x-auto scrollbar-hide">
+        <div class="flex min-w-max px-2 py-1.5">
+            <button data-tab="lobbies" class="arena-tab active">Lobbies</button>
+            <button data-tab="tournaments" class="arena-tab">Tournaments</button>
+            <button data-tab="brackets" class="arena-tab">Brackets</button>
+            <button data-tab="schedule" class="arena-tab">Schedule</button>
+            <button data-tab="rankings" class="arena-tab">Rankings</button>
+            <button data-tab="squads" class="arena-tab">My Squads</button>
+        </div>
+    </div>
+
+    <main class="max-w-3xl mx-auto px-3 py-5 pb-24">
+        <!-- HERO -->
+        <header class="a-hero a-rise">
+            <span class="a-hero-eyebrow"><i class="fa-solid fa-flag-checkered"></i> MLBB Competitive</span>
+            <h2 class="a-hero-title">Enter the <span>Arena</span></h2>
+            <p class="a-hero-sub">Spin up tournaments, build your squad, and climb the bracket — live lobbies, auto-seeded brackets, real-time results.</p>
+            <div class="a-hero-stats">
+                <div class="a-hero-chip"><b id="hs-tournaments">0</b><span>Tournaments</span></div>
+                <div class="a-hero-chip"><b id="hs-ongoing">0</b><span>Live now</span></div>
+                <div class="a-hero-chip"><b id="hs-matches">0</b><span>Matches</span></div>
+            </div>
+        </header>
+
+        <!-- LOBBIES -->
+        <section id="tab-lobbies" class="arena-panel">
+            <div class="flex items-center justify-between mb-3 gap-3">
+                <div class="min-w-0">
+                    <h2 class="a-head"><i class="fa-solid fa-user-group"></i>Live Lobbies / Find Players</h2>
+                    <p class="a-sub mt-1">Open MLBB squads from the main feed — join without leaving Arena.</p>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button onclick="location.href='../?compose=lobby'" class="a-btn a-btn--teal a-btn--sm"><i class="fa-solid fa-plus"></i>Post</button>
+                    <button onclick="window.Arena.loadLobbies()" class="a-btn a-btn--ghost a-btn--sm"><i class="fa-solid fa-rotate"></i>Refresh</button>
+                </div>
+            </div>
+            <div id="lobby-list" class="space-y-3"><p class="a-sub italic">Loading lobbies…</p></div>
+        </section>
+
+        <!-- TOURNAMENTS -->
+        <section id="tab-tournaments" class="arena-panel hidden">
+            <div class="flex items-center justify-between mb-3 gap-3">
+                <h2 class="a-head"><i class="fa-solid fa-trophy"></i>Tournament Hub</h2>
+                <button onclick="window.Arena.openCreateTournament()" class="a-btn a-btn--gold shrink-0"><i class="fa-solid fa-plus"></i>Create</button>
+            </div>
+            <div id="tournament-filter" class="flex gap-2 mb-3 overflow-x-auto scrollbar-hide pb-1">
+                <button data-filter="all" class="arena-chip active">All</button>
+                <button data-filter="upcoming" class="arena-chip">Upcoming</button>
+                <button data-filter="ongoing" class="arena-chip">Ongoing</button>
+                <button data-filter="completed" class="arena-chip">Completed</button>
+                <button data-filter="pending" class="arena-chip mod-only hidden">Pending</button>
+            </div>
+            <div id="tournament-list" class="grid gap-3 sm:grid-cols-2"><p class="a-sub italic">Loading tournaments…</p></div>
+        </section>
+
+        <!-- BRACKETS -->
+        <section id="tab-brackets" class="arena-panel hidden">
+            <div class="mb-3">
+                <h2 class="a-head"><i class="fa-solid fa-sitemap"></i>Brackets</h2>
+                <select id="bracket-select" class="a-input mt-2.5"></select>
+            </div>
+            <div id="bracket-view"><p class="a-sub italic">Select a tournament.</p></div>
+        </section>
+
+        <!-- SCHEDULE -->
+        <section id="tab-schedule" class="arena-panel hidden">
+            <div class="mb-3">
+                <h2 class="a-head"><i class="fa-solid fa-calendar-days"></i>Schedule</h2>
+                <p class="a-sub mt-1">Your upcoming matches. Custom Room ID / Password unlock when the match is due.</p>
+            </div>
+            <div id="schedule-list" class="space-y-3"><p class="a-sub italic">Loading…</p></div>
+        </section>
+
+        <!-- RANKINGS -->
+        <section id="tab-rankings" class="arena-panel hidden">
+            <div class="mb-3">
+                <h2 class="a-head"><i class="fa-solid fa-ranking-star"></i>Rankings</h2>
+                <p class="a-sub italic">Players ranked by arena points — requires IGN, Game ID and points.</p>
+            </div>
+            <div id="rankings-list" class="a-pick-list"><p class="a-pick-empty">Loading rankings…</p></div>
+        </section>
+
+        <!-- MY SQUADS -->
+        <section id="tab-squads" class="arena-panel hidden">
+            <div class="mb-3">
+                <h2 class="a-head"><i class="fa-solid fa-people-group"></i>My Squads</h2>
+                <p class="a-sub mt-1">Teams you've registered and tournaments you're part of.</p>
+            </div>
+            <div id="squad-list" class="space-y-3"><p class="a-sub italic">Sign in to see your squads.</p></div>
+        </section>
+    </main>
+
+    <!-- Profile verification guard modal -->
+    <div id="guard-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="a-modal-card w-full max-w-sm p-5 relative" onclick="event.stopPropagation()">
+            <div class="flex flex-col items-center text-center">
+                <div class="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-500 flex items-center justify-center text-xl mb-3"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <h3 class="text-sm font-extrabold text-gray-900 dark:text-white mb-1.5">Gaming Profile incomplete</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-4">Please complete your Mobile Legends Gaming Profile before registering for a tournament.</p>
+                <div id="guard-missing" class="w-full text-left text-[11px] bg-gray-50 dark:bg-slate-900/60 rounded-lg p-3 mb-4 border border-gray-100 dark:border-slate-700 space-y-1"></div>
+                <div class="flex gap-2 w-full">
+                    <button onclick="document.getElementById('guard-modal').classList.add('hidden')" class="a-btn a-btn--ghost flex-1 justify-center py-2.5">Cancel</button>
+                    <button onclick="window.Arena.openProfileSettings()" class="a-btn a-btn--gold flex-1 justify-center py-2.5"><i class="fa-solid fa-user-pen"></i>Complete Profile</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create tournament modal -->
+    <div id="create-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('create-modal')">
+        <div class="a-modal-card w-full max-w-sm p-5 relative max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-extrabold dark:text-white"><i class="fa-solid fa-trophy text-amber-500 mr-1.5"></i>Create Tournament</h3>
+                <button onclick="window.Arena.closeModal('create-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Tournament name</label>
+                    <input id="ct-name" type="text" maxlength="60" placeholder="e.g. Friday Night Cup" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Format</label>
+                        <select id="ct-format" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                            <option value="single">Single Elimination</option>
+                            <option value="double">Double Elimination</option>
+                            <option value="rr">Round Robin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Series</label>
+                        <select id="ct-series" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                            <option value="BO1">Best of 1</option>
+                            <option value="BO3" selected>Best of 3</option>
+                            <option value="BO5">Best of 5</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Max teams</label>
+                        <input id="ct-max" type="number" min="2" max="128" placeholder="e.g. 8" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Duration <span class="normal-case font-medium">(hours)</span></label>
+                        <input id="ct-duration" type="number" min="1" max="720" placeholder="e.g. 4" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Winners to award <span class="normal-case font-medium">(for prizes)</span></label>
+                    <select id="ct-winners" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                        <option value="1">Top 1</option>
+                        <option value="2">Top 2</option>
+                        <option value="3" selected>Top 3</option>
+                        <option value="4">Top 4</option>
+                        <option value="5">Top 5</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Start date</label>
+                        <input id="ct-date" type="date" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Start time</label>
+                        <input id="ct-time" type="time" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Prize pool <span class="normal-case font-medium">(optional)</span></label>
+                    <input id="ct-prize" type="text" maxlength="60" placeholder="e.g. 500 stars" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Details <span class="normal-case font-medium">(optional)</span></label>
+                    <textarea id="ct-desc" rows="2" maxlength="300" placeholder="Rules, entry requirements…" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none resize-none"></textarea>
+                </div>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>New tournaments are submitted for admin / mod approval before registration opens.</p>
+                <button onclick="window.Arena.createTournament()" class="a-btn a-btn--gold a-btn--block">Submit for approval</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register / join team modal -->
+    <div id="register-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('register-modal')">
+        <div class="a-modal-card w-full max-w-sm p-5 relative max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-extrabold dark:text-white"><i class="fa-solid fa-user-plus text-teal-500 mr-1.5"></i><span id="rm-title">Register Team</span></h3>
+                <button onclick="window.Arena.closeModal('register-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p id="rm-tournament" class="text-[11px] text-gray-500 dark:text-gray-400 mb-3"></p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Team name</label>
+                    <input id="rm-team" type="text" maxlength="40" placeholder="Your squad name" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <div class="rounded-lg border border-teal-200 dark:border-teal-800/60 bg-teal-50 dark:bg-teal-950/30 p-3">
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2"><i class="fa-solid fa-crown mr-1"></i>Captain (auto-filled)</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[9px] font-bold text-gray-500 dark:text-gray-400">IGN</label>
+                            <input id="rm-ign" type="text" class="w-full bg-white dark:bg-slate-900 text-xs p-2 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none" readonly>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-bold text-gray-500 dark:text-gray-400">Game ID / Server</label>
+                            <input id="rm-id" type="text" class="w-full bg-white dark:bg-slate-900 text-xs p-2 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none" readonly>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-[9px] font-bold text-gray-500 dark:text-gray-400">Primary role</label>
+                        <input id="rm-role" type="text" class="w-full bg-white dark:bg-slate-900 text-xs p-2 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none" readonly>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Tag teammates <span class="normal-case font-medium">(search registered players, max 4)</span></label>
+                    <div id="rm-chips" class="hidden flex flex-wrap gap-1.5 mb-2"></div>
+                    <input id="rm-search" type="text" autocomplete="off" placeholder="Search player name…" class="a-input">
+                    <div id="rm-results" class="hidden a-pick-list"></div>
+                    <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Teammates must be registered on the main site with a completed gaming profile.</p>
+                </div>
+                <button onclick="window.Arena.submitRegistration()" id="rm-submit" class="a-btn a-btn--teal a-btn--block">Confirm registration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Match detail modal (rosters + room reveal + score) -->
+    <div id="match-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('match-modal')">
+        <div class="a-modal-card w-full max-w-md p-5 relative max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-extrabold dark:text-white"><i class="fa-solid fa-gamepad text-indigo-500 mr-1.5"></i>Match Room</h3>
+                <button onclick="window.Arena.closeModal('match-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="match-modal-body" class="space-y-3"><p class="text-xs text-gray-400 italic">Loading…</p></div>
+        </div>
+    </div>
+
+    <!-- Tournament details modal (teams + players + info) -->
+    <div id="tour-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('tour-modal')">
+        <div class="a-modal-card w-full max-w-md p-5 relative max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-extrabold dark:text-white truncate"><i class="fa-solid fa-trophy text-amber-500 mr-1.5"></i><span id="td-title">Tournament Details</span></h3>
+                <button onclick="window.Arena.closeModal('tour-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="td-body" class="space-y-3"><p class="text-xs text-gray-400 italic">Loading…</p></div>
+        </div>
+    </div>
+
+    <!-- Set prizes modal (host) -->
+    <div id="prize-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('prize-modal')">
+        <div class="a-modal-card w-full max-w-xs p-5 relative" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-extrabold dark:text-white"><i class="fa-solid fa-coins text-amber-500 mr-1.5"></i>Set Prizes</h3>
+                <button onclick="window.Arena.closeModal('prize-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3">
+                <p id="prize-tname" class="text-[11px] text-gray-500 dark:text-gray-400 truncate"></p>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Prize pool</label>
+                    <input id="pt-prize" type="text" maxlength="60" placeholder="e.g. 500 stars" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <div id="pt-ranks" class="space-y-3"></div>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Each place: monetary prize + arena points (awarded to the team's players on completion). Blank = none.</p>
+                <button onclick="window.Arena.savePrize()" class="a-btn a-btn--gold a-btn--block">Save prizes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit tournament modal (host, only before the bracket is built) -->
+    <div id="edit-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('edit-modal')">
+        <div class="a-modal-card w-full max-w-sm p-5 relative max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-extrabold dark:text-white"><i class="fa-solid fa-pen text-indigo-500 mr-1.5"></i>Edit Tournament</h3>
+                <button onclick="window.Arena.closeModal('edit-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Tournament name</label>
+                    <input id="et-name" type="text" maxlength="60" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Format</label>
+                        <select id="et-format" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                            <option value="single">Single Elimination</option>
+                            <option value="double">Double Elimination</option>
+                            <option value="rr">Round Robin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Series</label>
+                        <select id="et-series" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                            <option value="BO1">Best of 1</option>
+                            <option value="BO3">Best of 3</option>
+                            <option value="BO5">Best of 5</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Max teams</label>
+                        <input id="et-max" type="number" min="2" max="128" placeholder="e.g. 8" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Duration <span class="normal-case font-medium">(hours)</span></label>
+                        <input id="et-duration" type="number" min="1" max="720" placeholder="e.g. 4" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Winners to award <span class="normal-case font-medium">(for prizes)</span></label>
+                    <select id="et-winners" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                        <option value="1">Top 1</option>
+                        <option value="2">Top 2</option>
+                        <option value="3">Top 3</option>
+                        <option value="4">Top 4</option>
+                        <option value="5">Top 5</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Start date</label>
+                        <input id="et-date" type="date" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Start time</label>
+                        <input id="et-time" type="time" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Details <span class="normal-case font-medium">(optional — prize is set via the Prizes button)</span></label>
+                    <textarea id="et-desc" rows="2" maxlength="300" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none resize-none"></textarea>
+                </div>
+                <button onclick="window.Arena.saveEdit()" class="a-btn a-btn--indigo a-btn--block">Save changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prompt / notice modal (dedicated confirmations & notices) -->
+    <div id="prompt-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.promptClose()">
+        <div class="a-modal-card w-full max-w-xs p-5 relative" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-3">
+                <h3 id="prompt-title" class="text-sm font-extrabold dark:text-white truncate">Please confirm</h3>
+                <button onclick="window.Arena.promptClose()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p id="prompt-msg" class="text-[12px] text-gray-600 dark:text-gray-300 leading-relaxed mb-4"></p>
+            <div class="flex gap-2">
+                <button id="prompt-cancel" onclick="window.Arena.promptClose()" class="a-btn a-btn--ghost flex-1 justify-center">Cancel</button>
+                <button id="prompt-ok" onclick="window.Arena.promptOk()" class="a-btn a-btn--teal flex-1 justify-center">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sign-in modal (email / Google) -->
+    <div id="signin-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onclick="window.Arena.closeModal('signin-modal')">
+        <div class="a-modal-card w-full max-w-xs p-5 relative" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-extrabold dark:text-white"><i class="fa-solid fa-right-to-bracket text-amber-500 mr-1.5"></i>Sign in</h3>
+                <button onclick="window.Arena.closeModal('signin-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Email</label>
+                    <input id="si-email" type="email" autocomplete="email" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Password</label>
+                    <input id="si-pass" type="password" autocomplete="current-password" class="w-full bg-gray-50 dark:bg-slate-900 text-xs p-2.5 rounded-lg dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none">
+                </div>
+                <p id="si-error" class="hidden text-[11px] text-red-500 font-semibold"></p>
+                <button onclick="window.Arena.emailSignIn()" class="a-btn a-btn--gold a-btn--block">Sign in</button>
+                <button onclick="window.Arena.googleSignIn()" class="a-btn a-btn--ghost a-btn--block"><i class="fa-brands fa-google"></i>Continue with Google</button>
+                <p class="text-[10px] text-gray-400 text-center">Use the same account as the main site.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="arena-toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[300] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
+
+    <script src="../js/users-cache.js?v=6"></script>
+    <script type="module" src="./arena.js?v=22"></script>
+</body>
+</html>

@@ -704,6 +704,60 @@ window.ensureUsersFresh = async () => {
     } catch (e) { /* keep last known */ }
 };
 
+// Manual "refresh" button in the Members modal. Bypasses the ensureUsersFresh
+// debounce AND the localStorage freshness window so the list always reflects
+// the latest /users data (applyUsersData rewrites the cache and repaints the
+// open modal).
+// Bandwidth guard: MEMBERS_REFRESH_LIMIT manual pulls per local calendar day
+// (counted in localStorage only — never on the server, so quota checks cost
+// zero RTDB traffic). A failed pull does not consume quota.
+const MEMBERS_REFRESH_LIMIT = 5;
+const MEMBERS_REFRESH_KEY = 'hangout-members-refresh';
+const membersRefreshDay = () => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+// Returns { day, count } for TODAY — resets to 0 automatically when the
+// stored day is not the current local calendar day.
+const readMembersRefreshQuota = () => {
+    const day = membersRefreshDay();
+    let q = null;
+    try { q = JSON.parse(localStorage.getItem(MEMBERS_REFRESH_KEY) || 'null'); } catch (e) { q = null; }
+    if (!q || q.day !== day || typeof q.count !== 'number') q = { day: day, count: 0 };
+    return q;
+};
+const paintMembersRefreshTitle = (q) => {
+    const btn = document.getElementById('members-refresh-btn');
+    if (btn) btn.title = 'Refresh members list (' + Math.max(0, MEMBERS_REFRESH_LIMIT - q.count) + ' of ' + MEMBERS_REFRESH_LIMIT + ' left today)';
+};
+
+window.refreshMembersList = async () => {
+    const quota = readMembersRefreshQuota();
+    paintMembersRefreshTitle(quota);
+    if (quota.count >= MEMBERS_REFRESH_LIMIT) {
+        window.showToast && window.showToast('Daily refresh limit reached (' + MEMBERS_REFRESH_LIMIT + '/day) — try again tomorrow.');
+        return;
+    }
+    const btn = document.getElementById('members-refresh-btn');
+    const icon = btn ? btn.querySelector('i') : null;
+    if (btn) btn.disabled = true;
+    if (icon) icon.classList.add('animate-spin');
+    try {
+        const snap = await get(ref(db, 'users'));
+        _lastUsersFreshCheck = Date.now();
+        window.applyUsersData(snap.val() || {});
+        const q = readMembersRefreshQuota(); // re-read: the day may have rolled over mid-flight
+        q.count += 1;
+        try { localStorage.setItem(MEMBERS_REFRESH_KEY, JSON.stringify(q)); } catch (e) { /* quota skipped gracefully */ }
+        paintMembersRefreshTitle(q);
+    } catch (e) {
+        window.showToast && window.showToast('Could not refresh members — showing last known list.');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('animate-spin');
+    }
+};
+
 (async () => {
     const cached = window.usersCache ? window.usersCache.read() : null;
     const fresh = cached && window.usersCache.isFresh(cached);
@@ -1428,8 +1482,8 @@ window.closeAppsModal = () => {
 
 // Polls & Events now live in the "Create a post" menu. They reuse the game modal's
 // form (which already carries the poll/event fields) with the type pre-selected.
-window.openCreatePoll = () => { window.closeCreateMenu(); window.openPostGameModal('poll'); };
-window.openCreateEvent = () => { window.closeCreateMenu(); window.openPostGameModal('event'); };
+window.openCreatePoll = () => { window.closeCreateMenu(); if (window.checkBan()) return; window.openPostGameModal('poll'); };
+window.openCreateEvent = () => { window.closeCreateMenu(); if (window.checkBan()) return; window.openPostGameModal('event'); };
 
 // ==========================================
 // LOBBY (LFG) POSTS — structured MLBB matchmaking posts
@@ -2673,6 +2727,16 @@ window.logoutUser = async () => {
 
 onAuthStateChanged(auth, (user) => {
     window.currentUser = user;
+    // Deep link from the Arena Lobbies tab: ../?compose=lobby opens the
+    // Create Lobby (LFG) composer — or the auth prompt when signed out.
+    if (new URLSearchParams(location.search).get('compose') === 'lobby') {
+        setTimeout(() => {
+            try {
+                history.replaceState(null, '', location.pathname);
+                window.openCreateLobby();
+            } catch (_) {}
+        }, 600);
+    }
     if (user) {
         if (!sessionStorage.getItem('session_started')) {
             sessionStorage.setItem('session_started', 'true');
@@ -2700,6 +2764,19 @@ onAuthStateChanged(auth, (user) => {
         }).catch(e => console.warn('Profile self-heal failed:', e));
         
         startOwnPresence(user);
+
+        // Deep link from the Arena profile guard: ../?edit=gaming opens
+        // Edit Profile straight on the Gaming tab. Runs after the cache is
+        // warm so the form is prefilled with the saved MLBB fields.
+        if (new URLSearchParams(location.search).get('edit') === 'gaming') {
+            setTimeout(() => {
+                try {
+                    history.replaceState(null, '', location.pathname);
+                    window.openEditProfile();
+                    window.switchEditTab('gaming');
+                } catch (_) {}
+            }, 600);
+        }
         
         // Live own-record mirror — always (re)start it now that the session is up.
         window.startOwnUserListener && window.startOwnUserListener(user.uid);

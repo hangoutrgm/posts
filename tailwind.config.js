@@ -7,7 +7,8 @@ module.exports = {
     "./config/**/*.{html,js}",
     "./treasury/**/*.{html,js}",
     "./chat/**/*.{html,js}",
-    "./music/**/*.{html,js}"
+    "./music/**/*.{html,js}",
+    "./arena/**/*.{html,js}"
   ],
   theme: {
     extend: {

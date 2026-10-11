@@ -667,6 +667,7 @@ window.updateGameLimitIndicator = async () => {
 
 window.openPostGameModal = (presetType) => {
     if (!window.currentUser) return window.showAlert("Please sign in to host a game.");
+    if (window.checkBan()) return;
     document.getElementById('game-modal').classList.remove('hidden');
     
     // Reset form
@@ -1307,6 +1308,7 @@ window.removePollOption = () => {
 // ── Poll vote (atomic, changeable) ──
 window.votePoll = async (postId, optionIndex) => {
     if (!window.currentUser) return window.showAlert("Please sign in to vote.");
+    if (window.checkBan()) return;
     try {
         const postRef = getPostDocRef(postId);
         await updateDoc(postRef, { [`pollVotes.${window.currentUser.uid}`]: optionIndex });
@@ -1411,6 +1413,7 @@ window.deletePollOption = (postId, index) => {
 // ── Event RSVP ──
 window.rsvpEvent = async (postId, status) => {
     if (!window.currentUser) return window.showAlert("Please sign in to RSVP.");
+    if (window.checkBan()) return;
     try {
         const postRef = getPostDocRef(postId);
         await updateDoc(postRef, { [`eventRsvps.${window.currentUser.uid}`]: status });
@@ -1422,6 +1425,7 @@ window.rsvpEvent = async (postId, status) => {
 
 window.submitGame = async () => {
     if (!window.currentUser) return;
+    if (window.checkBan()) return;
 
     // Site Control: block game posting for non-admins while posts are paused
     if (window.checkSitePaused && window.checkSitePaused('post')) return;
@@ -2060,39 +2064,43 @@ window.submitGame = async () => {
     try {
         const { fsdb: targetFs, dbSource } = getRoundRobinFsdb();
         postData._dbSource = dbSource;
-        const newPostRef = await addDoc(collection(targetFs, 'community_posts'), postData);
-        window._postDbMap.set(newPostRef.id, dbSource);
 
         // ===== Daily game limit gate (atomic RTDB counter) =====
-        if (typeLimit > 0) {
-            const counterRef = ref(db, `gamePostCounts/${todayStr()}/${window.currentUser.uid}/${type}`);
-            let txnError = null;
-            let limitReached = false;
-            try {
-                const txn = await runTransaction(counterRef, (current) => {
-                    const count = Number(current || 0);
-                    if (count >= typeLimit) return undefined; // abort → limit reached
-                    return count + 1;
-                });
-                limitReached = !txn.committed;
-            } catch (e) {
-                txnError = e;
-            }
+        // Started CONCURRENTLY with the Firestore write: the two are
+        // independent, and a limit-hit already cleans up by deleting the post
+        // below — so this round-trip no longer sits on the critical path.
+        const counterRef = typeLimit > 0 ? ref(db, `gamePostCounts/${todayStr()}/${window.currentUser.uid}/${type}`) : null;
+        const limitPromise = counterRef
+            ? runTransaction(counterRef, (current) => {
+                const count = Number(current || 0);
+                if (count >= typeLimit) return undefined; // abort → limit reached
+                return count + 1;
+            }).then((txn) => ({ limitReached: !txn.committed })).catch((e) => ({ txnError: e }))
+            : Promise.resolve({});
 
-            if (txnError) {
-                // Counter couldn't be verified — undo the post to keep things consistent
-                await deleteDoc(newPostRef).catch(() => {});
-                console.warn("Daily game limit counter failed:", txnError);
-                window.showAlert("Couldn't verify your daily game limit. Please try again.");
-                return;
-            }
+        const newPostRef = await addDoc(collection(targetFs, 'community_posts'), postData).catch(async (err) => {
+            // The concurrent counter may have already committed — roll it back
+            // (best-effort) so a failed post never eats the daily quota.
+            if (counterRef) await runTransaction(counterRef, (c) => Math.max(0, Number(c || 0) - 1)).catch(() => {});
+            throw err;
+        });
+        window._postDbMap.set(newPostRef.id, dbSource);
 
-            if (limitReached) {
-                await deleteDoc(newPostRef).catch(() => {});
-                const gameLabel = window.gameTypeLabel(type);
-                window.showAlert(`❌ Daily limit reached: ${typeLimit} "${gameLabel}" game(s) allowed per day (resets at 12:00 AM).`);
-                return;
-            }
+        const { limitReached = false, txnError = null } = await limitPromise;
+
+        if (txnError) {
+            // Counter couldn't be verified — undo the post to keep things consistent
+            await deleteDoc(newPostRef).catch(() => {});
+            console.warn("Daily game limit counter failed:", txnError);
+            window.showAlert("Couldn't verify your daily game limit. Please try again.");
+            return;
+        }
+
+        if (limitReached) {
+            await deleteDoc(newPostRef).catch(() => {});
+            const gameLabel = window.gameTypeLabel(type);
+            window.showAlert(`❌ Daily limit reached: ${typeLimit} "${gameLabel}" game(s) allowed per day (resets at 12:00 AM).`);
+            return;
         }
 
         // Award stars for posting a game (same reward as a regular post)
@@ -2121,7 +2129,9 @@ window.submitGame = async () => {
             try {
                 const nclPrizeFormatted = window.formatPrizeForLog(prize, bonusPrize);
                 const notifRef = push(ref(db2, `notifications/${targetUserUid}`));
-                await set(notifRef, {
+                // Fire-and-forget: the modal is already closed, so this write
+                // must never hold up the submit flow.
+                set(notifRef, {
                     type: 'game_challenge',
                     fromUid: window.currentUser.uid,
                     fromName: window.currentUser.name,
@@ -2129,7 +2139,7 @@ window.submitGame = async () => {
                     timestamp: Date.now(),
                     read: false,
                     message: type === 'ncl' ? `awarded you ${nclPrizeFormatted || 'a reward'} via ncl!` : `challenged you to a game!`
-                });
+                }).catch(notifErr => console.warn('Notification write failed (non-critical):', notifErr));
             } catch(notifErr) {
                 console.warn('Notification write failed (non-critical):', notifErr);
             }
@@ -2424,6 +2434,7 @@ window.openAnswerModal = (postId, customTitle = null, customPlaceholder = null) 
 
 window.answerGame = async (postId, answer) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    if (window.checkBan()) return;
     if (!answer || !answer.trim()) return window.showAlert("Please enter an answer.");
 
     const postRef = getPostDocRef(postId);
@@ -2435,12 +2446,16 @@ window.answerGame = async (postId, answer) => {
     }
 
     try {
-        const snap = await getDoc(postRef);
-        if (!snap.exists()) return window.showAlert("Game not found.");
-        const post = snap.data();
-
-        if (post.gameStatus !== 'active') {
-            return window.showAlert("This game has already ended.");
+        // Prefer the in-memory copy (feed / isolated view): answer fields never
+        // change after creation and claimGame below re-checks the live status
+        // atomically — so a full-doc getDoc round-trip (heavy on comment-rich
+        // posts) is only needed as a fallback when the post isn't cached locally.
+        let post = (window.allPosts || []).find(p => p.id === postId)
+            || (window.isolatedPostData && window.isolatedPostData.id === postId ? window.isolatedPostData : null);
+        if (!post) {
+            const snap = await getDoc(postRef);
+            if (!snap.exists()) return window.showAlert("Game not found.");
+            post = snap.data();
         }
 
         if (post.gameEndTime && Date.now() >= post.gameEndTime) {
@@ -2646,6 +2661,7 @@ window.updateBingoSelectionCounters = () => {
 window.submitBingoEntry = async () => {
     const postId = document.getElementById('bingo-entry-postid').value;
     if (!window.currentUser || !postId) return;
+    if (window.checkBan()) return;
 
     const letters = [...window._bingoSelectedLetters].sort();
     const numbers = [...window._bingoSelectedNumbers].map(Number).sort((a, b) => a - b).map(String);
@@ -2989,6 +3005,7 @@ window.resetBingoGame = async (postId) => {
 
 window.joinSpinNames = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to join.");
+    if (window.checkBan()) return;
     
     const snap = await getDoc(getPostDocRef(postId));
     if (!snap.exists()) return;
@@ -3381,6 +3398,7 @@ if (!window._boardGameTimerStarted) {
 
 window.acceptTicTacToeChallenge = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    if (window.checkBan()) return;
     const postRef = getPostDocRef(postId);
 
     try {
@@ -3415,6 +3433,7 @@ window.acceptTicTacToeChallenge = async (postId) => {
 
 window.makeTicTacToeMove = async (postId, cellIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    if (!autoForUid && window.checkBan && window.checkBan()) return;
     const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
@@ -3599,6 +3618,7 @@ window.checkFourInARowWinner = (board) => {
 
 window.acceptFourInARowChallenge = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    if (window.checkBan()) return;
     const postRef = getPostDocRef(postId);
 
     try {
@@ -3644,6 +3664,7 @@ window.acceptFourInARowChallenge = async (postId) => {
 
 window.makeFourInARowMove = async (postId, cellIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    if (!autoForUid && window.checkBan && window.checkBan()) return;
     const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
@@ -3800,6 +3821,7 @@ window.checkDropFourWinner = (board) => {
 
 window.acceptDropFourChallenge = async (postId) => {
     if (!window.currentUser) return window.showAlert("Please sign in to accept the challenge.");
+    if (window.checkBan()) return;
     const postRef = getPostDocRef(postId);
 
     try {
@@ -3845,6 +3867,7 @@ window.acceptDropFourChallenge = async (postId) => {
 
 window.makeDropFourMove = async (postId, colIndex, autoForUid = null) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    if (!autoForUid && window.checkBan && window.checkBan()) return;
     const isAuto = Boolean(autoForUid);
     const postRef = getPostDocRef(postId);
 
@@ -4209,6 +4232,7 @@ window.openHangmanGuessModal = (postId, mode) => {
 
 window.submitHangmanGuess = async (postId, mode, inputVal) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    if (window.checkBan()) return;
     const guess = (inputVal || '').trim().toUpperCase();
     if (!guess) return window.showAlert("Please enter your guess.");
 
@@ -4470,6 +4494,7 @@ window.openNumberGuessModal = (postId, mode, min = null, max = null) => {
 // a correct guess goes through the atomic claimGame win so only one player can win.
 window.submitNumberGuess = async (postId, inputVal) => {
     if (!window.currentUser) return window.showAlert("Please sign in to play.");
+    if (window.checkBan()) return;
     const mode = document.getElementById('number-guess-mode').value;
     const raw = String(inputVal || '').trim();
     if (!raw) return window.showAlert("Please enter your guess.");
