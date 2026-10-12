@@ -3728,6 +3728,9 @@ window.renderRankings = async (resetLimit = true) => {
                 if (earningsArray.length === 0) {
                     list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no earnings yet.</p>`;
                     window._earningsCache = [];
+                    // Still show the Top-10 prize + Min LB ladder above the message
+                    const emptyLadder = await buildRewardsLadderHtml(window.lbPeriodKeyFor('weekly'), "This week's Top 10");
+                    if (emptyLadder) list.insertAdjacentHTML('afterbegin', emptyLadder);
                     return;
                 }
                 
@@ -3772,6 +3775,14 @@ window.renderRankings = async (resetLimit = true) => {
                 </div>
             `;
             list.appendChild(summaryEl);
+        }
+
+        // Top-10 rewards ladder — the same prize + Min LB table as the Rewards tab,
+        // so players can see what each rank pays and what it needs. Shown once after
+        // the totals card (resetLimit only, so lazy-loaded pages don't repeat it).
+        if (resetLimit) {
+            const rewardLadder = await buildRewardsLadderHtml(window.lbPeriodKeyFor('weekly'), "This week's Top 10");
+            if (rewardLadder) list.insertAdjacentHTML('beforeend', rewardLadder);
         }
 
         const toRender = earningsArray.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
@@ -4078,26 +4089,22 @@ window.renderRankings = async (resetLimit = true) => {
     requestAnimationFrame(() => list.style.minHeight = '');
 };
 
-// Rewards tab: top players of the SELECTED WEEK with the prizes an admin set
-// (ranks 1–10, empty boxes = cutoff). The week is the one chosen in the period
-// bar — shared with the Weekly tab, so mirroring works both ways — and falls
-// back to the current ISO week when no week has been picked yet.
-async function renderRankingRewards(list) {
-    const loader = document.getElementById('ranking-loader');
-    if (loader) loader.classList.remove('hidden');
-
-    const weekKey = window.lbPeriodKey || window.lbPeriodKeyFor('weekly');
-    const isThisWeek = weekKey === window.lbPeriodKeyFor('weekly');
-    const weekLabel = window.lbPeriodLabel('weekly', weekKey);
-
-    // Fetch the admin-configured prizes + that week's leaderboard together
-    const [rewardsSnap, weeklySnap] = await Promise.all([
+// ── Top-10 rewards ladder (shared by the Rewards tab AND the Earnings tab) ──
+// Reads the admin-set prizes (settings/leaderboardRewards), the per-rank weekly
+// LB points required to take each prize (settings/leaderboardRewardMins) and the
+// given week's leaderboard, then renders ALL 10 ranks. Every prized rank
+// auto-fills with the best player who has reached that rank's minimum, so a
+// player visibly climbs from a lower rank to a higher one as their points grow.
+// Returns null when no prizes are configured at all.
+async function buildRewardsLadderHtml(weekKey, title) {
+    const [rewardsSnap, minsSnap, weeklySnap] = await Promise.all([
         get(ref(db, 'settings/leaderboardRewards')).catch(() => null),
+        get(ref(db, 'settings/leaderboardRewardMins')).catch(() => null),
         get(ref(db, `lbWeekly/${weekKey}`)).catch(() => null)
     ]);
     const rewards = (rewardsSnap && rewardsSnap.exists()) ? (rewardsSnap.val() || {}) : {};
+    const mins = (minsSnap && minsSnap.exists()) ? (minsSnap.val() || {}) : {};
     const weekly = (weeklySnap && weeklySnap.exists()) ? (weeklySnap.val() || {}) : {};
-    if (loader) loader.classList.add('hidden');
 
     // Ranks 1–10 with a non-empty prize (empty tail = "stop rewarding there")
     const configured = [];
@@ -4105,88 +4112,115 @@ async function renderRankingRewards(list) {
         const v = rewards[String(i)];
         if (v !== undefined && v !== null && String(v).trim() !== '') configured.push(i);
     }
-    if (!configured.length) {
-        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🎁 No leaderboard rewards are configured yet.</p>`;
-        list.style.minHeight = '';
-        return;
-    }
+    if (!configured.length) return null;
 
-    // Eligibility gate (/config → Leaderboard Rewards → "Min LB Points to Qualify"):
-    // a player must have at least this many LB points THIS week to win a prize.
-    // 0 = no minimum. Only eligible players are listed (ranked 1..N by points).
-    const minLb = Math.max(0, parseInt(window.siteSettings?.minLbPointsForRewards ?? 0, 10) || 0);
-
-    // Rank by THIS week's LB points (0-point players and anyone below the minimum are excluded)
-    const pool = Object.entries(weekly)
-        .map(([uid, pts]) => {
-            const u = window.globalUsersCache[uid] || {};
-            return { uid, name: u.name, pic: u.pic, pts: Number(pts) || 0, isInactive: u.isInactive === true };
-        })
-        .filter(u => u.name && !u.isInactive && u.pts > 0 && u.pts >= minLb)
-        .sort((a, b) => b.pts - a.pts)
-        .slice(0, Math.max(...configured));
-    if (!pool.length) {
-        const when = isThisWeek ? 'for this week' : `in ${escapeHtml(weekLabel)}`;
-        list.innerHTML = minLb > 0
-            ? `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🏆 No one has reached the minimum ${minLb.toLocaleString()} LB points ${when} yet.</p>`
-            : `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">No LB points recorded ${when} yet — rewards appear once that week's leaderboard has points.</p>`;
-        list.style.minHeight = '';
-        return;
-    }
-
-    const maxRank = Math.max(...configured);
     const fmtPrize = (p) => {
         const s = String(p ?? '').trim();
         const n = parseFloat(s);
         return (!s || isNaN(n)) ? s : '₱' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
     };
+    const rankMin = (rank) => Math.max(0, parseInt(mins[String(rank)] ?? 0, 10) || 0);
 
-    list.innerHTML = '';
-    const head = document.createElement('div');
-    head.className = 'flex items-center justify-around p-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800/50 mb-3';
-    head.innerHTML = `
+    // Everyone with weekly LB points, best first (inactive / 0-point users dropped)
+    const pool = Object.entries(weekly)
+        .map(([uid, pts]) => {
+            const u = window.globalUsersCache[uid] || {};
+            return { uid, name: u.name, pic: u.pic, pts: Number(pts) || 0, isInactive: u.isInactive === true };
+        })
+        .filter(u => u.name && !u.isInactive && u.pts > 0)
+        .sort((a, b) => b.pts - a.pts);
+
+    // Fill the ladder top-down: each prized rank takes the best player still free
+    // who has REACHED that rank's minimum. Anyone short of a high rank's minimum
+    // stays on the first lower rank their points do reach — which is exactly how
+    // a player climbs the ladder as the week goes on. Ranks with no prize stay
+    // empty (they are still shown so the whole Top 10 ladder is visible).
+    const taken = new Set();
+    const slots = [];
+    for (let rank = 1; rank <= 10; rank++) {
+        const min = rankMin(rank);
+        const hasPrize = configured.includes(rank);
+        let holder = null;
+        if (hasPrize) {
+            holder = pool.find(u => !taken.has(u.uid) && u.pts >= min) || null;
+            if (holder) taken.add(holder.uid);
+        }
+        slots.push({ rank, min, hasPrize, holder, prize: hasPrize ? fmtPrize(rewards[String(rank)]) : '' });
+    }
+
+    const header = `
+    <div class="flex items-center justify-around p-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800/50 mb-3">
         <div class="text-center">
             <div class="text-xl font-black text-yellow-600 dark:text-yellow-400">🎁</div>
-            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">${isThisWeek ? "This week's" : escapeHtml(weekLabel) + ' ·'} Top ${maxRank} win prizes</div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">${title}</div>
         </div>
         <div class="text-center">
             <div class="text-lg font-black text-green-600 dark:text-green-400">${configured.length}</div>
             <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Prized ranks</div>
-        </div>${minLb > 0 ? `
+        </div>
         <div class="text-center">
-            <div class="text-lg font-black text-indigo-600 dark:text-indigo-300">🏅</div>
-            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Min ${minLb.toLocaleString()} LB</div>
-        </div>` : ''}`;
-    list.appendChild(head);
+            <div class="text-lg font-black text-indigo-600 dark:text-indigo-300">${slots.filter(s => s.holder).length}</div>
+            <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Slots filled</div>
+        </div>
+    </div>`;
 
-    const fragment = document.createDocumentFragment();
-    pool.forEach((u, idx) => {
-        const rank = idx + 1;
-        const prize = escapeHtml(fmtPrize(rewards[String(rank)]));
+    const rows = slots.map(({ rank, min, hasPrize, holder, prize }) => {
         let rankHtml = `<div class="w-7 text-center font-bold text-gray-400 dark:text-gray-500 text-xs">#${rank}</div>`;
         if (rank === 1) rankHtml = `<div class="w-7 text-center text-yellow-500 text-lg"><i class="fa-solid fa-medal"></i></div>`;
         else if (rank === 2) rankHtml = `<div class="w-7 text-center text-gray-400 text-lg"><i class="fa-solid fa-medal"></i></div>`;
         else if (rank === 3) rankHtml = `<div class="w-7 text-center text-amber-600 text-lg"><i class="fa-solid fa-medal"></i></div>`;
 
-        const el = document.createElement('div');
-        el.className = 'flex items-center justify-between p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2';
-        el.innerHTML = `
+        const open = !holder;
+        const left = open
+            ? `<div class="w-9 h-9 shrink-0 rounded-full border-2 border-dashed border-gray-300 dark:border-slate-600 flex items-center justify-center text-gray-400 dark:text-slate-500"><i class="fa-solid fa-lock text-xs"></i></div>
+               <div class="leading-tight truncate pr-2">
+                   <h3 class="font-bold text-sm text-gray-400 dark:text-gray-500 truncate">Open slot</h3>
+                   <div class="text-[11px] text-indigo-500 dark:text-indigo-300 font-bold">${hasPrize ? (min > 0 ? `needs ${min.toLocaleString()} LB` : 'no holder yet') : 'no prize set'}</div>
+               </div>`
+            : `<div class="relative shrink-0">
+                   <img src="${holder.pic || window.generateAvatar(holder.uid)}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${holder.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
+               </div>
+               <div class="leading-tight truncate pr-2">
+                   <h3 class="font-bold text-sm text-gray-900 dark:text-white truncate cursor-pointer hover:underline" onclick="window.openProfile('${holder.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">${escapeHtml(holder.name)}</h3>
+                   <div class="text-[11px] text-yellow-600 dark:text-yellow-500 font-bold">🏆 ${holder.pts.toLocaleString()}</div>
+               </div>`;
+
+        const right = `
+            <div class="text-right shrink-0 pr-1">
+                <div class="text-sm font-bold whitespace-nowrap ${hasPrize ? 'text-green-600 dark:text-green-400' : 'text-gray-300 dark:text-gray-600'}">${hasPrize ? prize : '—'}</div>
+                <div class="text-[10px] text-indigo-500 dark:text-indigo-300 font-semibold whitespace-nowrap">${min > 0 ? 'min ' + min.toLocaleString() : 'no min'}</div>
+            </div>`;
+
+        return `
+        <div class="flex items-center justify-between p-2 rounded-lg border mb-2 ${open ? 'bg-white/70 dark:bg-slate-800/40 border-dashed border-gray-200 dark:border-slate-700' : 'bg-gray-50 dark:bg-slate-900 border-gray-100 dark:border-slate-700/50'}">
             <div class="flex items-center space-x-3 overflow-hidden">
                 ${rankHtml}
-                <div class="relative shrink-0">
-                    <img src="${u.pic || window.generateAvatar(u.uid)}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
-                </div>
-                <div class="leading-tight truncate pr-2">
-                    <h3 class="font-bold text-sm text-gray-900 dark:text-white truncate cursor-pointer hover:underline" onclick="window.openProfile('${u.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">${u.name}</h3>
-                </div>
+                ${left}
             </div>
-            <div class="flex items-center shrink-0 gap-2 pr-1 text-sm">
-                <span class="text-yellow-600 dark:text-yellow-500 font-bold">🏆 ${u.pts}</span>
-                ${rank <= configured.length ? `<span class="text-green-600 dark:text-green-400 font-bold whitespace-nowrap">${prize}</span>` : ''}
-            </div>`;
-        fragment.appendChild(el);
-    });
-    list.appendChild(fragment);
+            ${right}
+        </div>`;
+    }).join('');
+
+    return header + rows;
+}
+
+// Rewards tab: the fixed Top-10 ladder for the SELECTED WEEK — prize + Min LB per
+// rank, each slot auto-filled with whoever has already reached that rank's floor.
+// The week comes from the period bar (shared with the Weekly tab) and falls back
+// to the current ISO week when no week has been picked yet.
+async function renderRankingRewards(list) {
+    const loader = document.getElementById('ranking-loader');
+    if (loader) loader.classList.remove('hidden');
+
+    const weekKey = window.lbPeriodKey || window.lbPeriodKeyFor('weekly');
+    const isThisWeek = weekKey === window.lbPeriodKeyFor('weekly');
+    const weekLabel = window.lbPeriodLabel('weekly', weekKey);
+    const title = isThisWeek ? "This week's Top 10" : `${escapeHtml(weekLabel)} · Top 10`;
+
+    const html = await buildRewardsLadderHtml(weekKey, title);
+    if (loader) loader.classList.add('hidden');
+
+    list.innerHTML = html || `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🎁 No leaderboard rewards are configured yet.</p>`;
     list.style.minHeight = '';
 }
 
