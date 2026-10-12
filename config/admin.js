@@ -3,8 +3,8 @@ import { app, auth, db, db3, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, remove, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=6";
-import "../js/helpers.js?v=71";
+import "../js/globals.js?v=7";
+import "../js/helpers.js?v=72";
 
 const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
@@ -299,6 +299,7 @@ function initAdminDashboard() {
             document.getElementById('set-boardGameMoveTimerSec').value = settings.boardGameMoveTimerSec ?? '';
             document.getElementById('set-presenceSweepSec').value = settings.presenceSweepSec ?? '';
             document.getElementById('set-minGamePlayers').value = settings.minGamePlayers ?? '';
+            document.getElementById('set-membersRefreshLimit').value = settings.membersRefreshLimit ?? '';
             document.getElementById('set-starsPerComment').value = settings.starsPerComment ?? '';
             document.getElementById('set-starsPerLike').value = settings.starsPerLike ?? '';
             document.getElementById('set-starsPerPoked').value = settings.starsPerPoked ?? '';
@@ -340,6 +341,7 @@ function initAdminDashboard() {
             document.getElementById('set-boardGameMoveTimerSec').value = '';
             document.getElementById('set-presenceSweepSec').value = '';
             document.getElementById('set-minGamePlayers').value = '';
+            document.getElementById('set-membersRefreshLimit').value = '';
             document.getElementById('set-starsPerComment').value = '';
             document.getElementById('set-starsPerLike').value = '';
             document.getElementById('set-starsPerPoked').value = '';
@@ -381,6 +383,7 @@ function initAdminDashboard() {
         document.getElementById('set-boardGameMoveTimerSec').placeholder = window.siteSettings.boardGameMoveTimerSec ?? 60;
         document.getElementById('set-presenceSweepSec').placeholder = window.siteSettings.presenceSweepSec ?? 0;
         document.getElementById('set-minGamePlayers').placeholder = window.siteSettings.minGamePlayers ?? 5;
+        document.getElementById('set-membersRefreshLimit').placeholder = window.siteSettings.membersRefreshLimit ?? 5;
         document.getElementById('set-starsPerComment').placeholder = window.siteSettings.starsPerComment;
         document.getElementById('set-starsPerLike').placeholder = window.siteSettings.starsPerLike ?? 1;
         document.getElementById('set-starsPerPoked').placeholder = window.siteSettings.starsPerPoked;
@@ -416,6 +419,9 @@ function initAdminDashboard() {
             boardGameMoveTimerSec: parseInt(document.getElementById('set-boardGameMoveTimerSec').value) || 60,
             presenceSweepSec: parseInt(document.getElementById('set-presenceSweepSec').value) || 0,
             minGamePlayers: parseInt(document.getElementById('set-minGamePlayers').value) || 5,
+            // Blank falls back to the built-in default — a missing box must never
+            // silently disable the Members refresh for the whole community.
+            membersRefreshLimit: parseInt(document.getElementById('set-membersRefreshLimit').value) || 5,
             starsPerComment: parseInt(document.getElementById('set-starsPerComment').value) || 0,
             starsPerLike: parseInt(document.getElementById('set-starsPerLike').value) || 0,
             starsPerPoked: parseInt(document.getElementById('set-starsPerPoked').value) || 0,

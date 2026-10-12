@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v312';
+const CACHE_NAME = 'hangout-v313';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
@@ -50,9 +50,9 @@ const PRECACHE_ASSETS = [
   './arena/bracket-engine.js',
   './chat/css/styles.css?v=54',
   './js/renderers.js?v=98',
-  './js/helpers.js?v=71',
+  './js/helpers.js?v=72',
   './js/games.js?v=63',
-  './js/main.js?v=103',
+  './js/main.js?v=104',
   './js/myday.js?v=28',
   './js/voice-recorder.js?v=3',
   './chat/js/app.js?v=108',

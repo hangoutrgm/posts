@@ -149,7 +149,8 @@ window.siteSettings = {
     chatGameHostLbReward: 0,
     zeroLbForFlaggedPair: false, // /config → Site Control: zero LB when host+winner share a flagged IP group (anti-fixed-match shield)
     gameLimits: {},
-    minGamePlayers: 5 // /config → minimum players required to start Bingo / Spin the Names draw (0 = no minimum)
+    minGamePlayers: 5, // /config → minimum players required to start Bingo / Spin the Names draw (0 = no minimum)
+    membersRefreshLimit: 5 // /config → daily taps allowed on the Members-modal refresh button (per device; 0/blank = this default)
 };
 
 // False until main.js applies the live /settings snapshot. While it is false, checks

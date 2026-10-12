@@ -9,7 +9,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=71";
+import "./helpers.js?v=72";
 import "./renderers.js?v=98";
 
 let presenceInterval = null;
@@ -708,10 +708,16 @@ window.ensureUsersFresh = async () => {
 // debounce AND the localStorage freshness window so the list always reflects
 // the latest /users data (applyUsersData rewrites the cache and repaints the
 // open modal).
-// Bandwidth guard: MEMBERS_REFRESH_LIMIT manual pulls per local calendar day
-// (counted in localStorage only — never on the server, so quota checks cost
-// zero RTDB traffic). A failed pull does not consume quota.
-const MEMBERS_REFRESH_LIMIT = 5;
+// Bandwidth guard: N manual pulls per local calendar day (counted in localStorage
+// only — never on the server, so quota checks cost zero RTDB traffic). A failed
+// pull does not consume quota. N is admin-configurable (/config → Limits →
+// "Members List Refresh Limit") and falls back to this default until the live
+// /settings snapshot lands (or if the admin never sets one).
+const MEMBERS_REFRESH_DEFAULT = 5;
+const membersRefreshLimit = () => {
+    const n = parseInt(window.siteSettings?.membersRefreshLimit, 10);
+    return (Number.isFinite(n) && n >= 1) ? n : MEMBERS_REFRESH_DEFAULT;
+};
 const MEMBERS_REFRESH_KEY = 'hangout-members-refresh';
 const membersRefreshDay = () => {
     const d = new Date();
@@ -728,14 +734,16 @@ const readMembersRefreshQuota = () => {
 };
 const paintMembersRefreshTitle = (q) => {
     const btn = document.getElementById('members-refresh-btn');
-    if (btn) btn.title = 'Refresh members list (' + Math.max(0, MEMBERS_REFRESH_LIMIT - q.count) + ' of ' + MEMBERS_REFRESH_LIMIT + ' left today)';
+    const limit = membersRefreshLimit();
+    if (btn) btn.title = 'Refresh members list (' + Math.max(0, limit - q.count) + ' of ' + limit + ' left today)';
 };
 
 window.refreshMembersList = async () => {
     const quota = readMembersRefreshQuota();
+    const limit = membersRefreshLimit();
     paintMembersRefreshTitle(quota);
-    if (quota.count >= MEMBERS_REFRESH_LIMIT) {
-        window.showToast && window.showToast('Daily refresh limit reached (' + MEMBERS_REFRESH_LIMIT + '/day) — try again tomorrow.');
+    if (quota.count >= limit) {
+        window.showToast && window.showToast('Daily refresh limit reached (' + limit + '/day) — try again tomorrow.');
         return;
     }
     const btn = document.getElementById('members-refresh-btn');
