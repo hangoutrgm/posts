@@ -262,30 +262,56 @@ body::before {
 .a-pick-flag.is-ok { color: #059669; background: rgba(16, 185, 129, 0.14); }
 .a-pick-flag.is-bad { color: #dc2626; background: rgba(239, 68, 68, 0.14); }
 .a-pick-empty { padding: 12px 10px; font-size: 11.5px; font-weight: 600; color: var(--a-muted); }
-.a-pick-chip {
-  display: inline-flex;
+
+/* Tagged teammates become stacked roster rows (avatar · name · role · remove)
+   instead of pills — a native <select> inside a 999px pill broke the shape. */
+.a-tag-row {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 10px;
-  border-radius: 999px;
-  background: rgba(20, 185, 163, 0.12);
-  border: 1px solid rgba(20, 185, 163, 0.45);
-  color: var(--a-text);
-  font-size: 11px;
-  font-weight: 700;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(20, 185, 163, 0.08);
+  border: 1px solid rgba(20, 185, 163, 0.28);
 }
-.a-pick-chip > i { color: var(--a-teal); font-size: 10px; }
-.a-pick-chip button {
+.a-tag-row .a-pick-init { width: 26px; height: 26px; font-size: 11px; }
+.a-tag-ava { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.a-tag-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--a-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-tag-role {
+  flex-shrink: 0;
+  max-width: 46%;
+  padding: 4px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid var(--a-border-2);
+  background: var(--a-panel-solid);
+  color: var(--a-text);
+  cursor: pointer;
+  outline: none;
+}
+.a-tag-role:focus { border-color: var(--a-teal); }
+.a-tag-x {
   display: grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
   border-radius: 50%;
   color: var(--a-faint);
   transition: color 0.14s ease, background 0.14s ease;
 }
-.a-pick-chip button i { font-size: 8px; }
-.a-pick-chip button:hover { color: #fff; background: var(--a-red); }
+.a-tag-x i { font-size: 9px; }
+.a-tag-x:hover { color: #fff; background: var(--a-red); }
 
 /* ---- tab strip ---- */
 .scrollbar-hide::-webkit-scrollbar { display: none; }

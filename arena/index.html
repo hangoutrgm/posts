@@ -16,7 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Unbounded:wght@700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="../css/tailwind.min.css?v=15">
-    <link rel="stylesheet" href="./arena.css?v=15">
+    <link rel="stylesheet" href="./arena.css?v=17">
 </head>
 <body class="min-h-screen bg-gray-100 text-gray-900 dark:bg-[#0b1120] dark:text-[#f8fafc] transition-colors duration-300">
 
@@ -38,6 +38,8 @@
                 </button>
                 <div id="arena-acct-menu" class="hidden a-acct-menu">
                     <p id="arena-acct-name" class="a-acct-name hidden"></p>
+                    <button id="menu-viewprofile" onclick="window.Arena.viewProfile()" class="a-acct-item hidden"><i class="fa-solid fa-id-card"></i>View profile</button>
+                    <button id="menu-editprofile" onclick="window.toggleArenaAcct(); window.Arena.openProfileSettings()" class="a-acct-item hidden"><i class="fa-solid fa-user-pen"></i>Edit profile</button>
                     <button onclick="window.toggleArenaTheme(); window.toggleArenaAcct()" class="a-acct-item">
                         <i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:block"></i>Theme
                     </button>
@@ -281,8 +283,11 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Tag teammates <span class="normal-case font-medium">(search registered players, max 4)</span></label>
-                    <div id="rm-chips" class="hidden flex flex-wrap gap-1.5 mb-2"></div>
+                    <label class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                        <span>Tag teammates <span class="normal-case font-medium">(search registered players)</span></span>
+                        <span id="rm-count" class="text-teal-600 dark:text-teal-400 tabular-nums">0/4</span>
+                    </label>
+                    <div id="rm-chips" class="hidden space-y-1.5 mb-2"></div>
                     <input id="rm-search" type="text" autocomplete="off" placeholder="Search player name…" class="a-input">
                     <div id="rm-results" class="hidden a-pick-list"></div>
                     <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 leading-snug"><i class="fa-solid fa-circle-info mr-1"></i>Teammates must be registered on the main site with a completed gaming profile.</p>
@@ -445,6 +450,6 @@
     <div id="arena-toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[300] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="../js/users-cache.js?v=6"></script>
-    <script type="module" src="./arena.js?v=22"></script>
+    <script type="module" src="./arena.js?v=25"></script>
 </body>
 </html>

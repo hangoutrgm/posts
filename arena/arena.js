@@ -250,7 +250,8 @@ window.Arena.googleSignIn = async () => {
 function applyAuthUi() {
   const acct = $('arena-acct'), menu = $('arena-acct-menu'),
     img = $('arena-avatar-img'), initial = $('arena-avatar-initial'), ph = $('arena-avatar-ph'),
-    nameEl = $('arena-acct-name'), itemIn = $('menu-signin'), itemOut = $('menu-signout');
+    nameEl = $('arena-acct-name'), itemIn = $('menu-signin'), itemOut = $('menu-signout'),
+    itemView = $('menu-viewprofile'), itemEdit = $('menu-editprofile');
   menu.classList.add('hidden');
   if (state.user) {
     const name = state.profile?.name || state.user.displayName || state.user.email || 'Player';
@@ -258,6 +259,9 @@ function applyAuthUi() {
     nameEl.classList.remove('hidden');
     itemIn.classList.add('hidden');
     itemOut.classList.remove('hidden');
+    // Profile shortcuts only make sense once signed in.
+    if (itemView) itemView.classList.remove('hidden');
+    if (itemEdit) itemEdit.classList.remove('hidden');
     const raw = state.profile?.pic || state.user.photoURL || '';
     if (raw) {
       img.src = window.optAvatar ? window.optAvatar(raw, 96) : raw;
@@ -274,6 +278,8 @@ function applyAuthUi() {
     nameEl.classList.add('hidden');
     itemIn.classList.remove('hidden');
     itemOut.classList.add('hidden');
+    if (itemView) itemView.classList.add('hidden');
+    if (itemEdit) itemEdit.classList.add('hidden');
     img.classList.add('hidden');
     initial.classList.add('hidden');
     ph.classList.remove('hidden');
@@ -311,6 +317,12 @@ function checkGamingProfile() {
 window.Arena.openProfileSettings = () => {
   // Deep-link the main site straight to Edit Profile > Gaming.
   window.location.href = '../?edit=gaming';
+};
+
+/** Account menu → the main site's profile page, opened on the Gaming tab. */
+window.Arena.viewProfile = () => {
+  if (!state.user) return;
+  window.location.href = `../?profile=${encodeURIComponent(state.user.uid)}&tab=gaming`;
 };
 
 /**
@@ -761,6 +773,24 @@ function mlbbComplete(u) {
   return !!(String(m.ign || '').trim() && String(m.gameId || '').trim() && String(m.primaryRole || '').trim());
 }
 
+/**
+ * Guard rail: find the registration in `tid` that already lists `uid` — either as
+ * the captain (registration key) or as a tagged member. `skipCaptainUid` excludes
+ * that captain's OWN team, so a captain can still edit/re-tag their own roster.
+ * Returns { capUid, reg, asCaptain } or null when the player is free to join.
+ */
+function findTeamWithPlayer(tid, uid, skipCaptainUid) {
+  if (!tid || !uid) return null;
+  const regs = state.registrations[tid] || {};
+  for (const [capUid, reg] of Object.entries(regs)) {
+    if (skipCaptainUid && capUid === skipCaptainUid) continue;
+    if (capUid === uid) return { capUid, reg, asCaptain: true };
+    const hit = (reg.members || []).find((m) => m && typeof m === 'object' && m.uid === uid);
+    if (hit) return { capUid, reg, asCaptain: false };
+  }
+  return null;
+}
+
 /** Load the /users table for search + validation (12h localStorage cache first). */
 function ensureUsers() {
   if (state.usersMap && Object.keys(state.usersMap).length) return Promise.resolve(state.usersMap);
@@ -778,14 +808,40 @@ function ensureUsers() {
   });
 }
 
+// MLBB roles the captain can assign to each tagged teammate (req 5).
+const ROLE_OPTIONS = ['', 'Gold Laner', 'Jungler', 'Mid Laner', 'EXP Laner', 'Roamer'];
+
 function renderMemberChips() {
   const box = $('rm-chips');
   if (!box) return;
-  box.innerHTML = state.picked.map((p, i) =>
-    `<span class="a-pick-chip"><i class="fa-solid fa-user-check"></i>${esc(p.name)}<button type="button" onclick="window.Arena.unpickMember(${i})" aria-label="Remove"><i class="fa-solid fa-xmark"></i></button></span>`
-  ).join('');
+  const count = $('rm-count');
+  if (count) count.textContent = `${state.picked.length}/4`;
+  box.innerHTML = state.picked.map((p, i) => {
+    const cur = String(p.role || '');
+    // Keep a legacy/custom role visible even if it isn't one of the presets.
+    const opts = ROLE_OPTIONS.includes(cur) ? ROLE_OPTIONS : [cur, ...ROLE_OPTIONS];
+    const u = state.usersMap?.[p.uid] || {};
+    const pic = u.pic ? (window.optAvatar ? window.optAvatar(u.pic, 48) : u.pic) : '';
+    const ava = pic
+      ? `<img class="a-tag-ava" src="${esc(pic)}" alt="">`
+      : `<span class="a-pick-init">${esc((p.name || 'P').charAt(0).toUpperCase())}</span>`;
+    return `<div class="a-tag-row">
+        ${ava}
+        <span class="a-tag-name">${esc(p.name)}</span>
+        <select class="a-tag-role" onchange="window.Arena.setMemberRole(${i}, this.value)" aria-label="Game role for ${esc(p.name)}">
+          ${opts.map((r) => `<option value="${esc(r)}" ${r === cur ? 'selected' : ''}>${r === '' ? 'Assign role…' : esc(r)}</option>`).join('')}
+        </select>
+        <button type="button" class="a-tag-x" onclick="window.Arena.unpickMember(${i})" aria-label="Remove ${esc(p.name)}"><i class="fa-solid fa-xmark"></i></button>
+      </div>`;
+  }).join('');
   box.classList.toggle('hidden', !state.picked.length);
 }
+
+/** Req 5 — the captain assigns a game role to each tagged player. */
+window.Arena.setMemberRole = (i, value) => {
+  if (!state.picked[i]) return;
+  state.picked[i].role = value;
+};
 
 function renderMemberResults() {
   const box = $('rm-results'), input = $('rm-search');
@@ -828,7 +884,12 @@ window.Arena.pickMember = (uid) => {
   if (state.picked.length >= 4) return window.toast('Team is full — max 4 tagged players.');
   if (!uid || uid === state.user?.uid || state.picked.some((p) => p.uid === uid)) return;
   const u = state.usersMap?.[uid];
-  state.picked.push({ uid, name: u?.name || 'Player' });
+  // Guard rail: a player can only sit on ONE team per tournament.
+  const taken = findTeamWithPlayer(state.regTid, uid, state.user?.uid);
+  if (taken) {
+    return window.toast(`${u?.name || 'That player'} is already ${taken.asCaptain ? 'the captain' : 'listed as a member'} of "${taken.reg.teamName}" in this tournament.`);
+  }
+  state.picked.push({ uid, name: u?.name || 'Player', role: u?.mlbb?.primaryRole || '' });
   renderMemberChips();
   $('rm-search').value = '';
   $('rm-results').classList.add('hidden');
@@ -843,6 +904,16 @@ window.Arena.openRegister = (tid) => {
   if (!state.user) return $('signin-modal').classList.remove('hidden');
   const t = state.tournaments[tid];
   if (!t) return;
+  // Requirement 2 — already listed in THIS tournament (captaining your own team
+  // is fine: that path is "Edit team"; anyone else's roster blocks the join).
+  const own = state.registrations[tid]?.[state.user.uid];
+  const listed = own ? null : findTeamWithPlayer(tid, state.user.uid, state.user.uid);
+  if (listed) {
+    return window.Arena.notice(
+      `You are already listed as ${listed.asCaptain ? 'the captain' : 'a member'} of "${listed.reg.teamName}" in this tournament. Leave that squad first if you want to join a different one.`,
+      { title: 'Already listed' }
+    );
+  }
   if (regCount(tid) >= t.maxTeams && !state.registrations[tid]?.[state.user.uid]) {
     return window.toast('This tournament is full.');
   }
@@ -862,11 +933,15 @@ window.Arena.openRegister = (tid) => {
   // Pre-fill tagged teammates (uid-tagged entries only; legacy free-text is re-tagged on edit)
   state.picked = (existing?.members || [])
     .filter((m) => m && typeof m === 'object' && m.uid)
-    .map((m) => ({ uid: m.uid, name: m.name || 'Player' }));
+    .map((m) => ({ uid: m.uid, name: m.name || 'Player', role: m.role || '' }));
   renderMemberChips();
   $('rm-search').value = '';
   $('rm-results').classList.add('hidden');
-  ensureUsers().then(() => { if ($('rm-search').value.trim()) renderMemberResults(); });
+  ensureUsers().then(() => {
+    // Users map landed — re-render so teammate avatars replace the letter fallback.
+    renderMemberChips();
+    if ($('rm-search').value.trim()) renderMemberResults();
+  });
   $('register-modal').classList.remove('hidden');
 };
 
@@ -890,10 +965,13 @@ window.Arena.submitRegistration = async () => {
     const u = state.usersMap?.[p.uid];
     if (!u) return window.toast(`${p.name} is not registered on the main site.`);
     if (!mlbbComplete(u)) return window.toast(`${p.name} must complete their gaming profile on the main site.`);
+    // Guard rail re-check at submit — registrations may have changed since the modal opened.
+    const taken = findTeamWithPlayer(tid, p.uid, state.user.uid);
+    if (taken) return window.toast(`${p.name} is already on "${taken.reg.teamName}" in this tournament.`);
   }
   const members = picked.map((p) => {
     const m = state.usersMap[p.uid].mlbb || {};
-    return { uid: p.uid, name: state.usersMap[p.uid].name || p.name, ign: m.ign || '', gameId: m.gameId || '', role: m.primaryRole || '' };
+    return { uid: p.uid, name: state.usersMap[p.uid].name || p.name, ign: m.ign || '', gameId: m.gameId || '', role: (p.role || m.primaryRole || '') };
   });
   const reg = {
     uid: state.user.uid,
@@ -921,6 +999,41 @@ window.Arena.leaveTournament = async (tid) => {
   if (!(await window.Arena.confirm('Leave this tournament? Your team registration will be removed.', { title: 'Leave tournament', danger: true }))) return;
   await set(ref(db3, `arena/registrations/${tid}/${state.user.uid}`), null);
   window.toast('You left the tournament.');
+};
+
+/** Req 4 — the host removes a team from the tournament (pre-bracket only). */
+window.Arena.disqualifyTeam = async (tid, capUid) => {
+  const t = state.tournaments[tid];
+  if (!t || !state.user || t.createdBy !== state.user.uid) return window.toast('Only the host can disqualify a team.');
+  if (isBannedUser()) return window.toast('Your account is banned from Hangout.');
+  if (hasBracket(tid)) return window.toast('The bracket is already built — teams are locked.');
+  const reg = state.registrations[tid]?.[capUid];
+  if (!reg) return window.toast('That team is no longer registered.');
+  if (!(await window.Arena.confirm(`Disqualify "${reg.teamName}" and remove them from the list of teams?`, { title: 'Disqualify team', danger: true }))) return;
+  try {
+    await remove(ref(db3, `arena/registrations/${tid}/${capUid}`));
+    window.toast(`${reg.teamName} has been disqualified.`);
+    window.Arena.viewDetails(tid); // refresh the open details modal
+  } catch (e) {
+    window.toast('Failed: ' + String(e?.message || e).replace('Firebase: ', ''));
+  }
+};
+
+/** Req 3 — a tagged player leaves the captain's squad (their own registration stays). */
+window.Arena.leaveSquad = async (tid, capUid) => {
+  if (!state.user) return;
+  if (isBannedUser()) return window.toast('Your account is banned from Hangout.');
+  const reg = state.registrations[tid]?.[capUid];
+  if (!reg) return window.toast('That squad is no longer registered.');
+  if (!(await window.Arena.confirm(`Leave "${reg.teamName}"? You will be removed from their roster.`, { title: 'Leave squad', danger: true }))) return;
+  try {
+    const members = (reg.members || []).filter((m) => !(m && typeof m === 'object' && m.uid === state.user.uid));
+    await set(ref(db3, `arena/registrations/${tid}/${capUid}/members`), members.length ? members : null);
+    window.toast('You left the squad.');
+    renderSquads();
+  } catch (e) {
+    window.toast('Failed: ' + String(e?.message || e).replace('Firebase: ', ''));
+  }
 };
 
 function fmtFormat(f) {
@@ -1142,8 +1255,16 @@ window.Arena.viewDetails = (tid) => {
          <p class="text-[11px] text-gray-600 dark:text-gray-300 leading-relaxed" style="white-space: pre-line">${esc(t.desc)}</p>
        </div>`
     : '';
+  // Req 4 — the host can disqualify a team (remove it from the list) while the
+  // tournament is still in registration. Once the bracket exists, teams are locked.
+  const canDisqualify = !!(state.user && t.createdBy === state.user.uid) && !hasBracket(tid) && status !== 'completed';
   const teams = regs.length
-    ? regs.map((r) => rosterList(tid, r)).join('')
+    ? Object.entries(state.registrations[tid] || {}).map(([capUid, r]) => {
+        const dqBtn = canDisqualify
+          ? `<div class="flex justify-end mt-1"><button onclick="window.Arena.disqualifyTeam('${tid}','${esc(capUid)}')" class="a-btn a-btn--red a-btn--sm"><i class="fa-solid fa-user-slash"></i>Disqualify</button></div>`
+          : '';
+        return rosterList(tid, r) + dqBtn;
+      }).join('')
     : '<div class="a-empty"><i class="fa-solid fa-people-group"></i>No teams registered yet.</div>';
   const pr = t.prizes || {}, pp = t.points || {};
   const rankKeys = [...new Set([
@@ -1414,6 +1535,7 @@ function rosterList(tid, reg) {
     return `<div class="flex items-center gap-2 py-1 pl-4">
         <i class="fa-solid fa-user text-gray-300 dark:text-gray-600 text-[9px]"></i>
         <span class="text-[11px] text-gray-600 dark:text-gray-300 truncate">${esc(m.name || '')}</span>
+        ${m.role ? `<span class="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 px-1.5 py-0.5 rounded shrink-0">${esc(m.role)}</span>` : ''}
         ${m.ign && m.ign !== m.name ? `<span class="text-[9px] font-bold text-teal-600 dark:text-teal-400 truncate">${esc(m.ign)}</span>` : ''}
         ${mGameId ? `<span class="text-[10px] font-mono text-gray-400 ml-auto truncate">${esc(mGameId)}</span>` : ''}
     </div>`;
@@ -1690,33 +1812,49 @@ function renderSquads() {
     box.innerHTML = '<p class="text-xs text-gray-400 italic">Sign in to see your squads.</p>';
     return;
   }
-  const tids = myTids();
-  if (!tids.length) {
+  const uid = state.user.uid;
+  // Two kinds of entry: teams I registered (I'm the captain) and squads that
+  // tagged me as a member (req 3 — those offer a "Leave squad" action).
+  const entries = [];
+  for (const tid of Object.keys(state.registrations)) {
+    const regs = state.registrations[tid] || {};
+    if (regs[uid]) entries.push({ tid, capUid: uid, reg: regs[uid], mine: true });
+    else {
+      const cap = Object.keys(regs).find((c) => (regs[c].members || []).some((m) => m && typeof m === 'object' && m.uid === uid));
+      if (cap) entries.push({ tid, capUid: cap, reg: regs[cap], mine: false });
+    }
+  }
+  if (!entries.length) {
     box.innerHTML = '<div class="a-empty"><i class="fa-solid fa-people-group"></i>You haven\'t registered a team yet.<br>Head to Tournaments → Join.</div>';
     return;
   }
-  box.innerHTML = tids.map((tid) => {
+  box.innerHTML = entries.map(({ tid, capUid, reg, mine }) => {
     const t = state.tournaments[tid];
-    const reg = state.registrations[tid]?.[state.user.uid];
-    if (!t || !reg) return '';
+    if (!t) return '';
     const status = tournamentStatus(t);
     const [bCls, bLabel] = STATUS_BADGE[status] || STATUS_BADGE.upcoming;
+    const memberRows = (reg.members || []).map((m) => {
+      const raw = (m && typeof m === 'object') ? m : { name: m };
+      const isMe = raw.uid === uid;
+      return `<p class="text-[10px] text-gray-500 ${isMe ? 'font-bold text-teal-600 dark:text-teal-400' : ''}">${esc(raw.name || '')}${raw.role ? ` <span class="text-indigo-500">· ${esc(raw.role)}</span>` : ''}${isMe ? ' <i class="fa-solid fa-circle-check"></i>' : ''}</p>`;
+    }).join('');
     return `<div class="arena-card">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
             <p class="text-sm font-extrabold text-gray-900 dark:text-white truncate">${esc(reg.teamName)}</p>
             <p class="text-[10px] text-gray-500 dark:text-gray-400">${esc(t.name)} · ${fmtFormat(t.format)} · ${esc(t.series)}</p>
         </div>
-        <span class="shrink-0 text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${bCls}">${bLabel}</span>
+        <span class="shrink-0 text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${mine ? bCls : 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'}">${mine ? bLabel : 'Member'}</span>
       </div>
       <div class="bg-gray-50 dark:bg-slate-900/60 rounded-lg px-2.5 py-1.5 mb-2">
-        <p class="text-[9px] font-black uppercase text-gray-400 mb-0.5">Roster</p>
-        <p class="text-[11px] font-bold text-gray-700 dark:text-gray-200">${esc(reg.ign)} <span class="font-mono font-normal text-gray-400">${esc([reg.gameId, reg.server ? `(${reg.server})` : ''].filter(Boolean).join(' '))}</span> <span class="text-indigo-500">· ${esc(reg.role)}</span></p>
-        ${(reg.members || []).length ? `<p class="text-[10px] text-gray-500">${reg.members.map((m) => esc(typeof m === 'string' ? m : (m.name || ''))).filter(Boolean).join(' · ')}</p>` : ''}
+        <p class="text-[9px] font-black uppercase text-gray-400 mb-0.5">${mine ? 'Roster' : 'Squad roster'}</p>
+        <p class="text-[11px] font-bold text-gray-700 dark:text-gray-200">${esc(reg.ign)} <span class="font-mono font-normal text-gray-400">${esc([reg.gameId, reg.server ? `(${reg.server})` : ''].filter(Boolean).join(' '))}</span> <span class="text-indigo-500">· ${esc(reg.role)}</span> <span class="text-amber-500 text-[9px] font-black uppercase">Captain</span></p>
+        ${memberRows}
       </div>
       <div class="flex justify-between items-center">
         <span class="text-[10px] font-bold text-gray-400">${regCount(tid)}/${t.maxTeams} teams</span>
         <div class="flex gap-1.5">
+          ${mine ? '' : `<button onclick="window.Arena.leaveSquad('${tid}','${esc(capUid)}')" class="a-btn a-btn--red a-btn--sm"><i class="fa-solid fa-right-from-bracket"></i>Leave squad</button>`}
           <button onclick="window.Arena.viewBracket('${tid}')" class="a-btn a-btn--indigo a-btn--sm">Bracket</button>
           <button onclick="window.Arena.openScheduleTab()" class="a-btn a-btn--blue a-btn--sm">Schedule</button>
         </div>

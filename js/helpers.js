@@ -650,6 +650,11 @@ window.handleDeepLinks = () => {
     if (targetProfile && Object.keys(window.globalUsersCache).length > 0) {
         if (window.globalUsersCache[targetProfile]) {
             window.openProfile(targetProfile);
+            // openProfile() always lands on the Hangout tab; a deep link can ask
+            // for the Gaming tab instead (e.g. the Arena account menu).
+            if (params.get('tab') === 'gaming' && window.switchProfileTab) {
+                window.switchProfileTab('gaming');
+            }
             window.initialLinkDone = true;
         }
     } else if (targetPost && window.allPosts.length > 0) {
