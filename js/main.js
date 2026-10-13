@@ -1,5 +1,5 @@
 // main.js
-import { app, auth, db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { app, auth, db, db2, db3, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, push, onValue, get, set, update, remove, increment, runTransaction, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -9,8 +9,8 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=72";
-import "./renderers.js?v=98";
+import "./helpers.js?v=74";
+import "./renderers.js?v=101";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -313,6 +313,7 @@ document.querySelectorAll('.ranking-filter-btn').forEach(btn => {
         window.currentRankingFilter = targetBtn.getAttribute('data-filter');
         window._earningsCache = null;
         window._hostedGamesCache = null;
+        window._recruitLbCache = null;
         if (window.updateLbPeriodBar) window.updateLbPeriodBar();
         if (window.renderRankings) window.renderRankings(true);
     });
@@ -2490,6 +2491,422 @@ window.userMenuEditProfile = () => { window.closeUserMenu(); window.openEditProf
 window.userMenuInstall = () => { window.closeUserMenu(); window.installHangout(); };
 window.userMenuLogout = () => { window.closeUserMenu(); window.logoutUser(); };
 
+// ==========================================
+// RECRUITS MODAL (account menu -> Recruits)
+// ==========================================
+// Lists every account that picked the signed-in member as its recruiter and
+// sorts them into Valid / Invalid. A recruit is INVALID when:
+//   1. it appears in ANY group of the admin's flagged-group mirror (multi-account),
+//   2. its IP matches the RECRUITER's own IP, or
+//   3. its IP matches an EARLIER recruit's IP in the same chain.
+// /user_ips stays admin+owner-only, so no client ever reads another account's
+// IPs: the recruit stores a one-way fingerprint of its OWN IP, and (1) is served
+// by /flaggedGroups — uids only, no IPs. Reads RTDB 3 at recruits/{myUid}/….
+window._recruitsTab = 'valid';
+window._recruitsRows = [];
+// One shared verdict string so the judge and the claim-time re-check always
+// agree. Must stay inside the 40-char cap in database3.rules.json.
+const FLAGGED_GROUP_REASON = 'Flagged as multi-account (shared IP)';
+
+window.userMenuRecruits = () => {
+    window.closeUserMenu();
+    const modal = document.getElementById('recruits-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    paintRecruitRewardInfo();
+    window._recruitsTab = 'valid';
+    window.renderRecruits();
+};
+
+// My own /user_ips -> fingerprints. Owner-readable, so this is always allowed.
+// Returns null on a READ FAILURE so the caller can abort rather than judge a
+// recruit with an empty IP set (which would silently disable Rule 1).
+async function myIpFingerprints(uid) {
+    const out = new Set();
+    try {
+        const snap = await get(ref(db, `user_ips/${uid}`));
+        const ips = (snap.exists() && snap.val() && snap.val().ips) || {};
+        for (const key of Object.keys(ips)) {
+            // Stored keys swap "." for "_" (RTDB can't use dotted keys); undo that
+            // so we hash the SAME string the recruit hashed. Legacy dotted keys and
+            // IPv6 keys contain no "_" and pass through unchanged.
+            const raw = key.includes('_') ? key.replace(/_/g, '.') : key;
+            out.add(await ipFingerprint(raw));
+        }
+    } catch (e) {
+        console.warn('Recruit IP check failed:', e);
+        return null;
+    }
+    return out;
+}
+
+// Rule 3 — every uid sitting in ANY admin-flagged IP group.
+// Read /flaggedGroups directly instead of reusing games.js's uid -> single-gid
+// cache: a uid may legitimately sit in SEVERAL groups, so a single gid silently
+// drops matches. Comparing raw membership here leaves games.js untouched.
+// NOTE: this deliberately does NOT care WHO else is in the group — a recruit
+// that shares an IP with any existing account is a multi-account risk even when
+// that account isn't the recruiter.
+async function allFlaggedUids() {
+    try {
+        const snap = await get(ref(db, 'flaggedGroups'));
+        if (!snap.exists()) return new Set();
+        // uids come back as an array, but tolerate the object form too.
+        const toArr = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.values(v) : []);
+        const out = new Set();
+        Object.values(snap.val() || {}).forEach(g => toArr(g && g.uids).forEach(u => out.add(u)));
+        return out;
+    } catch (e) {
+        // null = READ FAILED (distinct from an empty set = genuinely unflagged)
+        // so the caller can abort instead of judging — and caching — a wrong verdict.
+        console.warn('[recruits] flaggedGroups read failed:', e);
+        return null;
+    }
+}
+
+// ── Recruits modal cache (localStorage) ──────────────────────────────────
+// Paints straight from the cache and only revalidates against RTDB once the
+// entry is older than RECRUITS_CACHE_TTL — so repeated opens cost ZERO reads.
+// Keyed by recruiter uid so a shared device never bleeds one account's
+// recruits into another. Every failure is swallowed: the cache is a nicety,
+// never a blocker (same pattern as the users cache / pet local mirror).
+const RECRUITS_CACHE_TTL = 2 * 60 * 1000;   // the 2-minute house cadence (README §10)
+const recruitsCacheKey = (uid) => `hangout-recruits:${uid}`;
+
+function readRecruitsCache(uid) {
+    if (!uid) return null;
+    try {
+        const c = JSON.parse(localStorage.getItem(recruitsCacheKey(uid)) || 'null');
+        return (c && Array.isArray(c.rows)) ? c : null;
+    } catch (e) { return null; }
+}
+
+function writeRecruitsCache(uid, rows) {
+    if (!uid) return;
+    try { localStorage.setItem(recruitsCacheKey(uid), JSON.stringify({ at: Date.now(), rows })); }
+    catch (e) { /* quota exceeded — drop it, the modal still works */ }
+}
+
+window.renderRecruits = async () => {
+    const list = document.getElementById('recruits-list');
+    const countEl = document.getElementById('recruits-count');
+    const loader = document.getElementById('recruits-loader');
+    if (!list) return;
+
+    const uid = window.currentUser ? window.currentUser.uid : null;
+    if (!uid) {
+        window._recruitsRows = [];
+        if (countEl) countEl.textContent = '0 Total';
+        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">Sign in to see your recruits.</p>`;
+        return;
+    }
+
+    // 1) Paint straight from the cache — the modal never waits on the network.
+    const cached = readRecruitsCache(uid);
+    if (cached) {
+        window._recruitsRows = cached.rows;
+        if (countEl) countEl.textContent = `${cached.rows.length} Total`;
+        window.paintRecruits();
+    } else {
+        // Cold load only: spinner + blank list.
+        if (loader) loader.classList.remove('hidden');
+        list.innerHTML = '';
+    }
+
+    // 2) Still fresh — NO database call at all.
+    if (cached && (Date.now() - cached.at) < RECRUITS_CACHE_TTL) return;
+
+    // 3) Revalidate. A warm refresh repaints silently (no spinner) and only
+    //    when something actually changed — see the tail of this function.
+    let data = null;
+    let ownHashes = new Set();
+    let loaded = false;
+    try {
+        const [snap, hashes] = await Promise.all([
+            get(ref(db3, `recruits/${uid}`)),
+            myIpFingerprints(uid)
+        ]);
+        data = (snap && snap.exists()) ? snap.val() : null;
+        ownHashes = hashes;
+        loaded = true;
+    } catch (e) {
+        console.warn('Recruits load failed:', e);
+    }
+    // Rule 3: the admin's same-IP mirror (/flaggedGroups — uids only, no IPs).
+    // Read directly so a stale shared cache can't hide a match.
+    const flaggedUids = await allFlaggedUids();
+    console.debug('[recruits] rule 3 — flagged uids:', flaggedUids ? [...flaggedUids] : flaggedUids);
+    if (loader) loader.classList.add('hidden');
+
+    // A failed read must NOT wipe a good cache or write a wrong verdict —
+    // keep whatever we already painted and let the next open retry.
+    if (!loaded || ownHashes === null || flaggedUids === null) return;
+
+    // Defensive: a uid becomes an inline onclick argument, so only accept
+    // Firebase-shaped keys (letters, digits, dash, underscore).
+    // Chronological — rule 2 only disqualifies SUCEEDING recruits.
+    const rows = Object.values(data || {})
+        .filter(r => r && typeof r.uid === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(r.uid))
+        .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+
+    // Judge the chain. Verdicts only ever TIGHTEN: Invalid is permanent, while a
+    // Valid row is re-checked on every open so fresh evidence (a shared flagged
+    // group, a new IP of mine) can flip it — never the reverse. Rows with neither
+    // a fingerprint nor a flagged group stay PENDING and are left undecided.
+    const claimed = new Set(ownHashes);
+    const patch = {};
+    const judged = rows.map(r => {
+        const fpr = typeof r.fpr === 'string' ? r.fpr : '';
+        const isFlagged = flaggedUids.has(r.uid);
+
+        // Evidence, strongest first — evaluated BEFORE this row's own IP is claimed.
+        let evidence = '';
+        if (isFlagged) evidence = FLAGGED_GROUP_REASON;
+        else if (fpr && ownHashes.has(fpr)) evidence = 'Same IP as you';
+        else if (fpr && claimed.has(fpr)) evidence = 'Same IP as an earlier recruit';
+
+        let status, reason = '';
+        if (r.valid === false) {
+            // Invalid is PERMANENT — never re-opened, whatever the evidence says now.
+            status = 'invalid';
+            reason = (typeof r.reason === 'string' && r.reason) || evidence || 'Flagged by IP rules';
+        } else if (evidence) {
+            status = 'invalid';
+            reason = evidence;
+        } else if (fpr) {
+            status = 'valid';
+        } else {
+            status = 'pending';
+        }
+
+        if (status === 'invalid') {
+            if (r.valid !== false) patch[`${r.uid}/valid`] = false;
+            if (r.reason !== reason) patch[`${r.uid}/reason`] = reason;
+        } else if (status === 'valid' && r.valid !== true) {
+            patch[`${r.uid}/valid`] = true;
+        }
+
+        if (fpr) claimed.add(fpr);   // rule 2: this IP is now taken
+        return { ...r, status, reason };
+    });
+
+    if (Object.keys(patch).length) {
+        try { await update(ref(db3, `recruits/${uid}`), patch); }
+        catch (e) { console.warn('Recruit verdict write failed:', e); }
+    }
+
+    // Repaint ONLY when something actually changed; otherwise just refresh the
+    // timestamp so the next open skips the round trip again.
+    if (!cached || JSON.stringify(cached.rows) !== JSON.stringify(judged)) {
+        window._recruitsRows = judged;
+        if (countEl) countEl.textContent = `${judged.length} Total`;
+        window.paintRecruits();
+    }
+    writeRecruitsCache(uid, judged);
+};
+
+window.setRecruitsTab = (tab) => {
+    window._recruitsTab = (tab === 'invalid') ? 'invalid' : 'valid';
+    window.paintRecruits();
+};
+
+// ── Recruit rewards ──────────────────────────────────────────────────────
+// Every VALID recruit pays the recruiter one reward: LB points (credited to
+// overall + daily/weekly/monthly) plus a ₱ prize that is DISPLAY-ONLY for now.
+// Both amounts and the claim cooldown come from /config → settings.
+function recruitRewardConfig() {
+    const s = window.siteSettings || {};
+    return {
+        lb: Math.max(0, Number(s.recruitLbReward ?? 10) || 0),
+        prize: Math.max(0, Number(s.recruitPrizeReward ?? 50) || 0),
+        cooldownMs: Math.max(0, Number(s.recruitClaimCooldownHrs ?? 48) || 0) * 3600 * 1000
+    };
+}
+// Exposed for the Recruits tab of the Rankings modal (js/renderers.js).
+window.recruitRewardConfig = recruitRewardConfig;
+
+// Fills the "Reward per valid recruit" banner in the Recruits modal.
+// Pure DOM — no network, so it is cheap to call on every open.
+function paintRecruitRewardInfo() {
+    const cfg = recruitRewardConfig();
+    const lb = document.getElementById('recruit-info-lb');
+    const prize = document.getElementById('recruit-info-prize');
+    const cd = document.getElementById('recruit-info-cooldown');
+    if (lb) lb.textContent = cfg.lb.toLocaleString();
+    if (prize) prize.textContent = cfg.prize.toLocaleString();
+    const hrs = cfg.cooldownMs / 3600000;
+    if (cd) {
+        cd.textContent = (hrs >= 24 && hrs % 24 === 0)
+            ? `${hrs / 24} day${hrs === 24 ? '' : 's'}`
+            : `${hrs}h`;
+    }
+}
+
+// "1d 22h" / "3h 12m" / "14m" — how long until a reward unlocks.
+function fmtRecruitWait(ms) {
+    const mins = Math.max(0, Math.ceil(ms / 60000));
+    const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
+function recruitClaimBtnHtml(r, cfg) {
+    if (r.claimedAt) {
+        return `<button type="button" disabled class="px-2 py-1 rounded text-[9px] font-bold bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 cursor-default">Claimed ✓</button>`;
+    }
+    const wait = ((Number(r.joinedAt) || 0) + cfg.cooldownMs) - Date.now();
+    if (wait > 0) {
+        return `<button type="button" disabled class="px-2 py-1 rounded text-[9px] font-bold bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-slate-600 cursor-not-allowed">Claim in ${fmtRecruitWait(wait)}</button>`;
+    }
+    return `<button type="button" onclick="event.stopPropagation(); window.claimRecruitReward('${r.uid}')" class="px-2 py-1 rounded text-[9px] font-bold bg-blue-600 text-white hover:bg-blue-500 transition shadow-sm">Claim</button>`;
+}
+
+window._claimingRecruit = false;
+
+// Claim ONE valid recruit's reward. Atomic: the transaction re-reads the live
+// record, so a double-click, a second tab or a stale modal cache can never pay
+// the same recruit twice.
+window.claimRecruitReward = async (recruitUid) => {
+    const uid = window.currentUser ? window.currentUser.uid : null;
+    if (!uid || !recruitUid || window._claimingRecruit) return;
+
+    const row = (window._recruitsRows || []).find(r => r.uid === recruitUid);
+    if (!row || row.status !== 'valid' || row.claimedAt) return;
+
+    const cfg = recruitRewardConfig();
+    if (Date.now() < ((Number(row.joinedAt) || 0) + cfg.cooldownMs)) return;
+
+    window._claimingRecruit = true;
+    try {
+        // Re-check the flagged-group mirror RIGHT NOW. It may have been refreshed
+        // (an admin opened /config) since this recruit was last judged — and the
+        // modal's verdict can be minutes old because of the localStorage cache.
+        // Paying on a stale "valid" is the one mistake that cannot be undone.
+        const flagged = await allFlaggedUids();
+        if (flagged === null) {
+            window.showToast && window.showToast('Could not verify this recruit right now — try again.');
+            return;
+        }
+        if (flagged.has(recruitUid)) {
+            await update(ref(db3, `recruits/${uid}/${recruitUid}`), { valid: false, reason: FLAGGED_GROUP_REASON })
+                .catch(e => console.warn('Recruit re-flag write failed:', e));
+            row.status = 'invalid';
+            row.valid = false;
+            row.reason = FLAGGED_GROUP_REASON;
+            window.paintRecruits();
+            writeRecruitsCache(uid, window._recruitsRows || []);
+            window.showToast && window.showToast('Claim refused — this recruit is flagged as multi-account.');
+            return;
+        }
+
+        const res = await runTransaction(ref(db3, `recruits/${uid}/${recruitUid}`), (cur) => {
+            if (!cur) return undefined;                                                  // gone
+            if (cur.valid !== true) return undefined;                                     // no longer valid
+            if (cur.claimedAt) return undefined;                                          // already paid
+            if (Date.now() < ((Number(cur.joinedAt) || 0) + cfg.cooldownMs)) return undefined; // still cooling down
+            return { ...cur, claimedAt: Date.now() };
+        });
+
+        if (!res.committed) {
+            window.showToast && window.showToast('This reward is not claimable yet.');
+            return;
+        }
+
+        // Credit ALL four buckets: overall (users/{uid}/lbPoints) + the daily /
+        // weekly / monthly period counters via the shared helper in js/games.js.
+        if (cfg.lb > 0) {
+            set(ref(db, `users/${uid}/lbPoints`), increment(cfg.lb));
+            if (window.creditLbPeriods) window.creditLbPeriods(uid, cfg.lb);
+        }
+
+        row.claimedAt = Date.now();
+        window.paintRecruits();
+        writeRecruitsCache(uid, window._recruitsRows || []);
+        window.showToast && window.showToast(`Recruit claimed! +${cfg.lb} LB credited.`);
+    } catch (e) {
+        console.warn('Recruit claim failed:', e);
+        window.showToast && window.showToast('Claim failed — please try again.');
+    } finally {
+        window._claimingRecruit = false;
+    }
+};
+
+// Two tabs. PENDING rows sit in the Valid tab with an amber badge — they are
+// not counted as invalid, they simply have no IP to compare yet.
+window.paintRecruits = () => {
+    const active = (window._recruitsTab === 'invalid') ? 'invalid' : 'valid';
+    const rows = window._recruitsRows || [];
+    const validCount = rows.filter(r => r.status !== 'invalid').length;
+    const invalidCount = rows.filter(r => r.status === 'invalid').length;
+
+    ['valid', 'invalid'].forEach(t => {
+        const btn = document.getElementById('recruits-tab-' + t);
+        if (btn) {
+            const on = (t === active);
+            btn.className = `px-3 py-1 rounded-full text-[11px] font-bold transition ${on
+                ? 'bg-blue-600 text-white border border-transparent'
+                : 'bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 border border-gray-200 dark:border-slate-700'}`;
+        }
+        const badge = document.getElementById('recruits-tabcount-' + t);
+        if (badge) badge.textContent = (t === 'valid') ? validCount : invalidCount;
+    });
+
+    const list = document.getElementById('recruits-list');
+    if (!list) return;
+    const shown = rows
+        .filter(r => (active === 'invalid') ? r.status === 'invalid' : r.status !== 'invalid')
+        .sort((a, b) => (b.joinedAt || 0) - (a.joinedAt || 0));
+
+    if (!shown.length) {
+        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">${
+            rows.length
+                ? (active === 'invalid' ? 'No invalid recruits 🎉' : 'Nothing here yet.')
+                : 'No recruits yet.<br>Members who pick you as their recruiter will appear here.'
+        }</p>`;
+        return;
+    }
+
+    const esc = window.escapeHtml || ((s) => String(s ?? ''));
+    const cfg = recruitRewardConfig();
+    list.innerHTML = shown.map(r => {
+        const live = window.globalUsersCache[r.uid] || {};
+        const name = live.name || r.name || 'New member';
+        const pic = live.pic || r.pic || window.generateAvatar(r.uid);
+        const when = r.joinedAt
+            ? new Date(r.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            : '';
+        const pending = r.status === 'pending';
+        const invalid = r.status === 'invalid';
+        // Rewards are paid on VALID recruits only.
+        const rewardsHtml = (r.status === 'valid') ? `
+            <div class="flex flex-col items-end gap-1 shrink-0 ml-2">
+                <div class="flex items-center gap-1.5 text-[10px] font-bold whitespace-nowrap">
+                    <span class="text-yellow-600 dark:text-yellow-400">🏆 ${cfg.lb} LB</span>
+                    <span class="text-green-600 dark:text-green-400">₱${cfg.prize.toLocaleString()}</span>
+                </div>
+                ${recruitClaimBtnHtml(r, cfg)}
+            </div>` : '';
+        return `
+        <div class="flex items-center justify-between p-2 rounded-lg mb-1 border ${invalid
+            ? 'border-red-200 dark:border-red-500/30 bg-red-50/60 dark:bg-red-500/[0.06]'
+            : 'border-gray-100 dark:border-slate-700/50 bg-gray-50 dark:bg-slate-900/50'} hover:opacity-80 cursor-pointer transition" onclick="window.openProfile('${r.uid}'); document.getElementById('recruits-modal').classList.add('hidden');">
+            <div class="flex items-center space-x-2 min-w-0">
+                <img src="${esc(pic)}" loading="lazy" class="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 shrink-0">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-bold text-sm text-gray-900 dark:text-white truncate">${esc(name)}</span>
+                        ${pending ? '<span class="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">PENDING</span>' : ''}
+                        ${invalid ? '<span class="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">INVALID</span>' : ''}
+                    </div>
+                    <div class="text-[10px] text-gray-400 dark:text-gray-500">${when ? 'Joined ' + esc(when) : ''}${invalid && r.reason ? ` · <span class="text-red-500 dark:text-red-400 font-semibold">${esc(r.reason)}</span>` : ''}</div>
+                </div>
+            </div>
+            ${rewardsHtml}
+        </div>`;
+    }).join('');
+};
+
 document.addEventListener('click', (e) => {
     const m = _userMenuEl();
     if (!m || m.classList.contains('hidden')) return;
@@ -2597,7 +3014,164 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
     localStorage.theme = html.classList.contains('dark') ? 'dark' : 'light';
 });
 
-document.getElementById('open-login-btn').addEventListener('click', () => document.getElementById('auth-modal').classList.remove('hidden'));
+// ==========================================
+// RECRUITER PICKER (Sign-Up step of #auth-modal)
+// ==========================================
+// Type-to-search over every member, using the same shared users cache the
+// @mention suggestions use. Selecting one stores its uid in
+// window._authRecruiterUid; a successful account creation writes it to RTDB 3
+// at recruits/{recruiterUid}/{newUid}. The field is OPTIONAL — with no pick
+// nothing is written.
+window._authRecruiterUid = null;
+
+const _recruiterWrap = () => document.getElementById('auth-recruiter-wrap');
+const _recruiterInput = () => document.getElementById('auth-recruiter');
+const _recruiterList = () => document.getElementById('auth-recruiter-list');
+
+function resetRecruiterPicker() {
+    window._authRecruiterUid = null;
+    const input = _recruiterInput();
+    if (input) input.value = '';
+    const list = _recruiterList();
+    if (list) { list.innerHTML = ''; list.classList.add('hidden'); }
+}
+
+function renderRecruiterSuggestions() {
+    const input = _recruiterInput();
+    const list = _recruiterList();
+    if (!input || !list) return;
+
+    // Typing invalidates any previous pick so a stale uid is never submitted.
+    window._authRecruiterUid = null;
+    const term = input.value.trim().toLowerCase();
+    if (!term) { list.innerHTML = ''; list.classList.add('hidden'); return; }
+
+    const myUid = window.currentUser ? window.currentUser.uid : null;
+    const matches = Object.entries(window.globalUsersCache || {})
+        .filter(([uid, u]) => u && u.name && u.name !== 'undefined' && u.name !== 'null'
+            && uid !== myUid && u.name.toLowerCase().includes(term))
+        .slice(0, 8);
+
+    const esc = window.escapeHtml || ((s) => String(s ?? ''));
+    list.innerHTML = matches.length
+        ? matches.map(([uid, u]) => `
+            <div class="recruiter-opt p-2 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 transition" data-uid="${uid}" data-name="${esc(u.name)}">
+                <img src="${esc(u.pic || window.generateAvatar(uid))}" class="w-6 h-6 rounded-full object-cover shrink-0">
+                <span class="truncate">${esc(u.name)}</span>
+            </div>`).join('')
+        : `<div class="p-2.5 text-xs text-gray-400 dark:text-gray-500">No member matches “${esc(input.value.trim())}”.</div>`;
+    list.classList.remove('hidden');
+}
+
+_recruiterInput()?.addEventListener('input', renderRecruiterSuggestions);
+_recruiterInput()?.addEventListener('blur', () => setTimeout(() => _recruiterList()?.classList.add('hidden'), 150));
+// mousedown (not click) so the pick lands before the input loses focus;
+// preventDefault keeps focus in the input, so the blur handler can't race us.
+_recruiterList()?.addEventListener('mousedown', (ev) => {
+    const opt = ev.target.closest('.recruiter-opt');
+    if (!opt) return;
+    ev.preventDefault();
+    window._authRecruiterUid = opt.dataset.uid;
+    const input = _recruiterInput();
+    if (input) input.value = opt.dataset.name || '';
+    _recruiterList().classList.add('hidden');
+});
+
+// ── Recruit validity (anti-abuse) ─────────────────────────────────────────
+// Same public IP echo endpoints captureUserIP() uses (js/helpers.js).
+async function getPublicIp() {
+    if (window._publicIP) return window._publicIP;
+    for (const url of ['https://api.ipify.org?format=json', 'https://api64.ipify.org?format=json']) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 4000);
+            const res = await fetch(url, { mode: 'cors', signal: ctrl.signal });
+            clearTimeout(timer);
+            const data = await res.json();
+            if (data && data.ip) { window._publicIP = data.ip; return data.ip; }
+        } catch (e) { /* try the next endpoint */ }
+    }
+    return null;
+}
+
+// One-way, salted digest of an IP: equality-comparable, not readable back, and
+// never written anywhere in raw form. Falls back to FNV-1a when WebCrypto is
+// unavailable (non-secure context) — the two formats can never collide because
+// the fallback is prefixed.
+async function ipFingerprint(ip) {
+    const salted = 'hangout-recruit-v1:' + String(ip);
+    try {
+        if (window.crypto && window.crypto.subtle) {
+            const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(salted));
+            return Array.from(new Uint8Array(buf)).slice(0, 16)
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    } catch (e) { /* fall through */ }
+    let h = 0x811c9dc5;
+    for (let i = 0; i < salted.length; i++) { h ^= salted.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return 'fnv_' + h.toString(16).padStart(8, '0');
+}
+
+// Writes the recruit record. Called ONLY from the two account-creation paths.
+async function saveRecruitFor(newUid, name, pic) {
+    const recruiterUid = window._authRecruiterUid;
+    if (!recruiterUid || !newUid || recruiterUid === newUid) return;
+
+    // Fingerprint the recruit's own IP (never the raw value). A failed lookup
+    // leaves fpr empty -> the recruit stays PENDING and is re-checked later.
+    let fpr = '';
+    try {
+        const ip = await getPublicIp();
+        if (ip) fpr = await ipFingerprint(ip);
+    } catch (e) { /* pending */ }
+
+    try {
+        await set(ref(db3, `recruits/${recruiterUid}/${newUid}`), {
+            uid: newUid,
+            recruiter: recruiterUid,
+            name: String(name || 'New member').slice(0, 60),
+            pic: String(pic || '').slice(0, 500),
+            joinedAt: Date.now(),
+            fpr
+        });
+        // Reverse pointer, written ONLY while pending: it lets this recruit's own
+        // client backfill the fingerprint on a later login (see below), because
+        // nobody else is allowed to read its /user_ips.
+        if (!fpr) await set(ref(db3, `recruit_refs/${newUid}`), { recruiter: recruiterUid });
+    } catch (e) {
+        console.warn('Recruit write failed:', e);
+    }
+}
+
+// Runs after captureUserIP() on login: fills in a missing fingerprint for a
+// PENDING recruit, then drops the reverse pointer. The Recruits modal decides
+// the verdict the next time the recruiter opens it.
+async function backfillRecruitFingerprint(uid) {
+    if (!uid) return;
+    try {
+        const refSnap = await get(ref(db3, `recruit_refs/${uid}`));
+        if (!refSnap.exists()) return;
+        const recruiterUid = (refSnap.val() || {}).recruiter;
+        if (!recruiterUid) return;
+
+        const path = `recruits/${recruiterUid}/${uid}`;
+        const recSnap = await get(ref(db3, path));
+        const rec = (recSnap.exists() && recSnap.val()) || {};
+        if (rec.fpr) { await remove(ref(db3, `recruit_refs/${uid}`)); return; }
+
+        const ip = window._publicIP || await getPublicIp();
+        if (!ip) return; // still pending
+        await update(ref(db3, path), { fpr: await ipFingerprint(ip) });
+        await remove(ref(db3, `recruit_refs/${uid}`));
+    } catch (e) {
+        console.warn('Recruit fingerprint backfill failed:', e);
+    }
+}
+
+document.getElementById('open-login-btn').addEventListener('click', () => {
+    document.getElementById('auth-modal').classList.remove('hidden');
+    resetRecruiterPicker();
+});
 
 document.getElementById('auth-toggle-btn').addEventListener('click', () => {
     window.isSignUpMode = !window.isSignUpMode;
@@ -2607,6 +3181,13 @@ document.getElementById('auth-toggle-btn').addEventListener('click', () => {
     
     if(window.isSignUpMode) document.getElementById('forgot-pass-btn').classList.add('hidden');
     else document.getElementById('forgot-pass-btn').classList.remove('hidden');
+
+    // Recruiter field only makes sense while creating an account.
+    const wrap = _recruiterWrap();
+    if (wrap) {
+        wrap.classList.toggle('hidden', !window.isSignUpMode);
+        if (!window.isSignUpMode) resetRecruiterPicker();
+    }
 });
 
 const showError = (msg) => { const errEl = document.getElementById('auth-error'); errEl.innerText = msg; errEl.classList.remove('hidden'); }
@@ -2640,6 +3221,8 @@ document.getElementById('email-form').addEventListener('submit', async (event) =
             await updateProfile(cred.user, { displayName: newName, photoURL: newPic });
             
             await update(ref(db, `users/${cred.user.uid}`), { name: newName, pic: newPic }).catch(e => console.warn('Profile write failed:', e));
+            // Recruit system: record who referred this new account (RTDB 3).
+            await saveRecruitFor(cred.user.uid, newName, newPic);
             document.getElementById('nav-avatar').src = newPic;
             window.showAlert("Account created successfully!");
         } else {
@@ -2647,6 +3230,7 @@ document.getElementById('email-form').addEventListener('submit', async (event) =
             window.showAlert("Signed in successfully!");
         }
         document.getElementById('auth-modal').classList.add('hidden');
+        resetRecruiterPicker();
     } catch (error) { 
         showError(error.message.replace('Firebase:', '')); 
     } finally {
@@ -2672,9 +3256,12 @@ document.getElementById('google-login-btn').addEventListener('click', async () =
             const newPic = result.user.photoURL || window.generateAvatar(result.user.uid);
             await updateProfile(result.user, { displayName: newName, photoURL: newPic });
             await update(ref(db, `users/${result.user.uid}`), { name: newName, pic: newPic });
+            // Recruit system: only BRAND NEW Google accounts are recruits (RTDB 3).
+            await saveRecruitFor(result.user.uid, newName, newPic);
             document.getElementById('nav-avatar').src = newPic;
         }
         document.getElementById('auth-modal').classList.add('hidden');
+        resetRecruiterPicker();
         window.showAlert("Signed in with Google!");
     } catch (error) {
         if (error.code === 'auth/account-exists-with-different-credential') showError("This email already has an account with a password. Please sign in using your email and password.");
@@ -2792,7 +3379,12 @@ onAuthStateChanged(auth, (user) => {
         // Anti-abuse: keep this account's public IP fresh on every login/load.
         // captureUserIP() only writes when the IP actually changed, and it retries
         // on later logins, so even if the /user_ips rules deploy late it self-heals.
-        window.captureUserIP && window.captureUserIP(user.uid);
+        // Once it settles, use it to backfill a PENDING recruit's fingerprint.
+        if (window.captureUserIP) {
+            window.captureUserIP(user.uid).finally(() => backfillRecruitFingerprint(user.uid));
+        } else {
+            backfillRecruitFingerprint(user.uid);
+        }
 
         // Same-IP LB shield: load the admin-mirrored flagged groups (uids only) so
         // game awards can zero LB for host+winner same-IP pairs.

@@ -63,6 +63,9 @@ window.siteSettings = {
     lbBoostEnd: '00:00',    // boost window end (HH:MM, 24h; if <= start it crosses midnight)
     hideHostGameAnswers: false, // /config → Site Control: when true, hosts cannot see game answers while a game is live
     gameLbRewards: {},          // per-game max LB reward cap: { gameType: number } (configured in /config)
+    recruitLbReward: 10,        // /config → Recruit Rewards: LB points paid to the recruiter per VALID recruit, on claim
+    recruitPrizeReward: 50,     // /config → Recruit Rewards: ₱ prize shown per VALID recruit (display only for now)
+    recruitClaimCooldownHrs: 48, // /config → Recruit Rewards: hours a valid recruit must age before its reward is claimable
     imageUploadLimit: 10,
     videoUploadLimit: 3,
     videoSizeLimitMB: 20,

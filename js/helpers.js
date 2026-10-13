@@ -36,7 +36,7 @@ window.activeEditTarget = null;
 // IP ANTI-ABUSE — best-effort public-IP capture.
 // Used by admins to spot dummy/multi accounts (e.g. someone's "dummy" winning
 // against their own alt in a fixed match). No keys, no backend needed: calls a
-// free CORS-enabled IP echo service and stores up to 5 distinct public IPs per
+// free CORS-enabled IP echo service and stores up to 10 distinct public IPs per
 // user (with last-seen timestamps) under /user_ips/{uid} → { ips: { ip: lastSeen } }
 // so a user who switches WiFi ↔ mobile data still carries the whole trail.
 // Admins-only read, owner-only write.
@@ -52,6 +52,9 @@ window.captureUserIP = async (uid) => {
             if (data && data.ip) { ip = data.ip; break; }
         } catch (e) { /* try the next endpoint */ }
     }
+    // Shared with the recruit fingerprint computed at Sign-Up (js/main.js), so
+    // the recruit usually doesn't need a second IP lookup.
+    if (ip) window._publicIP = ip;
     if (!ip) {
         console.warn('captureUserIP: could not determine public IP (network/CORS blocked?).');
         window._capturingIP = false;
@@ -74,11 +77,11 @@ window.captureUserIP = async (uid) => {
         // Record this IP (refresh its timestamp if it's already known from WiFi/mobile.
         ips[ipKey(ip)] = Date.now();
 
-        // Keep only the 5 most-recent distinct IPs.
+        // Keep only the 10 most-recent distinct IPs.
         const sorted = Object.entries(ips)
             .map(([ipKey2, ts]) => [ipKey2, Number(ts) || 0])
             .sort((a, b) => b[1] - a[1])
-            .slice(0, 5);
+            .slice(0, 10);
         const pruned = {};
         sorted.forEach(([ipKey2, ts]) => { pruned[ipKey2] = ts; });
 
@@ -131,6 +134,9 @@ window.siteSettings = {
     lbBoostEnd: '00:00',    // boost window end (HH:MM, 24h; if <= start it crosses midnight)
     hideHostGameAnswers: false, // /config → Site Control: when true, hosts cannot see game answers while a game is live
     gameLbRewards: {},          // per-game max LB reward cap: { gameType: number } (configured in /config)
+    recruitLbReward: 10,        // /config → Recruit Rewards: LB points paid to the recruiter per VALID recruit, on claim
+    recruitPrizeReward: 50,     // /config → Recruit Rewards: ₱ prize shown per VALID recruit (display only for now)
+    recruitClaimCooldownHrs: 48, // /config → Recruit Rewards: hours a valid recruit must age before its reward is claimable
     imageUploadLimit: 10,
     videoUploadLimit: 3,
     videoSizeLimitMB: 20,

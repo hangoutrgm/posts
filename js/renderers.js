@@ -1,4 +1,4 @@
-import { db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { db, db2, db3, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -3671,9 +3671,113 @@ window.openRankingModal = () => {
     // Clear caches so data is fresh on every open
     window._earningsCache = null;
     window._hostedGamesCache = null;
+    window._recruitLbCache = null;
     if (window.updateLbPeriodBar) window.updateLbPeriodBar();
     window.renderRankings(true);
 };
+
+window._recruitLbCache = null;
+
+// ── Recruits ranking (Rankings & Earnings modal → "Recruits" tab) ────────
+// Top recruiters by VALID recruits. One read of the whole /recruits tree in
+// RTDB 3, cached for the open modal and cleared on every tab switch — the same
+// convention as _earningsCache / _hostedGamesCache.
+async function renderRecruitsRanking(list, resetLimit) {
+    const loader = document.getElementById('ranking-loader');
+    const cfg = window.recruitRewardConfig ? window.recruitRewardConfig() : { lb: 10, prize: 50 };
+
+    if (resetLimit || !window._recruitLbCache) {
+        if (resetLimit) list.innerHTML = '';
+        if (loader) loader.classList.remove('hidden');
+        let tallyRows = [];
+        try {
+            const snap = await get(ref(db3, 'recruits'));
+            const tree = (snap && snap.exists()) ? snap.val() : {};
+            const tally = {};
+            Object.entries(tree || {}).forEach(([recruiterUid, kids]) => {
+                if (!kids || typeof kids !== 'object') return;
+                let valid = 0, claimed = 0;
+                Object.values(kids).forEach(r => {
+                    if (!r || typeof r !== 'object' || r.valid !== true) return;
+                    valid++;
+                    if (r.claimedAt) claimed++;
+                });
+                if (valid > 0) tally[recruiterUid] = { uid: recruiterUid, valid, claimed };
+            });
+            // Inactive recruiters are hidden from public rankings (same rule as
+            // Leaderboards / Stars) — their data is kept, they just aren't listed.
+            tallyRows = Object.values(tally)
+                .map(r => {
+                    const u = window.globalUsersCache[r.uid] || {};
+                    return { ...r, name: u.name, pic: u.pic, inactive: u.isInactive === true };
+                })
+                .filter(r => r.name && !r.inactive)
+                .sort((a, b) => (b.valid - a.valid) || (b.claimed - a.claimed) || String(a.name).localeCompare(String(b.name)));
+        } catch (e) {
+            console.warn('Recruits ranking load failed:', e);
+        }
+        if (loader) loader.classList.add('hidden');
+        window._recruitLbCache = tallyRows;
+    }
+
+    const rows = window._recruitLbCache || [];
+    if (!rows.length) {
+        list.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-4">No valid recruits recorded yet.</p>`;
+        return;
+    }
+
+    const toRender = rows.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
+    const fragment = document.createDocumentFragment();
+
+    toRender.forEach((r, idx) => {
+        const rank = (resetLimit ? 0 : window.rankingRenderLimit - 20) + idx + 1;
+        let rankHtml = `<div class="w-6 text-center font-bold text-gray-400 dark:text-gray-500 text-xs">#${rank}</div>`;
+        if (rank === 1) rankHtml = `<div class="w-6 text-center text-yellow-500 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+        else if (rank === 2) rankHtml = `<div class="w-6 text-center text-gray-400 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+        else if (rank === 3) rankHtml = `<div class="w-6 text-center text-amber-600 text-lg"><i class="fa-solid fa-medal"></i></div>`;
+
+        const el = document.createElement('div');
+        el.className = 'flex items-center justify-between p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 mb-2';
+        el.innerHTML = `
+            <div class="flex items-center space-x-3 overflow-hidden">
+                ${rankHtml}
+                <div class="relative shrink-0">
+                    <img src="${r.pic || window.generateAvatar(r.uid)}" loading="lazy" class="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 cursor-pointer hover:opacity-80" onclick="window.openProfile('${r.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">
+                </div>
+                <div class="leading-tight truncate pr-2">
+                    <h3 class="font-bold text-sm text-gray-900 dark:text-white truncate cursor-pointer hover:underline" onclick="window.openProfile('${r.uid}'); document.getElementById('ranking-modal').classList.add('hidden');">${escapeHtml(r.name)}</h3>
+                    <div class="text-[10px] text-gray-400 dark:text-gray-500">${r.valid} valid recruit${r.valid === 1 ? '' : 's'}${r.claimed ? ` · ${r.claimed} claimed` : ''}</div>
+                </div>
+            </div>
+            <div class="flex flex-col items-end shrink-0 pr-1 text-[10px] font-bold whitespace-nowrap">
+                <span class="text-yellow-600 dark:text-yellow-400">🏆 ${(r.valid * cfg.lb).toLocaleString()} LB</span>
+                <span class="text-green-600 dark:text-green-400">₱${(r.valid * cfg.prize).toLocaleString()}</span>
+            </div>
+        `;
+        fragment.appendChild(el);
+    });
+
+    if (window.rankingRenderLimit < rows.length) {
+        const sentinel = document.createElement('div');
+        sentinel.className = 'h-10 w-full flex items-center justify-center text-gray-400 text-xs py-2';
+        sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-lg"></i>';
+        fragment.appendChild(sentinel);
+        list.appendChild(fragment);
+
+        if (window.rankingObserver) window.rankingObserver.disconnect();
+        window.rankingObserver = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                window.rankingRenderLimit += 20;
+                const s = list.querySelector('.fa-spinner')?.closest('div');
+                if (s) s.remove();
+                window.renderRankings(false);
+            }
+        }, { rootMargin: "200px" });
+        window.rankingObserver.observe(sentinel);
+    } else {
+        list.appendChild(fragment);
+    }
+}
 
 window.renderRankings = async (resetLimit = true) => {
     const list = document.getElementById('ranking-list');
@@ -3728,9 +3832,6 @@ window.renderRankings = async (resetLimit = true) => {
                 if (earningsArray.length === 0) {
                     list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no earnings yet.</p>`;
                     window._earningsCache = [];
-                    // Still show the Top-10 prize + Min LB ladder above the message
-                    const emptyLadder = await buildRewardsLadderHtml(window.lbPeriodKeyFor('weekly'), "This week's Top 10");
-                    if (emptyLadder) list.insertAdjacentHTML('afterbegin', emptyLadder);
                     return;
                 }
                 
@@ -3777,14 +3878,8 @@ window.renderRankings = async (resetLimit = true) => {
             list.appendChild(summaryEl);
         }
 
-        // Top-10 rewards ladder — the same prize + Min LB table as the Rewards tab,
-        // so players can see what each rank pays and what it needs. Shown once after
-        // the totals card (resetLimit only, so lazy-loaded pages don't repeat it).
-        if (resetLimit) {
-            const rewardLadder = await buildRewardsLadderHtml(window.lbPeriodKeyFor('weekly'), "This week's Top 10");
-            if (rewardLadder) list.insertAdjacentHTML('beforeend', rewardLadder);
-        }
-
+        // The Top-10 rewards ladder deliberately does NOT appear here — it lives
+        // only in Leaderboard → Rewards, so Earnings stays purely "what I won".
         const toRender = earningsArray.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
         const fragment = document.createDocumentFragment();
         
@@ -3993,6 +4088,8 @@ window.renderRankings = async (resetLimit = true) => {
             list.appendChild(fragment);
         }
 
+    } else if (window.currentRankingFilter === "Recruits") {
+        await renderRecruitsRanking(list, resetLimit);
     } else {
         // Leaderboards or Stars (inactive users are hidden from public rankings — their data is kept)
         let usersArray = Object.keys(window.globalUsersCache).map(uid => ({uid, ...window.globalUsersCache[uid]})).filter(u => u.name && u.isInactive !== true);
@@ -4165,16 +4262,16 @@ async function buildRewardsLadderHtml(weekKey, title) {
     </div>`;
 
     const rows = slots.map(({ rank, min, hasPrize, holder, prize }) => {
-        let rankHtml = `<div class="w-7 text-center font-bold text-gray-400 dark:text-gray-500 text-xs">#${rank}</div>`;
+        let rankHtml = `<div class="w-7 text-center font-bold text-gray-400 dark:text-gray-400 text-xs">#${rank}</div>`;
         if (rank === 1) rankHtml = `<div class="w-7 text-center text-yellow-500 text-lg"><i class="fa-solid fa-medal"></i></div>`;
         else if (rank === 2) rankHtml = `<div class="w-7 text-center text-gray-400 text-lg"><i class="fa-solid fa-medal"></i></div>`;
         else if (rank === 3) rankHtml = `<div class="w-7 text-center text-amber-600 text-lg"><i class="fa-solid fa-medal"></i></div>`;
 
         const open = !holder;
         const left = open
-            ? `<div class="w-9 h-9 shrink-0 rounded-full border-2 border-dashed border-gray-300 dark:border-slate-600 flex items-center justify-center text-gray-400 dark:text-slate-500"><i class="fa-solid fa-lock text-xs"></i></div>
+            ? `<div class="w-9 h-9 shrink-0 rounded-full border-2 border-dashed border-gray-300 dark:border-slate-600 flex items-center justify-center text-gray-400 dark:text-slate-400"><i class="fa-solid fa-lock text-xs"></i></div>
                <div class="leading-tight truncate pr-2">
-                   <h3 class="font-bold text-sm text-gray-400 dark:text-gray-500 truncate">Open slot</h3>
+                   <h3 class="font-bold text-sm text-gray-500 dark:text-gray-300 truncate">Open slot</h3>
                    <div class="text-[11px] text-indigo-500 dark:text-indigo-300 font-bold">${hasPrize ? (min > 0 ? `needs ${min.toLocaleString()} LB` : 'no holder yet') : 'no prize set'}</div>
                </div>`
             : `<div class="relative shrink-0">
@@ -4187,12 +4284,12 @@ async function buildRewardsLadderHtml(weekKey, title) {
 
         const right = `
             <div class="text-right shrink-0 pr-1">
-                <div class="text-sm font-bold whitespace-nowrap ${hasPrize ? 'text-green-600 dark:text-green-400' : 'text-gray-300 dark:text-gray-600'}">${hasPrize ? prize : '—'}</div>
+                <div class="text-sm font-bold whitespace-nowrap ${hasPrize ? 'text-green-600 dark:text-green-400' : 'text-gray-300 dark:text-gray-500'}">${hasPrize ? prize : '—'}</div>
                 <div class="text-[10px] text-indigo-500 dark:text-indigo-300 font-semibold whitespace-nowrap">${min > 0 ? 'min ' + min.toLocaleString() : 'no min'}</div>
             </div>`;
 
         return `
-        <div class="flex items-center justify-between p-2 rounded-lg border mb-2 ${open ? 'bg-white/70 dark:bg-slate-800/40 border-dashed border-gray-200 dark:border-slate-700' : 'bg-gray-50 dark:bg-slate-900 border-gray-100 dark:border-slate-700/50'}">
+        <div class="flex items-center justify-between p-2 rounded-lg border mb-2 ${open ? 'bg-white/70 dark:bg-white/[0.04] border-dashed border-gray-200 dark:border-slate-700' : 'bg-gray-50 dark:bg-slate-900 border-gray-100 dark:border-slate-700/50'}">
             <div class="flex items-center space-x-3 overflow-hidden">
                 ${rankHtml}
                 ${left}

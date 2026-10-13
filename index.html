@@ -38,7 +38,7 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=29">
-    <link rel="stylesheet" href="css/tailwind.min.css?v=15">
+    <link rel="stylesheet" href="css/tailwind.min.css?v=16">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
@@ -72,8 +72,8 @@
                         </button>
 
                         <!-- Account menu under the nav avatar: username -> profile page,
-                             Edit Profile modal, Admin Config (admins only), Install, Logout.
-                             Logic in js/main.js. -->
+                             Edit Profile modal, Recruits modal, Admin Config (admins only),
+                             Install, Logout. Logic in js/main.js. -->
                         <div id="user-menu" class="hidden absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden z-[120]">
                             <button onclick="window.userMenuProfile()" class="w-full flex items-center gap-2.5 p-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-b border-gray-100 dark:border-slate-700">
                                 <img id="user-menu-avatar" class="w-9 h-9 rounded-full object-cover border border-blue-500 bg-gray-100 dark:bg-slate-700" src="">
@@ -84,6 +84,11 @@
                             </button>
                             <button onclick="window.userMenuEditProfile()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
                                 <i class="fa-solid fa-user-pen w-4 text-center text-gray-400"></i> Edit Profile
+                            </button>
+                            <!-- Recruits — members who picked me as their recruiter on Sign-Up.
+                                 Logic in js/main.js (window.userMenuRecruits). -->
+                            <button onclick="window.userMenuRecruits()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
+                                <i class="fa-solid fa-user-plus w-4 text-center text-gray-400"></i> Recruits
                             </button>
                             <!-- Admin only — shown/hidden by window.updateAdminButtons() (js/helpers.js) -->
                             <button id="admin-config-btn" onclick="window.closeUserMenu(); window.location.href='config/'" class="hidden w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition border-t border-gray-100 dark:border-slate-700"><i class="fa-solid fa-sliders w-4 text-center"></i> Admin Config</button>
@@ -577,6 +582,38 @@
         </div>
     </div>
 
+    <!-- Recruits — every sign-up that tagged the signed-in user as their recruiter (RTDB 3). -->
+    <div id="recruits-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[85vh] flex flex-col">
+            <button onclick="document.getElementById('recruits-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
+
+            <div class="flex items-center justify-between mb-2 shrink-0">
+                <h2 class="text-lg font-bold dark:text-white flex items-center"><i class="fa-solid fa-user-plus mr-2 text-blue-500"></i> Recruits <span id="recruits-count" class="text-[10px] bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 font-bold px-2 py-0.5 rounded-full ml-2 border border-gray-200 dark:border-slate-600">0 Total</span></h2>
+            </div>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2 shrink-0">Members who chose you as their recruiter when they signed up.</p>
+
+            <!-- What a VALID recruit pays you — values come from /config → Recruit Rewards. -->
+            <div class="flex items-center justify-between px-2.5 py-2 rounded-lg border border-yellow-200 dark:border-yellow-800/50 bg-yellow-50/60 dark:bg-yellow-900/10 mb-2 shrink-0">
+                <span class="text-[10px] font-bold text-yellow-700 dark:text-yellow-300"><i class="fa-solid fa-gift mr-1"></i>Reward per valid recruit</span>
+                <span class="flex items-center gap-1.5 text-[10px] font-black whitespace-nowrap">
+                    <span class="text-yellow-600 dark:text-yellow-400">🏆 <span id="recruit-info-lb">—</span> LB</span>
+                    <span class="text-green-600 dark:text-green-400">₱<span id="recruit-info-prize">—</span></span>
+                </span>
+            </div>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 mb-2 shrink-0">
+                Claim unlocks <span id="recruit-info-cooldown">—</span> after a recruit signs up. Invalid and pending recruits pay nothing.
+            </p>
+
+            <div id="recruits-tabs" class="flex items-center gap-1.5 mb-2 shrink-0">
+                <button id="recruits-tab-valid" onclick="window.setRecruitsTab('valid')" class="px-3 py-1 rounded-full text-[11px] font-bold border border-transparent bg-blue-600 text-white transition">Valid <span id="recruits-tabcount-valid">0</span></button>
+                <button id="recruits-tab-invalid" onclick="window.setRecruitsTab('invalid')" class="px-3 py-1 rounded-full text-[11px] font-bold border border-gray-200 dark:border-slate-700 bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 transition">Invalid <span id="recruits-tabcount-invalid">0</span></button>
+            </div>
+
+            <div id="recruits-list" class="overflow-y-auto flex-1 space-y-1 scrollbar-hide text-left min-h-[120px]"></div>
+            <div id="recruits-loader" class="hidden text-center py-2 text-gray-500 shrink-0"><i class="fa-solid fa-spinner fa-spin"></i></div>
+        </div>
+    </div>
+
     <div id="ranking-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
         <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-md p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[85vh] flex flex-col">
             <button onclick="document.getElementById('ranking-modal').classList.add('hidden')" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
@@ -588,6 +625,7 @@
             <div class="flex space-x-1.5 overflow-x-auto scrollbar-hide pb-2 mb-2 snap-x text-[11px] shrink-0 border-b border-gray-100 dark:border-slate-700">
                 <button class="ranking-filter-btn active snap-start bg-blue-600 text-white px-3 py-1 rounded-full whitespace-nowrap shadow-sm font-bold border border-transparent" data-filter="Leaderboards">Leaderboard</button>
                 <button class="ranking-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap flex items-center font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Stars">Stars</button>
+                <button class="ranking-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap flex items-center font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Recruits">Recruits</button>
                 <button class="ranking-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap flex items-center font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Earnings">Earnings</button>
                 <button class="ranking-filter-btn snap-start bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 px-3 py-1 rounded-full whitespace-nowrap flex items-center font-bold border border-gray-200 dark:border-slate-700 transition" data-filter="Host Log">Host Log</button>
             </div>
@@ -826,6 +864,13 @@
             <form id="email-form" class="space-y-2" novalidate>
                 <input type="email" id="auth-email" autocomplete="email" placeholder="Email" class="w-full bg-gray-100 dark:bg-slate-900 text-sm p-2.5 rounded-lg dark:text-white focus:outline-none">
                 <input type="password" id="auth-password" autocomplete="current-password" placeholder="Password" class="w-full bg-gray-100 dark:bg-slate-900 text-sm p-2.5 rounded-lg dark:text-white focus:outline-none">
+                <!-- Recruit system — Sign-Up only. Type-to-search over every member; picking one
+                     stores the uid in window._authRecruiterUid, written to RTDB 3 on account creation. -->
+                <div id="auth-recruiter-wrap" class="hidden relative">
+                    <i class="fa-solid fa-user-plus absolute left-3 top-3 text-gray-400 text-sm"></i>
+                    <input type="text" id="auth-recruiter" autocomplete="off" placeholder="Recruiter (optional) — search members" class="w-full bg-gray-100 dark:bg-slate-900 text-sm pl-9 pr-3 py-2.5 rounded-lg dark:text-white focus:outline-none">
+                    <div id="auth-recruiter-list" class="hidden absolute left-0 right-0 top-full mt-1 max-h-44 overflow-y-auto scrollbar-hide bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg shadow-xl z-[130]"></div>
+                </div>
                 <button type="submit" id="auth-action-btn" class="w-full bg-blue-600 text-white font-bold p-2.5 rounded-lg text-sm shadow-md mt-1">Sign In</button>
                 
                 <div class="text-center mt-2">
@@ -1456,12 +1501,12 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
-    <script type="module" src="js/renderers.js?v=98"></script>
-    <script type="module" src="js/helpers.js?v=72"></script>
+    <script type="module" src="js/renderers.js?v=101"></script>
+    <script type="module" src="js/helpers.js?v=74"></script>
     <script type="module" src="js/games.js?v=63"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=28"></script>
-    <script type="module" src="js/main.js?v=104"></script>
+    <script type="module" src="js/main.js?v=112"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.

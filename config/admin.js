@@ -3,8 +3,8 @@ import { app, auth, db, db3, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, remove, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=7";
-import "../js/helpers.js?v=72";
+import "../js/globals.js?v=8";
+import "../js/helpers.js?v=74";
 
 const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
@@ -310,6 +310,9 @@ function initAdminDashboard() {
             document.getElementById('set-gameHostLbReward').value = settings.gameHostLbReward ?? '';
             document.getElementById('set-chatGameLbReward').value = settings.chatGameLbReward ?? window.siteSettings.chatGameLbReward ?? '';
             document.getElementById('set-chatGameHostLbReward').value = settings.chatGameHostLbReward ?? window.siteSettings.chatGameHostLbReward ?? '';
+            document.getElementById('set-recruitLbReward').value = settings.recruitLbReward ?? window.siteSettings.recruitLbReward ?? '';
+            document.getElementById('set-recruitPrizeReward').value = settings.recruitPrizeReward ?? window.siteSettings.recruitPrizeReward ?? '';
+            document.getElementById('set-recruitClaimCooldownHrs').value = settings.recruitClaimCooldownHrs ?? window.siteSettings.recruitClaimCooldownHrs ?? '';
             document.getElementById('set-lbBoostMultiplier').value = settings.lbBoostMultiplier ?? '';
             document.getElementById('set-lbBoostStart').value = settings.lbBoostStart ?? '';
             document.getElementById('set-lbBoostEnd').value = settings.lbBoostEnd ?? '';
@@ -394,6 +397,9 @@ function initAdminDashboard() {
         document.getElementById('set-gameHostLbReward').placeholder = window.siteSettings.gameHostLbReward || '0';
         document.getElementById('set-chatGameLbReward').placeholder = window.siteSettings.chatGameLbReward ?? '5';
         document.getElementById('set-chatGameHostLbReward').placeholder = window.siteSettings.chatGameHostLbReward ?? '0';
+        document.getElementById('set-recruitLbReward').placeholder = window.siteSettings.recruitLbReward ?? '10';
+        document.getElementById('set-recruitPrizeReward').placeholder = window.siteSettings.recruitPrizeReward ?? '50';
+        document.getElementById('set-recruitClaimCooldownHrs').placeholder = window.siteSettings.recruitClaimCooldownHrs ?? '48';
         document.getElementById('set-lbBoostMultiplier').placeholder = window.siteSettings.lbBoostMultiplier ?? '1';
         document.getElementById('set-lbBoostStart').placeholder = window.siteSettings.lbBoostStart ?? '22:00';
         document.getElementById('set-lbBoostEnd').placeholder = window.siteSettings.lbBoostEnd ?? '00:00';
@@ -432,6 +438,9 @@ function initAdminDashboard() {
             gameHostLbReward: parseInt(document.getElementById('set-gameHostLbReward').value) || 0,
             chatGameLbReward: parseInt(document.getElementById('set-chatGameLbReward').value) || 0,
             chatGameHostLbReward: parseInt(document.getElementById('set-chatGameHostLbReward').value) || 0,
+            recruitLbReward: parseInt(document.getElementById('set-recruitLbReward').value) || 10,
+            recruitPrizeReward: parseInt(document.getElementById('set-recruitPrizeReward').value) || 50,
+            recruitClaimCooldownHrs: parseInt(document.getElementById('set-recruitClaimCooldownHrs').value) || 48,
             lbBoostMultiplier: parseFloat(document.getElementById('set-lbBoostMultiplier').value) || 1,
             lbBoostStart: document.getElementById('set-lbBoostStart').value || '22:00',
             lbBoostEnd: document.getElementById('set-lbBoostEnd').value || '00:00',
@@ -980,7 +989,7 @@ function initAdminDashboard() {
 }
 
 // Resolve every captured IP for a user — supports both the legacy { ip, at }
-// shape and the new { ips: { ip: lastSeen } } multi-IP map (up to 5 IPs).
+// shape and the new { ips: { ip: lastSeen } } multi-IP map (up to 10 IPs).
 // Stored keys swap "." for "_" (RTDB can't use dotted keys) — reverse for display.
 function uidIps(uid) {
     const d = globalIps[uid];
