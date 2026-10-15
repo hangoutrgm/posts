@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v323';
+const CACHE_NAME = 'hangout-v328';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
@@ -41,7 +41,7 @@ const PRECACHE_ASSETS = [
   './',
   './index.html',
   './chat/index.html',
-  './css/tailwind.min.css?v=16',
+  './css/tailwind.min.css?v=17',
   './css/styles.css?v=29',
   // Arena SPA (/arena) — tournament hub, lobby bridge, brackets
   './arena/index.html',
@@ -50,14 +50,15 @@ const PRECACHE_ASSETS = [
   './arena/bracket-engine.js',
   './chat/css/styles.css?v=54',
   './js/renderers.js?v=101',
-  './js/helpers.js?v=74',
-  './js/games.js?v=63',
-  './js/main.js?v=112',
-  './js/myday.js?v=28',
+  './js/helpers.js?v=76',
+  './js/games.js?v=65',
+  './js/main.js?v=114',
+  './js/myday.js?v=29',
+  './js/quest.js?v=3',
   './js/voice-recorder.js?v=3',
-  './chat/js/app.js?v=108',
+  './chat/js/app.js?v=111',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.
-  './chat/mini-chat.js?v=8',
+  './chat/mini-chat.js?v=10',
   './music/mini-player.js?v=5',
   // Standalone Music SPA (/music) — keep these ?v= in sync with music/index.html
   './music/index.html',

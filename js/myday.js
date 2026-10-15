@@ -957,6 +957,8 @@ function bindMediaInput() {
                 await archiveMyDay({ pic: url, createdAt });
                 if (window.incrementUploadLimit) window.incrementUploadLimit();
             }
+            // Daily Quest progress — one My Day upload (photo or video) counted.
+            if (window.questTrack) window.questTrack('myday');
             window.showToast('🎬 My Day posted!');
         } catch (e) {
             window.showToast('Could not post My Day: ' + e.message);

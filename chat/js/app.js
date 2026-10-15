@@ -1,6 +1,6 @@
 import { auth, db, db2, db3, cloudinaryConfig } from '../../js/firebase-config.js?v=3';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, increment, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import '../games/index.js?v=35';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
@@ -858,6 +858,20 @@ window.replyToNote = async (uid) => {
   }
 };
 
+// ── Daily Quest progress (RTDB 3 /quests — the same node the posts app reads) ──
+// One fire-and-forget increment per action, written INLINE instead of importing
+// js/quest.js so firebase-config.js is never evaluated twice (this file pins it
+// with ?v=3 while quest.js loads it plain). Anonymous guest sign-ins never earn
+// quests — real accounts only, same gate as the posts app.
+const questCount = (metric) => {
+  const u = auth.currentUser;
+  if (!u || u.isAnonymous || !state.user) return;
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  update(ref(db3, `quests/${day}/${state.user.uid}/p`), { [metric]: increment(1) })
+    .catch((e) => console.warn(`quest ${metric} track error:`, e));
+};
+
 // Set / clear my own note (saved to db2) — optional song attached from the
 // Hangout Music community library (one-shot read of db3 /global_library).
 window.openMyNote = async () => {
@@ -906,6 +920,8 @@ window.openMyNote = async () => {
       }
       await set(ref(db2, `notes/${me}`), note);
       showToast(note.song ? 'Note saved with song 🎵' : 'Note saved.');
+      // Daily Quest progress — count the note as posted.
+      questCount('notes');
     }
   } catch (e) {
     showToast('Could not save note: ' + e.message);
@@ -2155,6 +2171,8 @@ async function sendVoiceMessage(audioBlob) {
     }
     window._jumpToLatest = true;
     await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+    // Daily Quest progress — voice messages count as chat sent too.
+    questCount('chat');
     clearReply();
     updateStreak(state.activeThreadId);
     try { await updateConversationSummaries('🎤 Voice message', timestamp); } catch (err) { console.error('Summary update error:', err); }
@@ -2817,6 +2835,8 @@ async function sendMessage(event) {
     if (state.replyTo) payload.replyTo = { id: state.replyTo.id, senderId: state.replyTo.senderId, text: (state.replyTo.text || '').slice(0, 120), hasImage: Boolean(state.replyTo.image), image: state.replyTo.image || null };
     window._jumpToLatest = true;
     const msgRef = await push(ref(db, `chatMessages/${state.activeThreadId}`), payload);
+    // Daily Quest progress — one chat message sent (text/photo/reply/emoji-mode).
+    questCount('chat');
     // Fire-and-forget mention notifications (@name / @everyone / @mods)
     if (text) notifyChatMentions(text, msgRef.key).catch(() => {});
     resetComposer();

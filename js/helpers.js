@@ -137,6 +137,13 @@ window.siteSettings = {
     recruitLbReward: 10,        // /config → Recruit Rewards: LB points paid to the recruiter per VALID recruit, on claim
     recruitPrizeReward: 50,     // /config → Recruit Rewards: ₱ prize shown per VALID recruit (display only for now)
     recruitClaimCooldownHrs: 48, // /config → Recruit Rewards: hours a valid recruit must age before its reward is claimable
+    quests: {              // /config → Daily Quest (progress lives in RTDB 3 /quests)
+        enabled: true,
+        reqPosts: 10, reqReels: 3, reqMyDay: 1, reqNotes: 1, reqGames: 50, reqAnswered: 10,
+        reqComments: 20, reqReacts: 10, reqChat: 30,
+        lbReward: 50,      // LB points paid on claim (all-time + daily/weekly/monthly)
+        moneyReward: 0     // ₱ shown next to the reward (DISPLAY-ONLY; 0 = hidden)
+    },
     imageUploadLimit: 10,
     videoUploadLimit: 3,
     videoSizeLimitMB: 20,

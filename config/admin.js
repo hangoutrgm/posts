@@ -3,8 +3,8 @@ import { app, auth, db, db3, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, remove, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=8";
-import "../js/helpers.js?v=74";
+import "../js/globals.js?v=10";
+import "../js/helpers.js?v=76";
 
 const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
@@ -313,6 +313,20 @@ function initAdminDashboard() {
             document.getElementById('set-recruitLbReward').value = settings.recruitLbReward ?? window.siteSettings.recruitLbReward ?? '';
             document.getElementById('set-recruitPrizeReward').value = settings.recruitPrizeReward ?? window.siteSettings.recruitPrizeReward ?? '';
             document.getElementById('set-recruitClaimCooldownHrs').value = settings.recruitClaimCooldownHrs ?? window.siteSettings.recruitClaimCooldownHrs ?? '';
+            // Daily Quest — one nested settings object (/settings/quests).
+            const qset = settings.quests || {};
+            document.getElementById('set-questsEnabled').value = qset.enabled === false ? '0' : '1';
+            document.getElementById('set-questReqPosts').value = qset.reqPosts ?? '';
+            document.getElementById('set-questReqReels').value = qset.reqReels ?? '';
+            document.getElementById('set-questReqMyDay').value = qset.reqMyDay ?? '';
+            document.getElementById('set-questReqNotes').value = qset.reqNotes ?? '';
+            document.getElementById('set-questReqGames').value = qset.reqGames ?? '';
+            document.getElementById('set-questReqAnswered').value = qset.reqAnswered ?? '';
+            document.getElementById('set-questReqComments').value = qset.reqComments ?? '';
+            document.getElementById('set-questReqReacts').value = qset.reqReacts ?? '';
+            document.getElementById('set-questReqChat').value = qset.reqChat ?? '';
+            document.getElementById('set-questLbReward').value = qset.lbReward ?? '';
+            document.getElementById('set-questMoneyReward').value = qset.moneyReward ?? '';
             document.getElementById('set-lbBoostMultiplier').value = settings.lbBoostMultiplier ?? '';
             document.getElementById('set-lbBoostStart').value = settings.lbBoostStart ?? '';
             document.getElementById('set-lbBoostEnd').value = settings.lbBoostEnd ?? '';
@@ -366,6 +380,18 @@ function initAdminDashboard() {
             document.getElementById('set-chatVideoLimit').value = '';
             document.getElementById('set-chatVoiceLimit').value = '';
             document.getElementById('set-chatVideoSizeLimitMB').value = '';
+            document.getElementById('set-questsEnabled').value = '1';
+            document.getElementById('set-questReqPosts').value = '';
+            document.getElementById('set-questReqReels').value = '';
+            document.getElementById('set-questReqMyDay').value = '';
+            document.getElementById('set-questReqNotes').value = '';
+            document.getElementById('set-questReqGames').value = '';
+            document.getElementById('set-questReqAnswered').value = '';
+            document.getElementById('set-questReqComments').value = '';
+            document.getElementById('set-questReqReacts').value = '';
+            document.getElementById('set-questReqChat').value = '';
+            document.getElementById('set-questLbReward').value = '';
+            document.getElementById('set-questMoneyReward').value = '';
             for (let i = 1; i <= 10; i++) {
                 const el = document.getElementById('set-rankReward' + i);
                 if (el) el.value = '';
@@ -400,6 +426,20 @@ function initAdminDashboard() {
         document.getElementById('set-recruitLbReward').placeholder = window.siteSettings.recruitLbReward ?? '10';
         document.getElementById('set-recruitPrizeReward').placeholder = window.siteSettings.recruitPrizeReward ?? '50';
         document.getElementById('set-recruitClaimCooldownHrs').placeholder = window.siteSettings.recruitClaimCooldownHrs ?? '48';
+        // Daily Quest placeholders mirror the client defaults in js/helpers.js.
+        const qd = window.siteSettings.quests || {};
+        document.getElementById('set-questsEnabled').placeholder = qd.enabled === false ? '0' : '1';
+        document.getElementById('set-questReqPosts').placeholder = qd.reqPosts ?? 10;
+        document.getElementById('set-questReqReels').placeholder = qd.reqReels ?? 3;
+        document.getElementById('set-questReqMyDay').placeholder = qd.reqMyDay ?? 1;
+        document.getElementById('set-questReqNotes').placeholder = qd.reqNotes ?? 1;
+        document.getElementById('set-questReqGames').placeholder = qd.reqGames ?? 50;
+        document.getElementById('set-questReqAnswered').placeholder = qd.reqAnswered ?? 10;
+        document.getElementById('set-questReqComments').placeholder = qd.reqComments ?? 20;
+        document.getElementById('set-questReqReacts').placeholder = qd.reqReacts ?? 10;
+        document.getElementById('set-questReqChat').placeholder = qd.reqChat ?? 30;
+        document.getElementById('set-questLbReward').placeholder = qd.lbReward ?? 50;
+        document.getElementById('set-questMoneyReward').placeholder = qd.moneyReward ?? 0;
         document.getElementById('set-lbBoostMultiplier').placeholder = window.siteSettings.lbBoostMultiplier ?? '1';
         document.getElementById('set-lbBoostStart').placeholder = window.siteSettings.lbBoostStart ?? '22:00';
         document.getElementById('set-lbBoostEnd').placeholder = window.siteSettings.lbBoostEnd ?? '00:00';
@@ -458,6 +498,22 @@ function initAdminDashboard() {
             gameLimits: collectGameLimits(),
             leaderboardRewards: collectRankRewards(),
             leaderboardRewardMins: collectRankMins(),
+            // Daily Quest — one nested object under /settings/quests. A requirement
+            // of 0 hides that quest line; moneyReward is ₱ display-only (hidden at 0).
+            quests: {
+                enabled: document.getElementById('set-questsEnabled').value === '1',
+                reqPosts: parseInt(document.getElementById('set-questReqPosts').value) || 0,
+                reqReels: parseInt(document.getElementById('set-questReqReels').value) || 0,
+                reqMyDay: parseInt(document.getElementById('set-questReqMyDay').value) || 0,
+                reqNotes: parseInt(document.getElementById('set-questReqNotes').value) || 0,
+                reqGames: parseInt(document.getElementById('set-questReqGames').value) || 0,
+                reqAnswered: parseInt(document.getElementById('set-questReqAnswered').value) || 0,
+                reqComments: parseInt(document.getElementById('set-questReqComments').value) || 0,
+                reqReacts: parseInt(document.getElementById('set-questReqReacts').value) || 0,
+                reqChat: parseInt(document.getElementById('set-questReqChat').value) || 0,
+                lbReward: parseInt(document.getElementById('set-questLbReward').value) || 0,
+                moneyReward: parseInt(document.getElementById('set-questMoneyReward').value) || 0,
+            },
         };
 
         try {

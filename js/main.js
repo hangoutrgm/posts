@@ -9,7 +9,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
 // evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
 // renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=74";
+import "./helpers.js?v=76";
 import "./renderers.js?v=101";
 
 let presenceInterval = null;
@@ -1949,6 +1949,15 @@ document.getElementById('submit-post-btn').addEventListener('click', async () =>
         update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
         window.notifyMentions(text, newPostRef.id);
         window.logActivity("posted a new update");
+
+        // Daily Quest progress — count composer posts by category (General /
+        // Reels only; Lobby/Games/Announcements don't count). My Day cross-posts
+        // never reach this path, so they can't double-count as Reels.
+        if (window.questTrack) {
+            const questCat = document.getElementById('post-category').value;
+            if (questCat === 'General') window.questTrack('posts');
+            else if (questCat === 'Reels') window.questTrack('reels');
+        }
         
         document.getElementById('post-text').value = '';
         fileInput.value = '';
@@ -2053,6 +2062,8 @@ window.submitComment = async (postId, postAuthorId, prefix) => {
     });
     const pointsToAdd = window.siteSettings.starsPerLike ?? 1;
     update(ref(db, `users/${window.currentUser.uid}`), { points: increment(pointsToAdd) });
+    // Daily Quest progress — post comments only (My Day comments & replies return earlier).
+    if (window.questTrack) window.questTrack('comments');
     
     if(window.currentUser.uid !== postAuthorId && postAuthorId !== "undefined") {
         update(ref(db, `users/${postAuthorId}`), { points: increment(pointsToAdd) });
@@ -2138,6 +2149,10 @@ window.react = (postId, postAuthorId, type) => {
         updateDoc(postDocRef, {
             [`reactions.${type}.${window.currentUser.uid}`]: true
         });
+        // Daily Quest progress — react given. questTrack's atomic marker
+        // transaction dedupes per post, so react/unreact toggling can never
+        // farm the counter. (Metric key is 'reacts' — plural, like QUEST_METRICS.)
+        if (window.questTrack) window.questTrack('reacts', postId);
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
         const likePoints = window.siteSettings.starsPerLike ?? 1;
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {

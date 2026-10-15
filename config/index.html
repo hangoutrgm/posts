@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="../css/tailwind.min.css?v=16">
+    <link rel="stylesheet" href="../css/tailwind.min.css?v=17">
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
@@ -209,6 +209,67 @@
                                 </div>
                                 <div class="col-span-2">
                                     <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">Game-night boost: winner + host LB rewards are multiplied by this value between Boost Start and Boost End (end earlier than start crosses midnight). Set to 1 to disable. During 10pm–12mn at ×3, a 5-LB win pays 15 LB.</p>
+                                </div>
+                            </div>
+                            <!-- Daily Quest — per-day checklist requirements + rewards. Progress
+                                 lives in RTDB 3 /quests; a requirement of 0 hides that quest line. -->
+                            <div class="pt-2 mt-1 border-t border-slate-100 dark:border-slate-700/50">
+                                <p class="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-2 ml-0.5"><i class="fa-solid fa-scroll mr-1 text-amber-500"></i>Daily Quest</p>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Quest Status</label>
+                                        <select id="set-questsEnabled" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                            <option value="1">Enabled</option>
+                                            <option value="0">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">LB Reward (on claim)</label>
+                                        <input type="number" id="set-questLbReward" min="0" placeholder="50" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: General Posts</label>
+                                        <input type="number" id="set-questReqPosts" min="0" placeholder="10" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Reels Posts</label>
+                                        <input type="number" id="set-questReqReels" min="0" placeholder="3" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: My Day</label>
+                                        <input type="number" id="set-questReqMyDay" min="0" placeholder="1" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Notes</label>
+                                        <input type="number" id="set-questReqNotes" min="0" placeholder="1" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Games Posted</label>
+                                        <input type="number" id="set-questReqGames" min="0" placeholder="50" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Games Answered</label>
+                                        <input type="number" id="set-questReqAnswered" min="0" placeholder="10" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Comments</label>
+                                        <input type="number" id="set-questReqComments" min="0" placeholder="20" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Reactions</label>
+                                        <input type="number" id="set-questReqReacts" min="0" placeholder="10" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Chat Messages</label>
+                                        <input type="number" id="set-questReqChat" min="0" placeholder="30" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Money Prize (₱, visual)</label>
+                                        <input type="number" id="set-questMoneyReward" min="0" placeholder="0" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div class="col-span-2">
+                                        <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">A requirement of 0 hides that quest line. The ₱ Money Prize is visual only for now (never paid out) and is hidden from members when set to 0. Keep "Games Posted" within what the per-day game limits can actually reach.</p>
+                                    </div>
                                 </div>
                             </div>
                             <!-- Cooldown -->
@@ -562,6 +623,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=39"></script>
+    <script type="module" src="admin.js?v=41"></script>
 </body>
 </html>

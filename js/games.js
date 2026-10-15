@@ -2106,6 +2106,8 @@ window.submitGame = async () => {
         // Award stars for posting a game (same reward as a regular post)
         const starsToAdd = window.siteSettings.starsPerPost ?? 10;
         update(ref(db, `users/${window.currentUser.uid}`), { points: increment(starsToAdd) });
+        // Daily Quest progress — one hosted game counted per successful post.
+        if (window.questTrack) window.questTrack('games');
 
         // For NCL: log the earning immediately since it's awarded on post creation.
         // The same-IP shield applies too (host picking a flagged target gets 0 LB).
@@ -2465,6 +2467,11 @@ window.answerGame = async (postId, answer) => {
         if (post.authorId === window.currentUser.uid) {
             return window.showAlert("You cannot answer your own game!");
         }
+
+        // Daily Quest progress — one "game answered" per submitted attempt on
+        // someone else's live game (wrong guesses count too; the time-up and
+        // own-game guards above already returned for non-attempts).
+        if (window.questTrack) window.questTrack('answered');
 
         // For guess_emoji: player types the name → match against gameEmojiName
         // For bring_me_emoji: player types/pastes the emoji char → match against gameEmojiChar
@@ -4271,6 +4278,9 @@ window.submitHangmanGuess = async (postId, mode, inputVal) => {
             return window.showAlert("You have used all your guesses and are eliminated from this game.");
         }
 
+        // Daily Quest progress — hangman letter/word guesses count as answered.
+        if (window.questTrack) window.questTrack('answered');
+
         const secretWord = (post.hangmanWord || '').toUpperCase();
         const guessedLetters = post.hangmanGuessedLetters || [];
         const wrongLetters = post.hangmanWrongLetters || [];
@@ -4520,6 +4530,9 @@ window.submitNumberGuess = async (postId, inputVal) => {
         const uid = window.currentUser.uid;
         const myName = window.globalUsersCache?.[uid]?.name || window.currentUser.name || 'Player';
         const entry = { uid, name: myName, at: Date.now() };
+
+        // Daily Quest progress — vault / guess-the-number attempts count as answered.
+        if (window.questTrack) window.questTrack('answered');
 
         if (mode === 'vault') {
             if (!/^\d{3}$/.test(raw)) return window.showAlert("Please enter exactly 3 digits (000-999).");

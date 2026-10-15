@@ -31,14 +31,14 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <!-- Prefetch chat page resources for faster navigation -->
     <link rel="prefetch" href="chat/index.html">
-    <link rel="prefetch" href="chat/js/app.js?v=108">
+    <link rel="prefetch" href="chat/js/app.js?v=111">
     <script>
         if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
         else document.documentElement.classList.add('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=29">
-    <link rel="stylesheet" href="css/tailwind.min.css?v=16">
+    <link rel="stylesheet" href="css/tailwind.min.css?v=17">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
@@ -72,8 +72,9 @@
                         </button>
 
                         <!-- Account menu under the nav avatar: username -> profile page,
-                             Edit Profile modal, Recruits modal, Admin Config (admins only),
-                             Install, Logout. Logic in js/main.js. -->
+                             Edit Profile modal, Daily Quest modal, Recruits modal,
+                             Admin Config (admins only), Install, Logout. Logic in js/main.js
+                             + js/quest.js. -->
                         <div id="user-menu" class="hidden absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden z-[120]">
                             <button onclick="window.userMenuProfile()" class="w-full flex items-center gap-2.5 p-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-b border-gray-100 dark:border-slate-700">
                                 <img id="user-menu-avatar" class="w-9 h-9 rounded-full object-cover border border-blue-500 bg-gray-100 dark:bg-slate-700" src="">
@@ -89,6 +90,11 @@
                                  Logic in js/main.js (window.userMenuRecruits). -->
                             <button onclick="window.userMenuRecruits()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
                                 <i class="fa-solid fa-user-plus w-4 text-center text-gray-400"></i> Recruits
+                            </button>
+                            <!-- Daily Quest — today's checklist + claimable LB reward (js/quest.js). -->
+                            <button id="quest-menu-btn" onclick="window.userMenuQuest()" class="relative w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
+                                <i class="fa-solid fa-scroll w-4 text-center text-gray-400"></i> Quest
+                                <span id="quest-menu-dot" class="hidden absolute right-3 top-1/2 -translate-y-1/2 w-2 h-2 bg-green-500 rounded-full shadow-sm"></span>
                             </button>
                             <!-- Admin only — shown/hidden by window.updateAdminButtons() (js/helpers.js) -->
                             <button id="admin-config-btn" onclick="window.closeUserMenu(); window.location.href='config/'" class="hidden w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition border-t border-gray-100 dark:border-slate-700"><i class="fa-solid fa-sliders w-4 text-center"></i> Admin Config</button>
@@ -611,6 +617,45 @@
 
             <div id="recruits-list" class="overflow-y-auto flex-1 space-y-1 scrollbar-hide text-left min-h-[120px]"></div>
             <div id="recruits-loader" class="hidden text-center py-2 text-gray-500 shrink-0"><i class="fa-solid fa-spinner fa-spin"></i></div>
+        </div>
+    </div>
+
+    <!-- Daily Quest — today's checklist + claimable LB reward (RTDB 3 /quests).
+         Progress counters, react dedupe and claimedAt live per user per day;
+         requirements/rewards come from /config → settings/quests. Logic in js/quest.js. -->
+    <div id="quest-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[85vh] flex flex-col">
+            <button onclick="window.closeQuestModal()" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
+
+            <div class="flex items-center justify-between mb-1 shrink-0">
+                <h2 class="text-lg font-bold dark:text-white flex items-center"><i class="fa-solid fa-scroll mr-2 text-amber-500"></i> Daily Quest</h2>
+            </div>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2 shrink-0">Complete today's checklist, then claim your reward. <span id="quest-date-label" class="font-semibold text-gray-500 dark:text-gray-400"></span> — resets at midnight.</p>
+
+            <!-- Today / History tabs (History = the last 7 days, RTDB 3 /quests). -->
+            <div id="quest-tabs" class="flex items-center gap-1.5 mb-2 shrink-0">
+                <button id="quest-tab-today" onclick="window.setQuestTab('today')" class="px-3 py-1 rounded-full text-[11px] font-bold bg-blue-600 text-white border border-transparent transition">Today</button>
+                <button id="quest-tab-history" onclick="window.setQuestTab('history')" class="px-3 py-1 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 border border-gray-200 dark:border-slate-700 transition">History</button>
+            </div>
+
+            <div id="quest-today-pane" class="flex-1 flex flex-col min-h-0">
+            <!-- Reward banner — ₱ money is display-only and hidden when 0 (/config → Daily Quest). -->
+            <div class="flex items-center justify-between px-2.5 py-2 rounded-lg border border-yellow-200 dark:border-yellow-800/50 bg-yellow-50/60 dark:bg-yellow-900/10 mb-2 shrink-0">
+                <span class="text-[10px] font-bold text-yellow-700 dark:text-yellow-300"><i class="fa-solid fa-gift mr-1"></i>Reward</span>
+                <span class="flex items-center gap-1.5 text-[10px] font-black whitespace-nowrap">
+                    <span class="text-yellow-600 dark:text-yellow-400">🏆 <span id="quest-info-lb">—</span> LB</span>
+                    <span id="quest-info-money-wrap" class="hidden text-green-600 dark:text-green-400">₱<span id="quest-info-money">—</span></span>
+                </span>
+            </div>
+
+            <div id="quest-list" class="overflow-y-auto flex-1 space-y-1.5 scrollbar-hide text-left min-h-[120px]"></div>
+            <button id="quest-claim-btn" onclick="window.claimDailyQuest()" disabled class="mt-3 shrink-0 w-full py-2 rounded-lg text-xs font-black bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-slate-600 cursor-not-allowed transition">Complete all quests to claim</button>
+            </div><!-- /quest-today-pane -->
+
+            <!-- History pane — previous 7 days, loaded per visit by window.loadQuestHistory(). -->
+            <div id="quest-history-pane" class="hidden overflow-y-auto flex-1 scrollbar-hide text-left min-h-[120px]">
+                <div id="quest-history-list" class="space-y-1.5"></div>
+            </div>
         </div>
     </div>
 
@@ -1502,11 +1547,12 @@
 
     <script src="js/users-cache.js?v=6"></script>
     <script type="module" src="js/renderers.js?v=101"></script>
-    <script type="module" src="js/helpers.js?v=74"></script>
-    <script type="module" src="js/games.js?v=63"></script>
+    <script type="module" src="js/helpers.js?v=76"></script>
+    <script type="module" src="js/games.js?v=65"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
-    <script type="module" src="js/myday.js?v=28"></script>
-    <script type="module" src="js/main.js?v=112"></script>
+    <script type="module" src="js/myday.js?v=29"></script>
+    <script type="module" src="js/quest.js?v=3"></script>
+    <script type="module" src="js/main.js?v=114"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.
@@ -1522,7 +1568,7 @@
         // The button keeps href="chat/" — ctrl/middle-click still opens the
         // full app, and a failed import falls back to navigating there.
         window.openMiniChat = () => {
-            import('./chat/mini-chat.js?v=8')
+            import('./chat/mini-chat.js?v=10')
                 .then((mod) => mod.openMiniChat())
                 .catch((err) => {
                     console.error('[mini-chat] load failed', err);

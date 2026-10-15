@@ -17,10 +17,10 @@
 // chatThreads/{tid}/last* + own chatInboxes entry, runTransaction on each
 // peer's inbox entry (unreadCount +1), mark-read zeroes unreadCount.
 // =========================================================
-import { auth, db } from '../js/firebase-config.js';
+import { auth, db, db3 } from '../js/firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import {
-  ref, onValue, push, update, get, set, runTransaction, query, limitToLast
+  ref, onValue, push, update, get, set, runTransaction, query, limitToLast, increment
 } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1348,6 +1348,18 @@ async function updateSummaries(tid, item, preview, timestamp, uid) {
   });
 }
 
+// ── Daily Quest progress (RTDB 3 /quests) — mirror of chat/js/app.js questCount.
+// Inline (never import js/quest.js) so firebase-config.js is never evaluated
+// twice; anonymous guests never earn quests. One message = one increment.
+const questCount = (metric) => {
+  const u = auth.currentUser;
+  if (!u || u.isAnonymous || !mc.user) return;
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  update(ref(db3, `quests/${day}/${mc.user.uid}/p`), { [metric]: increment(1) })
+    .catch((e) => console.warn(`quest ${metric} track error:`, e));
+};
+
 async function send(e) {
   e.preventDefault();
   const tid = mc.tid;
@@ -1394,6 +1406,8 @@ async function send(e) {
       };
     }
     await push(ref(db, `chatMessages/${tid}`), payload);
+    // Daily Quest progress — messages sent from the mini widget count too.
+    questCount('chat');
     if (input) { input.value = ''; updateSendMode(); }
     clearReply();
     updateStreak(tid); // fire-and-forget — same as the full app
