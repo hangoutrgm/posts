@@ -2727,8 +2727,9 @@ window.setRecruitsTab = (tab) => {
 
 // ── Recruit rewards ──────────────────────────────────────────────────────
 // Every VALID recruit pays the recruiter one reward: LB points (credited to
-// overall + daily/weekly/monthly) plus a ₱ prize that is DISPLAY-ONLY for now.
-// Both amounts and the claim cooldown come from /config → settings.
+// overall + daily/weekly/monthly) plus a ₱ prize, logged to /earnings on claim
+// (recruiter row + the admin's payout ledger — window.logMoneyRewardClaim,
+// defined in js/quest.js which loads first). Amounts & cooldown: /config.
 function recruitRewardConfig() {
     const s = window.siteSettings || {};
     return {
@@ -2835,10 +2836,17 @@ window.claimRecruitReward = async (recruitUid) => {
             if (window.creditLbPeriods) window.creditLbPeriods(uid, cfg.lb);
         }
 
+        // ₱ prize (admin-funded): earnings row for the recruiter + one in the
+        // admin's payout ledger. Fire-and-forget; helper lives in js/quest.js.
+        const moneyLogged = cfg.prize > 0;
+        if (moneyLogged && window.logMoneyRewardClaim) {
+            window.logMoneyRewardClaim(uid, window.globalUsersCache?.[uid]?.name || 'Member', 'Recruit Reward', cfg.prize);
+        }
+
         row.claimedAt = Date.now();
         window.paintRecruits();
         writeRecruitsCache(uid, window._recruitsRows || []);
-        window.showToast && window.showToast(`Recruit claimed! +${cfg.lb} LB credited.`);
+        window.showToast && window.showToast(`Recruit claimed! +${cfg.lb} LB credited.${moneyLogged ? ` ₱${cfg.prize.toLocaleString()} logged to Earnings.` : ''}`);
     } catch (e) {
         console.warn('Recruit claim failed:', e);
         window.showToast && window.showToast('Claim failed — please try again.');

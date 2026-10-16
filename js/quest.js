@@ -18,8 +18,9 @@
 // reaches us through the existing window.siteSettings mirror in main.js.
 //   { enabled, reqPosts, reqReels, reqMyDay, reqNotes, reqGames,
 //     reqComments, reqReacts, lbReward, moneyReward }
-// A requirement of 0 disables that quest line; moneyReward is DISPLAY-ONLY
-// (same convention as recruitPrizeReward) and is hidden when 0.
+// A requirement of 0 disables that quest line; moneyReward (₱) is hidden when
+// 0 and, on claim, logged to RTDB 3 /earnings (claimer + the admin's payout
+// ledger) via window.logMoneyRewardClaim below — the admin funds it by hand.
 //
 // CLAIM: an RTDB transaction on the day record (mirrors claimRecruitReward),
 // so a double-click / second tab / stale modal can never pay twice. The payout
@@ -27,7 +28,7 @@
 // window.creditLbPeriods (js/games.js).
 // ============================================================
 import { auth, db, db3 } from './firebase-config.js';
-import { ref, onValue, get, set, update, increment, runTransaction, remove } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { ref, onValue, get, set, push, update, increment, runTransaction, remove } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 // Same day-key format as window.lbDayKey (js/games.js) / gamePostCounts —
 // defined locally because this module must not depend on games.js.
@@ -344,6 +345,34 @@ window.loadQuestHistory = async () => {
     }).join('') + `<p class="text-[9px] text-gray-400 dark:text-gray-500 text-center pt-1">Keeps the last ${QUEST_HISTORY_DAYS} days. Past completion is checked against today's requirements.</p>`;
 };
 
+// ── Money-reward earnings log ───────────────────────────────────────────────
+// Shared with the recruit claim in js/main.js (loaded after this module).
+// ₱ rewards are never auto-paid — the site admin funds them — so each claim
+// writes ONE RTDB 3 /earnings record for the claimer (shown in Rankings →
+// Earnings and Treasury → Earnings) and ONE into the ADMIN's /earnings as his
+// payout ledger: he marks it Paid in Treasury once the money is sent.
+// hostUid = admin, so the Treasury Host column answers "who gives the prize".
+// Nothing is written at ₱ 0, and no duplicate when the admin claims for himself.
+const MONEY_REWARD_ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
+window.logMoneyRewardClaim = (claimUid, claimerName, sourceLabel, php) => {
+    if (!(php > 0) || !claimUid) return;
+    const base = {
+        prize: 'PHP ' + php,           // same "PHP N" shape as formatPrizeForLog
+        lbPoints: 0,                    // ₱ only — the LB payout is credited by the claim flow
+        timestamp: Date.now(),
+        hostUid: MONEY_REWARD_ADMIN_UID // who will give the prize
+    };
+    push(ref(db3, `earnings/${claimUid}`), { ...base, title: sourceLabel })
+        .catch(e => console.warn('money reward earnings write error:', e));
+    if (claimUid !== MONEY_REWARD_ADMIN_UID) {
+        push(ref(db3, `earnings/${MONEY_REWARD_ADMIN_UID}`), {
+            ...base,
+            title: `${sourceLabel} — ${claimerName || 'Member'}`,
+            forUid: claimUid            // who the admin has to pay
+        }).catch(e => console.warn('money reward earnings (admin) write error:', e));
+    }
+};
+
 // ── Claim ───────────────────────────────────────────────────────────────────
 window._claimingQuest = false;
 
@@ -380,12 +409,18 @@ window.claimDailyQuest = async () => {
         }
 
         // Credit ALL four LB buckets: overall (users/{uid}/lbPoints) + the
-        // daily/weekly/monthly period counters. moneyReward stays display-only.
+        // daily/weekly/monthly period counters.
         if (cfg.lbReward > 0) {
             set(ref(db, `users/${uid}/lbPoints`), increment(cfg.lbReward));
             if (window.creditLbPeriods) window.creditLbPeriods(uid, cfg.lbReward);
         }
-        window.showToast && window.showToast(`Daily Quest claimed! +${Number(cfg.lbReward || 0).toLocaleString()} LB credited. 🎉`);
+        // ₱ reward (admin-funded): one earnings row for the claimer + one in the
+        // admin's payout ledger. Fire-and-forget, same as js/games.js logEarnings.
+        const moneyLogged = cfg.moneyReward > 0;
+        if (moneyLogged) {
+            window.logMoneyRewardClaim(uid, window.globalUsersCache?.[uid]?.name || 'Member', 'Daily Quest Reward', cfg.moneyReward);
+        }
+        window.showToast && window.showToast(`Daily Quest claimed! +${Number(cfg.lbReward || 0).toLocaleString()} LB credited.${moneyLogged ? ` ₱${Number(cfg.moneyReward).toLocaleString()} logged to Earnings.` : ''} 🎉`);
     } catch (e) {
         console.warn('Quest claim failed:', e);
         window.showToast && window.showToast('Claim failed — please try again.');
