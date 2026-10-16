@@ -9,9 +9,10 @@
 <link rel="icon" href="../favicon.ico">
 <script>
   /* Theme bootstrap — runs before first paint so there is never a flash.
-     Same contract as the rest of the site: localStorage.theme === 'light' | 'dark' */
-  if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
-  else document.documentElement.classList.add('dark');
+     Same contract as the rest of the site: localStorage.theme === 'light' | 'dark'.
+     Light is the DEFAULT for first-timers; dark only when chosen before. */
+  if (localStorage.theme === 'dark') document.documentElement.classList.add('dark');
+  else document.documentElement.classList.remove('dark');
 </script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>

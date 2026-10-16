@@ -4,6 +4,10 @@
 
 @layer components {
     .nav-btn { @apply grid place-items-center w-9 h-9 rounded-full bg-white/70 dark:bg-white/[0.06] border border-slate-200/80 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-white/10 hover:border-slate-300 dark:hover:border-white/25 transition-all duration-200 active:scale-90; }
+    /* Main-site nav icon buttons (Members / Help / Notifications / avatar): one
+       uniform 32×32 round hit area + 16px icon so every nav control lines up. */
+    .nav-icon-btn { @apply relative grid place-items-center w-8 h-8 rounded-full text-gray-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-slate-700/60 transition; }
+
     .tab-btn { @apply flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-extrabold text-slate-500 dark:text-slate-400 transition-all duration-200; }
     .tab-btn:hover { @apply text-slate-900 dark:text-white bg-slate-900/[0.04] dark:bg-white/[0.05]; }
     .tab-btn.tab-active { @apply bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-500/25; }

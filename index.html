@@ -33,12 +33,13 @@
     <link rel="prefetch" href="chat/index.html">
     <link rel="prefetch" href="chat/js/app.js?v=111">
     <script>
-        if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
-        else document.documentElement.classList.add('dark');
+        // Light theme is the DEFAULT for first-timers; dark only when chosen before.
+        if (localStorage.theme === 'dark') document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=29">
-    <link rel="stylesheet" href="css/tailwind.min.css?v=17">
+    <link rel="stylesheet" href="css/tailwind.min.css?v=20">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
@@ -54,27 +55,27 @@
             </div>
         </div>
         
-        <div class="flex items-center space-x-2">
-            <button onclick="document.getElementById('members-modal').classList.remove('hidden'); window.renderMembers(true);" class="p-1.5 text-gray-500 hover:text-blue-500 transition"><i class="fa-solid fa-users"></i></button>
-            <button id="theme-toggle" class="p-1.5 text-gray-500 hover:text-blue-500 transition"><i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:block"></i></button>
+        <div class="flex items-center space-x-1">
+            <button onclick="document.getElementById('members-modal').classList.remove('hidden'); window.renderMembers(true);" class="nav-icon-btn" title="Members" aria-label="Members"><i class="fa-solid fa-users text-base"></i></button>
+            <button onclick="window.openHelpModal()" class="nav-icon-btn" title="Help — FAQ" aria-label="Help"><i class="fa-solid fa-circle-question text-base"></i></button>
             <div id="auth-container">
                 <button id="open-login-btn" class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-md">Login</button>
-                <div id="user-info" class="hidden flex items-center space-x-2">
+                <div id="user-info" class="hidden flex items-center space-x-1">
                     
-                    <button onclick="document.getElementById('notif-modal').classList.remove('hidden'); window.renderNotifications();" class="relative text-gray-400 hover:text-blue-500 transition pr-1">
-                        <i class="fa-solid fa-bell text-lg"></i>
-                        <span id="notif-badge" class="absolute -top-1 -right-0 bg-red-500 text-white text-[9px] font-bold px-1 rounded-full hidden shadow-sm border border-white dark:border-slate-800">0</span>
+                    <button onclick="document.getElementById('notif-modal').classList.remove('hidden'); window.renderNotifications();" class="nav-icon-btn" title="Notifications" aria-label="Notifications">
+                        <i class="fa-solid fa-bell text-base"></i>
+                        <span id="notif-badge" class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold px-1 rounded-full hidden shadow-sm border border-white dark:border-slate-800">0</span>
                     </button>
 
                     <div class="relative">
-                        <button id="nav-avatar-btn" onclick="window.toggleUserMenu(event)" class="hover:opacity-80 transition" aria-haspopup="menu" aria-expanded="false" title="Account menu">
+                        <button id="nav-avatar-btn" onclick="window.toggleUserMenu(event)" class="nav-icon-btn" aria-haspopup="menu" aria-expanded="false" title="Account menu">
                             <img id="nav-avatar" class="w-7 h-7 rounded-full border border-blue-500 object-cover" src="">
                         </button>
 
                         <!-- Account menu under the nav avatar: username -> profile page,
                              Edit Profile modal, Daily Quest modal, Recruits modal,
-                             Admin Config (admins only), Install, Logout. Logic in js/main.js
-                             + js/quest.js. -->
+                             Admin Config (admins only), Theme toggle, Install, Logout.
+                             Logic in js/main.js + js/quest.js. -->
                         <div id="user-menu" class="hidden absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden z-[120]">
                             <button onclick="window.userMenuProfile()" class="w-full flex items-center gap-2.5 p-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-b border-gray-100 dark:border-slate-700">
                                 <img id="user-menu-avatar" class="w-9 h-9 rounded-full object-cover border border-blue-500 bg-gray-100 dark:bg-slate-700" src="">
@@ -98,7 +99,13 @@
                             </button>
                             <!-- Admin only — shown/hidden by window.updateAdminButtons() (js/helpers.js) -->
                             <button id="admin-config-btn" onclick="window.closeUserMenu(); window.location.href='config/'" class="hidden w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition border-t border-gray-100 dark:border-slate-700"><i class="fa-solid fa-sliders w-4 text-center"></i> Admin Config</button>
-                            <button onclick="window.userMenuInstall()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-t border-gray-100 dark:border-slate-700">
+                            <!-- Theme toggle — moved here from the nav bar (the id is kept
+                                 so main.js's click listener and the #theme-toggle icon-swap
+                                 CSS in src/tailwind.css keep working unchanged). -->
+                            <button id="theme-toggle" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition border-t border-gray-100 dark:border-slate-700" title="Toggle light / dark theme">
+                                <i class="fa-solid fa-moon w-4 text-center text-gray-400 dark:hidden"></i><i class="fa-solid fa-sun w-4 text-center text-gray-400 hidden dark:block"></i> Theme
+                            </button>
+                            <button onclick="window.userMenuInstall()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700/60 transition">
                                 <i class="fa-solid fa-download w-4 text-center text-gray-400"></i> Install App
                             </button>
                             <button onclick="window.userMenuLogout()" class="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition border-t border-gray-100 dark:border-slate-700">
@@ -655,6 +662,139 @@
             <!-- History pane — previous 7 days, loaded per visit by window.loadQuestHistory(). -->
             <div id="quest-history-pane" class="hidden overflow-y-auto flex-1 scrollbar-hide text-left min-h-[120px]">
                 <div id="quest-history-list" class="space-y-1.5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help — newcomer guide. v1 covers how to earn Leaderboard (LB) points;
+         live amounts are filled from window.siteSettings on every open
+         (js/help.js). Rows for disabled rewards are hidden automatically. -->
+    <div id="help-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[85vh] flex flex-col">
+            <button onclick="window.closeHelpModal()" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
+
+            <div class="flex items-center justify-between mb-1 shrink-0">
+                <h2 class="text-lg font-bold dark:text-white flex items-center"><i class="fa-solid fa-circle-question mr-2 text-blue-500"></i> Help</h2>
+            </div>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2 shrink-0">Tap a question to see its answer.</p>
+
+            <div class="overflow-y-auto flex-1 space-y-1.5 scrollbar-hide text-left min-h-[120px]">
+                <button onclick="window.toggleHelpFaq('lb')" class="w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 hover:border-blue-300 dark:hover:border-blue-500/40 transition text-left">
+                    <span class="text-[11px] font-bold text-gray-800 dark:text-gray-200"><i class="fa-solid fa-trophy w-4 text-center text-blue-500 mr-1"></i> How do I earn Leaderboard (LB) points?</span>
+                    <i id="help-ch-lb" class="fa-solid fa-chevron-down text-[10px] text-gray-400 transition-transform shrink-0"></i>
+                </button>
+                <div id="help-a-lb" class="hidden space-y-1.5">
+                <div class="flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <i class="fa-solid fa-dice w-4 text-center text-sm text-blue-500 mt-0.5"></i>
+                    <span class="min-w-0">
+                        <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">🎮 Win games in the feed</span>
+                        <span class="block text-[10px] text-gray-400 dark:text-gray-500">Be the first to answer a hosted game — Trivia, Riddles, Hangman, Math, Flags, board games (Tic Tac Toe, Connect 4…), First to Mine and more. Each game card shows its own LB prize — the host picks the amount, up to that game's cap.</span>
+                    </span>
+                </div>
+
+                <div id="help-row-host" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <i class="fa-solid fa-screwdriver-wrench w-4 text-center text-sm text-emerald-500 mt-0.5"></i>
+                    <span class="min-w-0">
+                        <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">🛠️ Host games</span>
+                        <span class="block text-[10px] text-gray-400 dark:text-gray-500">Post a game in the feed — when someone else wins it, you earn the Host Bonus: <b id="help-host-bonus" class="text-emerald-600 dark:text-emerald-400">—</b> LB.</span>
+                    </span>
+                </div>
+
+                <div id="help-row-chat" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <i class="fa-solid fa-gamepad w-4 text-center text-sm text-purple-500 mt-0.5"></i>
+                    <span class="min-w-0">
+                        <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">💬 Chat games</span>
+                        <span class="block text-[10px] text-gray-400 dark:text-gray-500">Play in-chat games (Math Duel, Trivia, Emoji rounds…) in Hangout Chat: <span id="help-chat-text" class="text-purple-600 dark:text-purple-400 font-bold">—</span></span>
+                    </span>
+                </div>
+                <div id="help-row-quest" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <i class="fa-solid fa-scroll w-4 text-center text-sm text-amber-500 mt-0.5"></i>
+                    <span class="min-w-0">
+                        <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">🎯 Daily Quest</span>
+                        <span class="block text-[10px] text-gray-400 dark:text-gray-500">Finish today's checklist (Account menu → Quest) — posts, games, chat and more — then claim <b id="help-quest-lb" class="text-amber-600 dark:text-amber-400">—</b> LB once per day.</span>
+                    </span>
+                </div>
+
+                <div id="help-row-recruit" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <i class="fa-solid fa-user-plus w-4 text-center text-sm text-blue-500 mt-0.5"></i>
+                    <span class="min-w-0">
+                        <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">👥 Invite members (Recruits)</span>
+                        <span class="block text-[10px] text-gray-400 dark:text-gray-500">Pick a recruiter at sign-up — after the cooldown, the recruiter claims <b id="help-recruit-lb" class="text-blue-600 dark:text-blue-400">—</b> LB for every valid recruit (Account menu → Recruits).</span>
+                    </span>
+                </div>
+
+                <div id="help-row-boost" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <i class="fa-solid fa-bolt w-4 text-center text-sm text-yellow-400 mt-0.5"></i>
+                    <span class="min-w-0">
+                        <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">⚡ LB Boost hours</span>
+                        <span class="block text-[10px] text-gray-400 dark:text-gray-500">Between <b id="help-boost-window" class="text-yellow-500">—</b>, every game win and host bonus is multiplied <b id="help-boost-mult" class="text-yellow-500">—</b>.</span>
+                    </span>
+                </div>
+
+                <div class="px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800/40">
+                    <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                        📊 Every LB lands in <b>all four leaderboards at once</b> — view them from your avatar menu → Rankings &amp; Earnings. Top weekly ranks with enough LB also claim rank prizes (Rankings → Rewards).<br>
+                        ⭐ Stars earned from posts/comments are a <b>separate currency</b> with their own Stars ranking — they don't affect LB.
+                    </p>
+                </div>
+                </div><!-- /help-a-lb -->
+
+                <button onclick="window.toggleHelpFaq('money')" class="w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 hover:border-green-300 dark:hover:border-green-500/40 transition text-left">
+                    <span class="text-[11px] font-bold text-gray-800 dark:text-gray-200"><i class="fa-solid fa-money-bill-wave w-4 text-center text-green-500 mr-1"></i> How do I earn money (₱)?</span>
+                    <i id="help-ch-money" class="fa-solid fa-chevron-down text-[10px] text-gray-400 transition-transform shrink-0"></i>
+                </button>
+                <div id="help-a-money" class="hidden space-y-1.5">
+                    <div class="flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                        <i class="fa-solid fa-game w-4 text-center text-sm text-green-500 mt-0.5"></i>
+                        <span class="min-w-0">
+                            <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">🎮 Win games with cash prizes</span>
+                            <span class="block text-[10px] text-gray-400 dark:text-gray-500">Hosts can attach a 💵 ₱ prize to their games. Win it and the prize is logged in your Earnings — the host sends it (GCash) and tracks it in their Treasury. See it all in avatar menu → Rankings &amp; Earnings → Earnings.</span>
+                        </span>
+                    </div>
+                    <div id="help-row-weekly" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                        <i class="fa-solid fa-crown w-4 text-center text-sm text-yellow-400 mt-0.5"></i>
+                        <span class="min-w-0">
+                            <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">🏆 Top the weekly leaderboard</span>
+                            <span class="block text-[10px] text-gray-400 dark:text-gray-500">Every week the Top 10 LB ladder pays <b id="help-money-ranks" class="text-yellow-500">—</b> rank prizes — #1 takes <b id="help-money-r1" class="text-yellow-500">—</b> right now. Each rank needs its weekly LB minimum to claim the prize (Rankings → Rewards).</span>
+                        </span>
+                    </div>
+                    <div id="help-row-quest-peso" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                        <i class="fa-solid fa-scroll w-4 text-center text-sm text-amber-500 mt-0.5"></i>
+                        <span class="min-w-0">
+                            <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">🎯 Daily Quest</span>
+                            <span class="block text-[10px] text-gray-400 dark:text-gray-500">Finish today's checklist (Account menu → Quest) and claim — LB points plus <b id="help-money-quest" class="text-green-600 dark:text-green-400">—</b>.</span>
+                        </span>
+                    </div>
+                    <div id="help-row-recruit-peso" class="hidden flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                        <i class="fa-solid fa-user-plus w-4 text-center text-sm text-blue-500 mt-0.5"></i>
+                        <span class="min-w-0">
+                            <span class="block text-[11px] font-bold text-gray-800 dark:text-gray-200">👥 Invite members (Recruits)</span>
+                            <span class="block text-[10px] text-gray-400 dark:text-gray-500">Every valid recruit pays <b id="help-money-recruit" class="text-green-600 dark:text-green-400">—</b> plus LB once the recruiter claims (Account menu → Recruits).</span>
+                        </span>
+                    </div>
+                    <div class="px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800/40">
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                            ⭐ Stars are points, not cash — they rank on the Stars leaderboard.
+                        </p>
+                    </div>
+                </div><!-- /help-a-money -->
+
+                <button onclick="window.toggleHelpFaq('register')" class="w-full flex items-center justify-between gap-2 px-2.5 py-2.5 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 hover:border-purple-300 dark:hover:border-purple-500/40 transition text-left">
+                    <span class="text-[11px] font-bold text-gray-800 dark:text-gray-200"><i class="fa-solid fa-user-plus w-4 text-center text-purple-500 mr-1"></i> How do I register?</span>
+                    <i id="help-ch-register" class="fa-solid fa-chevron-down text-[10px] text-gray-400 transition-transform shrink-0"></i>
+                </button>
+                <div id="help-a-register" class="hidden px-2.5 py-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50">
+                    <div class="space-y-1.5">
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed"><b class="text-purple-500">1.</b> Tap <b>Login</b> at the top-right corner.</p>
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed"><b class="text-purple-500">2.</b> Pick a method: <b>Google</b> (fastest), <b>email + password</b>, or <b>Continue as Guest</b> to look around first.</p>
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed"><b class="text-purple-500">3.</b> Set your <b>RP</b> display name and profile picture.</p>
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed"><b class="text-purple-500">4.</b> Optional: when signing up with Google/email, tag the friend who invited you as your <b>recruiter</b> — they earn rewards once you become a valid recruit.</p>
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed"><b class="text-purple-500">5.</b> That's it — post, chat, play games and finish your Daily Quest! 🎉</p>
+                        <div class="mt-2 px-2 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-900/10">
+                            <p class="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed"><b>🛡️ Reminder: RP info only!</b> Use a roleplay persona — name, photo and details. Never share real personal info (real name, number, address, real photos).</p>
+                        </div>
+                    </div>
+                </div><!-- /help-a-register -->
             </div>
         </div>
     </div>
@@ -1552,6 +1692,7 @@
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=29"></script>
     <script type="module" src="js/quest.js?v=3"></script>
+    <script type="module" src="js/help.js?v=2"></script>
     <script type="module" src="js/main.js?v=114"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube

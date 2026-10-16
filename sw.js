@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v328';
+const CACHE_NAME = 'hangout-v334';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
@@ -41,7 +41,7 @@ const PRECACHE_ASSETS = [
   './',
   './index.html',
   './chat/index.html',
-  './css/tailwind.min.css?v=17',
+  './css/tailwind.min.css?v=20',
   './css/styles.css?v=29',
   // Arena SPA (/arena) — tournament hub, lobby bridge, brackets
   './arena/index.html',
@@ -55,6 +55,7 @@ const PRECACHE_ASSETS = [
   './js/main.js?v=114',
   './js/myday.js?v=29',
   './js/quest.js?v=3',
+  './js/help.js?v=2',
   './js/voice-recorder.js?v=3',
   './chat/js/app.js?v=111',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.

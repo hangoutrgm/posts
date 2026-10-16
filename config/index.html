@@ -5,14 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Admin Config - Hangout RPW</title>
     <script>
-        if (localStorage.theme === 'light') document.documentElement.classList.remove('dark');
-        else document.documentElement.classList.add('dark');
+        // Light theme is the DEFAULT for first-timers; dark only when chosen before.
+        if (localStorage.theme === 'dark') document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="../css/tailwind.min.css?v=17">
+    <link rel="stylesheet" href="../css/tailwind.min.css?v=20">
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
