@@ -243,9 +243,9 @@
 
     <!-- MAIN APP NAVIGATION HEADER -->
     <header class="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-3 z-20 relative">
-        <div class="glass-card rounded-3xl px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div class="glass-card rounded-3xl px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 overflow-hidden">
             <!-- Pet Brand & Title Info -->
-            <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-3 sm:space-x-4 min-w-0">
                 <!-- Back to Hangout (same pattern as Arena / Music) -->
                 <a href="../" class="w-12 h-12 shrink-0 rounded-2xl bg-white/10 hover:bg-purple-500/20 flex items-center justify-center transition-all border border-white/20 shadow-sm" title="Back to Hangout" aria-label="Back to Hangout">
                     <i class="fa-solid fa-arrow-left text-base"></i>
@@ -255,8 +255,8 @@
                     <i class="fa-solid fa-paw animate-pulse"></i>
                 </div>
                 <div>
-                    <div class="flex items-center space-x-3">
-                        <h1 id="hdrPetName" class="font-extrabold text-2xl sm:text-3xl tracking-tight leading-tight">Hangout Pet</h1>
+                    <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+                        <h1 id="hdrPetName" class="font-extrabold text-2xl sm:text-3xl tracking-tight leading-tight truncate max-w-[42vw] sm:max-w-[320px]">Hangout Pet</h1>
                         <span id="hdrStageTag" class="bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 font-extrabold text-xs sm:text-sm px-3 py-1 rounded-full uppercase tracking-wider">
                             Hatchling
                         </span>
@@ -265,12 +265,19 @@
                 </div>
             </div>
 
-            <!-- Top Right Info Controls -->
-            <div class="flex items-center space-x-3">
+            <!-- Top Right Info Controls — wraps onto its own row(s) on narrow
+                 screens instead of overshooting the card edge -->
+            <div class="flex flex-wrap items-center justify-end gap-2 sm:gap-3 ml-auto">
                 <!-- Coin Display Pill -->
                 <div class="flex items-center space-x-2.5 bg-amber-500/15 border border-amber-500/30 px-4 py-2.5 rounded-2xl shadow-inner">
                     <i class="fa-solid fa-coins text-amber-500 text-lg animate-bounce"></i>
                     <span id="hdrCoinDisplay" class="font-black text-amber-600 dark:text-amber-300 text-base sm:text-lg tracking-wide">150</span>
+                </div>
+
+                <!-- Daily Streak Pill -->
+                <div id="hdrStreakPill" class="hidden items-center space-x-2.5 bg-orange-500/15 border border-orange-500/30 px-4 py-2.5 rounded-2xl shadow-inner">
+                    <i class="fa-solid fa-fire text-orange-500 text-lg animate-pulse"></i>
+                    <span id="hdrStreak" class="font-black text-orange-600 dark:text-orange-300 text-base tracking-wide">0</span>
                 </div>
 
                 <!-- Theme Toggle Button -->
@@ -315,6 +322,25 @@
                 <input type="text" id="setupPetNameInput" maxlength="12" placeholder="e.g. Starlet" class="w-full bg-[var(--card-interactive)] border-2 border-purple-500/40 rounded-2xl px-5 py-4 font-black focus:outline-none focus:ring-4 focus:ring-purple-500/30 transition-all text-center text-xl placeholder:opacity-40">
             </div>
 
+            <!-- Species Selector -->
+            <div class="space-y-2.5 text-left">
+                <label class="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-300">Choose Your Species</label>
+                <div class="grid grid-cols-4 gap-2.5" id="setupSpeciesGrid">
+                    <button type="button" data-species="blob" onclick="selectSetupSpecies('blob')" class="species-setup-btn flex flex-col items-center space-y-1 py-3 rounded-2xl bg-purple-500/20 border-2 border-purple-500/60 shadow-md hover:scale-105 transition-transform">
+                        <span class="text-2xl">🔵</span><span class="text-[11px] font-black">Blob</span>
+                    </button>
+                    <button type="button" data-species="kit" onclick="selectSetupSpecies('kit')" class="species-setup-btn flex flex-col items-center space-y-1 py-3 rounded-2xl bg-white/10 border-2 border-transparent hover:scale-105 transition-transform">
+                        <span class="text-2xl">🐱</span><span class="text-[11px] font-black">Kit</span>
+                    </button>
+                    <button type="button" data-species="pup" onclick="selectSetupSpecies('pup')" class="species-setup-btn flex flex-col items-center space-y-1 py-3 rounded-2xl bg-white/10 border-2 border-transparent hover:scale-105 transition-transform">
+                        <span class="text-2xl">🐶</span><span class="text-[11px] font-black">Pup</span>
+                    </button>
+                    <button type="button" data-species="drake" onclick="selectSetupSpecies('drake')" class="species-setup-btn flex flex-col items-center space-y-1 py-3 rounded-2xl bg-white/10 border-2 border-transparent hover:scale-105 transition-transform">
+                        <span class="text-2xl">🐉</span><span class="text-[11px] font-black">Drake</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Color Palette Selector -->
             <div class="space-y-2.5 text-left">
                 <label class="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-300">Starting Color Dye</label>
@@ -349,14 +375,20 @@
                     <!-- Floating FX Layer -->
                     <div id="floatingFxLayer" class="absolute inset-0 pointer-events-none z-30 flex items-center justify-center"></div>
 
-                    <!-- Level & EXP Progress Bar Header -->
-                    <div class="w-full flex items-center justify-between z-10 bg-white/15 dark:bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/20 shadow-sm">
-                        <div class="flex items-center space-x-2.5">
-                            <span class="text-sm font-black text-purple-600 dark:text-purple-300 uppercase tracking-wider">EXP</span>
-                            <span id="expTextVal" class="text-xs sm:text-sm font-extrabold opacity-90">0 / 100</span>
+                    <!-- Level & EXP Progress (evolution progress merged into one panel) -->
+                    <div class="w-full z-10 bg-white/15 dark:bg-white/10 backdrop-blur-md px-4 sm:px-5 py-3 rounded-2xl border border-white/20 shadow-sm space-y-2.5">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center space-x-2.5 shrink-0 whitespace-nowrap">
+                                <span class="text-sm font-black text-purple-600 dark:text-purple-300 uppercase tracking-wider">EXP</span>
+                                <span id="expTextVal" class="text-xs sm:text-sm font-extrabold opacity-90 whitespace-nowrap">0 / 100</span>
+                            </div>
+                            <div class="flex-1 min-w-0 max-w-[260px] bg-[var(--meter-track)] h-4 rounded-full overflow-hidden p-0.5 border border-white/10">
+                                <div id="expBarFill" class="bg-gradient-to-r from-purple-500 via-indigo-400 to-pink-500 h-full rounded-full w-0 transition-all duration-500 shadow-[0_0_15px_rgba(168,85,247,0.7)]"></div>
+                            </div>
                         </div>
-                        <div class="w-44 sm:w-64 bg-[var(--meter-track)] h-4 rounded-full overflow-hidden p-0.5 border border-white/10">
-                            <div id="expBarFill" class="bg-gradient-to-r from-purple-500 via-indigo-400 to-pink-500 h-full rounded-full w-0 transition-all duration-500 shadow-[0_0_15px_rgba(168,85,247,0.7)]"></div>
+                        <div class="flex items-center justify-between gap-3 border-t border-white/10 pt-2.5">
+                            <div id="stageDots" class="flex items-center gap-1.5 shrink-0"></div>
+                            <span id="stageHint" class="opacity-75 uppercase tracking-wide text-[10px] sm:text-[11px] font-black text-right truncate">Next: Juvenile at Lv 5</span>
                         </div>
                     </div>
 
@@ -479,7 +511,7 @@
                         </button>
 
                         <!-- Arcade -->
-                        <button onclick="startArcadeMinigame()" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-purple-600 dark:text-purple-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-purple-500/30">
+                        <button onclick="openModal('arcadePickModal')" class="glass-card-interactive p-4 sm:p-5 rounded-2xl text-purple-600 dark:text-purple-300 font-extrabold flex flex-col items-center justify-center space-y-2 active:scale-95 border border-purple-500/30">
                             <i class="fa-solid fa-gamepad text-2xl sm:text-3xl text-purple-500"></i>
                             <span class="text-xs sm:text-sm font-black">Arcade</span>
                         </button>
@@ -538,10 +570,12 @@
             </div>
 
             <!-- Tabs Navigation -->
-            <div class="flex border-b border-white/10 pb-3 space-x-2">
-                <button onclick="switchShopTab('food')" id="tabBtnFood" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all">Food Shop</button>
-                <button onclick="switchShopTab('accessories')" id="tabBtnAcc" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all">Hats & Glasses</button>
-                <button onclick="switchShopTab('dyes')" id="tabBtnDye" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all">Color Dyes</button>
+            <div class="flex flex-wrap border-b border-white/10 pb-3 space-x-2 space-y-2">
+                <button onclick="switchShopTab('food')" data-tab="food" class="shop-tab px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all">🍲 Food Shop</button>
+                <button onclick="switchShopTab('accessories')" data-tab="accessories" class="shop-tab px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all">🎩 Hats & Glasses</button>
+                <button onclick="switchShopTab('dyes')" data-tab="dyes" class="shop-tab px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all">🎨 Dyes</button>
+                <button onclick="switchShopTab('habitats')" data-tab="habitats" class="shop-tab px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all">🏡 Habitats</button>
+                <button onclick="switchShopTab('stats')" data-tab="stats" class="shop-tab px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all">🏆 Records</button>
             </div>
 
             <div id="shopContentGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-80 overflow-y-auto pr-1">
@@ -555,8 +589,8 @@
         <div class="glass-card rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col items-center space-y-5 border border-white/20">
             <div class="w-full flex justify-between items-center">
                 <div class="flex items-center space-x-3">
-                    <i class="fa-solid fa-star text-amber-400 text-2xl animate-spin"></i>
-                    <h3 class="font-black text-xl">Star Catcher Arcade</h3>
+                    <i id="arcadeIcon" class="fa-solid fa-star text-amber-400 text-2xl animate-spin"></i>
+                    <h3 id="arcadeTitle" class="font-black text-xl">Star Catcher Arcade</h3>
                 </div>
                 <div class="text-sm font-bold opacity-80">Time: <span id="arcadeTimer" class="text-amber-500 font-mono text-lg font-black">20</span>s</div>
             </div>
@@ -567,8 +601,70 @@
             </div>
 
             <div class="w-full flex justify-between items-center text-sm font-black">
-                <span>Stars Caught: <span id="arcadeScore" class="text-emerald-400 font-mono text-xl">0</span></span>
+                <span><span id="arcadeScoreLabel">Stars Caught</span>: <span id="arcadeScore" class="text-emerald-400 font-mono text-xl">0</span></span>
                 <button onclick="endArcadeMinigame(true)" class="bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 border border-rose-500/40 px-5 py-2 rounded-xl text-xs font-black">Exit Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ARCADE GAME PICKER MODAL -->
+    <div id="arcadePickModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-purple-500/30 space-y-5">
+            <div class="flex justify-between items-center border-b border-white/10 pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-500 flex items-center justify-center text-2xl border border-purple-500/30">
+                        <i class="fa-solid fa-gamepad"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-xl">Pick a Game</h3>
+                        <p class="text-xs opacity-80 font-bold">Earn coins & EXP either way!</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('arcadePickModal')" class="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="closeModal('arcadePickModal'); startArcadeMinigame();" class="glass-card-interactive p-5 rounded-2xl flex flex-col items-center space-y-2 border border-amber-500/30 text-amber-600 dark:text-amber-300 active:scale-95">
+                    <span class="text-4xl">🌟</span>
+                    <span class="font-black text-sm">Star Catcher</span>
+                    <span class="text-[10px] font-bold opacity-70 text-center">Catch falling stars — drag to move</span>
+                </button>
+                <button onclick="closeModal('arcadePickModal'); startTapBlitz();" class="glass-card-interactive p-5 rounded-2xl flex flex-col items-center space-y-2 border border-pink-500/30 text-pink-600 dark:text-pink-300 active:scale-95">
+                    <span class="text-4xl">👆</span>
+                    <span class="font-black text-sm">Tap Blitz</span>
+                    <span class="text-[10px] font-bold opacity-70 text-center">Pop targets fast — tap anywhere!</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EVOLUTION FORM CHOICE MODAL (Stage 4 — one-time) -->
+    <div id="formChoiceModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-3xl max-w-lg w-full p-6 sm:p-8 text-center shadow-2xl space-y-5 border border-purple-500/50">
+            <div class="space-y-2">
+                <div class="w-20 h-20 bg-gradient-to-tr from-amber-400 via-pink-500 to-purple-600 text-white rounded-3xl mx-auto flex items-center justify-center text-3xl shadow-2xl animate-bounce border border-white/40">
+                    <i class="fa-solid fa-dna"></i>
+                </div>
+                <h3 class="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-pink-500 to-purple-500">Choose Your Form</h3>
+                <p class="text-xs sm:text-sm opacity-85 font-bold">Your pet reached <b>Celestial Mythic</b> — pick the cosmic form it will keep forever. Choose wisely!</p>
+            </div>
+            <div class="grid grid-cols-3 gap-2.5" id="formChoiceGrid">
+                <button onclick="choosePetForm('radiant')" class="glass-card-interactive p-4 rounded-2xl flex flex-col items-center space-y-1.5 border-2 border-amber-400/50 hover:border-amber-400 active:scale-95">
+                    <span class="text-3xl">☀️</span>
+                    <span class="font-black text-sm text-amber-500">Radiant</span>
+                    <span class="text-[10px] font-bold opacity-70 leading-tight">Golden aura &amp; sunsparks</span>
+                </button>
+                <button onclick="choosePetForm('astral')" class="glass-card-interactive p-4 rounded-2xl flex flex-col items-center space-y-1.5 border-2 border-violet-400/50 hover:border-violet-400 active:scale-95">
+                    <span class="text-3xl">🌙</span>
+                    <span class="font-black text-sm text-violet-400">Astral</span>
+                    <span class="text-[10px] font-bold opacity-70 leading-tight">Violet aura &amp; star motes</span>
+                </button>
+                <button onclick="choosePetForm('ember')" class="glass-card-interactive p-4 rounded-2xl flex flex-col items-center space-y-1.5 border-2 border-orange-500/50 hover:border-orange-500 active:scale-95">
+                    <span class="text-3xl">🔥</span>
+                    <span class="font-black text-sm text-orange-500">Ember</span>
+                    <span class="text-[10px] font-bold opacity-70 leading-tight">Crimson aura &amp; rising embers</span>
+                </button>
             </div>
         </div>
     </div>
@@ -784,7 +880,13 @@
             equippedGlasses: "none",
             theme: "dark",
             lastSaved: Date.now(),
-            inventory: { apple: 3, cookie: 2 }
+            inventory: { apple: 3, cookie: 2 },
+            species: "blob",                 // blob | kit | pup | drake (old saves default to blob)
+            petForm: "",                     // one-time Stage-4 form: radiant | astral | ember
+            habitat: "nebula",               // equipped habitat skin (nebula | meadow | ocean)
+            ownedHabitats: ["nebula"],
+            dailyBonus: { last: "", streak: 0 },   // daily care bonus day-key + streak
+            stats: { fed: 0, baths: 0, cleans: 0, taps: 0, arcadeRuns: 0, arcadeBest: 0, daysActive: 0, lastDay: "", streakBest: 0 }
         };
         // Snapshot of the untouched defaults + whether a localStorage save was
         // found — both used by the pet.js cloud merge (see window.__petMergeCloud).
@@ -817,7 +919,58 @@
             { color: '#334155', name: 'Cosmic Black', cost: 30 }
         ];
 
+        const speciesCatalog = [
+            { id: 'blob', name: 'Blob', icon: '🔵', desc: 'The classic celestial blob' },
+            { id: 'kit', name: 'Kit', icon: '🐱', desc: 'Pointy ears & whiskers' },
+            { id: 'pup', name: 'Pup', icon: '🐶', desc: 'Floppy ears & waggy tail' },
+            { id: 'drake', name: 'Drake', icon: '🐉', desc: 'Horns, wings & attitude' }
+        ];
+
+        // Stage-4 evolution forms — picked once in formChoiceModal, kept forever.
+        const formsCatalog = [
+            { id: 'radiant', name: 'Radiant', icon: '☀️', color: '#fbbf24' },
+            { id: 'astral', name: 'Astral', icon: '🌙', color: '#a78bfa' },
+            { id: 'ember', name: 'Ember', icon: '🔥', color: '#f97316' }
+        ];
+
+        // Habitat skins recolor the room overlay (--habitat-bg) + the bokeh drift.
+        const habitatsCatalog = [
+            { id: 'nebula', name: 'Nebula Lounge', icon: '🌌', cost: 0,
+              light: 'linear-gradient(to bottom, rgba(224, 242, 254, 0.85), rgba(250, 232, 255, 0.95))',
+              dark: 'linear-gradient(to bottom, rgba(88, 28, 135, 0.35), rgba(13, 9, 31, 0.92))' },
+            { id: 'meadow', name: 'Sunny Meadow', icon: '🌿', cost: 120,
+              light: 'linear-gradient(to bottom, rgba(220, 252, 231, 0.88), rgba(254, 249, 195, 0.95))',
+              dark: 'linear-gradient(to bottom, rgba(6, 78, 59, 0.45), rgba(4, 20, 14, 0.94))' },
+            { id: 'ocean', name: 'Deep Ocean', icon: '🌊', cost: 120,
+              light: 'linear-gradient(to bottom, rgba(219, 234, 254, 0.88), rgba(207, 250, 254, 0.95))',
+              dark: 'linear-gradient(to bottom, rgba(12, 74, 110, 0.45), rgba(3, 14, 30, 0.94))' }
+        ];
+        const BOKEH_RGB = { nebula: '168, 85, 247', meadow: '16, 185, 129', ocean: '56, 189, 248' };
+
+        // Records-tab badges — evaluated live against petState (display only).
+        const achievementsList = [
+            { name: 'First Steps', icon: '🐣', desc: 'Reach Level 2', done: () => petState.level >= 2 },
+            { name: 'Well Fed', icon: '🍽️', desc: 'Feed 50 times', done: () => (petState.stats?.fed || 0) >= 50 },
+            { name: 'Squeaky Clean', icon: '🛁', desc: 'Bathe 25 times', done: () => (petState.stats?.baths || 0) >= 25 },
+            { name: 'Arcade Ace', icon: '🕹️', desc: 'Score 20+ in an arcade game', done: () => (petState.stats?.arcadeBest || 0) >= 20 },
+            { name: 'Toy Fingers', icon: '👆', desc: 'Tap the pet 500 times', done: () => (petState.stats?.taps || 0) >= 500 },
+            { name: 'Streak Keeper', icon: '🔥', desc: 'Reach a 7-day care streak', done: () => (petState.stats?.streakBest || 0) >= 7 },
+            { name: 'Cosmic Soul', icon: '✨', desc: 'Reach Stage 4 (Lv 15)', done: () => petState.level >= 15 },
+            { name: 'Nest Egg', icon: '💰', desc: 'Hold 1,000 coins at once', done: () => petState.coins >= 1000 }
+        ];
+
+        // Local YYYY-MM-DD key (same convention as the quest day key).
+        const petDayKey = (d = new Date()) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        // '#fbbf24' + 0.4 → 'rgba(251, 191, 36, 0.4)' — aura & mote tinting.
+        const hexToRgba = (hex, a) => {
+            const n = parseInt(String(hex).replace('#', ''), 16);
+            return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+        };
+
         let setupSelectedColor = '#a855f7';
+        let setupSelectedSpecies = 'blob';
 
         function toggleThemeMode() {
             petState.theme = petState.theme === 'dark' ? 'light' : 'dark';
@@ -836,6 +989,13 @@
                 html.classList.add('dark');
                 icon.className = "fa-solid fa-moon text-purple-400 text-base";
             }
+            applyHabitat();   // habitat gradients are theme-aware
+        }
+
+        // Habitat skin: overrides the room gradient (--habitat-bg) per habitat × theme.
+        function applyHabitat() {
+            const h = habitatsCatalog.find(x => x.id === petState.habitat) || habitatsCatalog[0];
+            document.documentElement.style.setProperty('--habitat-bg', petState.theme === 'light' ? h.light : h.dark);
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -852,6 +1012,7 @@
                     document.getElementById('gameplayDashboard').classList.remove('hidden');
                     updateUIState();
                     startSimulationTick();
+                    bumpDailyActivity();
                 });
             }
         });
@@ -901,7 +1062,8 @@
                 particles.forEach(p => {
                     p.y -= p.speedY;
                     if (p.y < 0) p.y = canvas.height;
-                    ctx.fillStyle = petState.theme === 'light' ? `rgba(168, 85, 247, ${p.alpha * 0.7})` : `rgba(168, 85, 247, ${p.alpha})`;
+                    const bc = BOKEH_RGB[petState.habitat] || BOKEH_RGB.nebula;
+                    ctx.fillStyle = petState.theme === 'light' ? `rgba(${bc}, ${p.alpha * 0.7})` : `rgba(${bc}, ${p.alpha})`;
                     ctx.beginPath();
                     ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                     ctx.fill();
@@ -918,19 +1080,20 @@
             requestAnimationFrame(renderPetLoop);
         }
 
+        // Six evolution stages: 1 Hatchling (Lv1) → Juvenile (5) → Adult Companion (10)
+        // → Celestial Mythic (15, one-time form fork) → Nova Ascendant (20) → Cosmic Eternal (25).
+        const STAGE_LEVELS = [0, 1, 5, 10, 15, 20, 25];
+        const STAGE_TITLES = ['', 'Hatchling', 'Juvenile', 'Adult Companion', 'Celestial Mythic', 'Nova Ascendant', 'Cosmic Eternal'];
+
         function getEvolutionStage() {
-            if (petState.level >= 15) return 4; // Celestial Mythic
-            if (petState.level >= 10) return 3; // Adult Companion
-            if (petState.level >= 5) return 2;  // Juvenile
-            return 1;                           // Hatchling
+            for (let s = STAGE_LEVELS.length - 1; s >= 1; s--) {
+                if (petState.level >= STAGE_LEVELS[s]) return s;
+            }
+            return 1;
         }
 
         function getEvolutionTitle() {
-            const stage = getEvolutionStage();
-            if (stage === 4) return "Celestial Mythic";
-            if (stage === 3) return "Adult Companion";
-            if (stage === 2) return "Juvenile";
-            return "Hatchling";
+            return STAGE_TITLES[getEvolutionStage()] || 'Hatchling';
         }
 
         function renderPetLoop(timestamp) {
@@ -940,48 +1103,87 @@
             petCtx.clearRect(0, 0, petCanvas.width, petCanvas.height);
 
             const stage = getEvolutionStage();
+            const species = petState.species || 'blob';
             const time = timestamp * 0.003;
             const centerX = petCanvas.width / 2;
             const centerY = petCanvas.height / 2 + 15;
 
-            const floatY = Math.sin(time * 2) * (stage >= 3 ? 12 : 7);
-            const breatheScale = 1 + Math.sin(time * 3) * 0.035;
+            // Mood drives the face; the lowest vital below 20 also sags the pet.
+            const minStat = Math.min(petState.hunger, petState.happiness, petState.energy, petState.hygiene);
+            const isSagging = !petState.isSleeping && minStat < 20;
+            const mood = petState.isSleeping ? 'sleep'
+                : minStat < 20 ? 'sad'
+                : petState.energy < 30 ? 'tired'
+                : petState.hunger < 40 ? 'hungry'
+                : minStat > 80 ? 'joy' : 'happy';
+
+            const floatY = Math.sin(time * 2) * (stage >= 3 ? 12 : 7) + (isSagging ? 7 : 0);
+            let breatheScale = 1 + Math.sin(time * 3) * 0.035;
+            if (isSagging) breatheScale *= 0.95;   // neglect droop
 
             petCtx.save();
             petCtx.translate(centerX, centerY + floatY);
 
-            // STAGE 4: Celestial Cosmic Halo & Orbiting Particles
-            if (stage === 4) {
+            // STAGE 4+: Celestial Halo & Orbiting Particles — tinted by the chosen
+            // form; Stages 5/6 add more orbiters + a second ring.
+            if (stage >= 4) {
+                const form = formsCatalog.find(f => f.id === petState.petForm);
+                const auraHex = form ? form.color : '#eab308';
                 const auraGradient = petCtx.createRadialGradient(0, 0, 30, 0, 0, 150);
-                auraGradient.addColorStop(0, 'rgba(234, 179, 8, 0.4)');
-                auraGradient.addColorStop(0.6, 'rgba(168, 85, 247, 0.25)');
+                auraGradient.addColorStop(0, hexToRgba(auraHex, 0.42));
+                auraGradient.addColorStop(0.6, hexToRgba(auraHex, 0.22));
                 auraGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 petCtx.fillStyle = auraGradient;
                 petCtx.beginPath();
                 petCtx.arc(0, 0, 150, 0, Math.PI * 2);
                 petCtx.fill();
 
-                // Orbiting Stars
-                for (let i = 0; i < 3; i++) {
-                    const angle = time * 2.2 + (i * Math.PI * 2 / 3);
-                    const orbX = Math.cos(angle) * 115;
+                // Orbiting Stars — 3 → 6 → 9 with the stage, widening rings at 5/6.
+                const orbCount = stage >= 6 ? 9 : stage >= 5 ? 6 : 3;
+                const orbR = 115 + (stage >= 6 ? 22 : stage >= 5 ? 12 : 0);
+                for (let i = 0; i < orbCount; i++) {
+                    const angle = time * 2.2 + (i * Math.PI * 2 / orbCount);
+                    const orbX = Math.cos(angle) * orbR;
                     const orbY = Math.sin(angle) * 45;
-                    petCtx.fillStyle = '#fef08a';
+                    petCtx.fillStyle = form ? form.color : '#fef08a';
                     petCtx.beginPath();
-                    petCtx.arc(orbX, orbY, 7, 0, Math.PI * 2);
+                    petCtx.arc(orbX, orbY, stage >= 6 ? 5 : 7, 0, Math.PI * 2);
                     petCtx.fill();
                 }
 
-                // Hovering Halo
-                petCtx.strokeStyle = '#eab308';
-                petCtx.lineWidth = 6;
+                // Form motes — sunsparks / star motes / embers drifting upward.
+                if (form) {
+                    for (let i = 0; i < 6; i++) {
+                        const ph = ((time * 0.3 + i / 6) % 1);
+                        const moteX = Math.sin(time * 1.4 + i * 2.1) * 80;
+                        const moteY = 55 - ph * 150;
+                        petCtx.globalAlpha = Math.max(0, 0.9 - ph);
+                        petCtx.fillStyle = form.color;
+                        petCtx.beginPath();
+                        petCtx.arc(moteX, moteY, i % 2 ? 3 : 4.5, 0, Math.PI * 2);
+                        petCtx.fill();
+                    }
+                    petCtx.globalAlpha = 1;
+                }
+
+                // Hovering Halo — a double ring from Stage 5 up.
+                petCtx.strokeStyle = auraHex;
+                petCtx.lineWidth = stage >= 6 ? 8 : 6;
                 petCtx.beginPath();
-                petCtx.ellipse(0, -130, 50, 14, 0, 0, Math.PI * 2);
+                petCtx.ellipse(0, -130 - (stage >= 5 ? 8 : 0), stage >= 6 ? 66 : stage >= 5 ? 58 : 50, 14, 0, 0, Math.PI * 2);
                 petCtx.stroke();
+                if (stage >= 5) {
+                    petCtx.globalAlpha = 0.55;
+                    petCtx.lineWidth = 3;
+                    petCtx.beginPath();
+                    petCtx.ellipse(0, -130 - (stage >= 6 ? 16 : 8), stage >= 6 ? 80 : 72, 18, 0, 0, Math.PI * 2);
+                    petCtx.stroke();
+                    petCtx.globalAlpha = 1;
+                }
             }
 
-            // STAGE 3 & 4: Animated Wings
-            if (stage >= 3) {
+            // STAGE 3+ (Drake: Stage 2+): Animated Wings
+            if (stage >= (species === 'drake' ? 2 : 3)) {
                 const wingFlap = Math.sin(time * 4) * 0.22;
                 petCtx.fillStyle = 'rgba(255, 255, 255, 0.88)';
                 
@@ -1004,16 +1206,34 @@
                 petCtx.restore();
             }
 
-            // STAGE 2+: Tail
+            // STAGE 2+: Tail (per species silhouette)
             if (stage >= 2) {
                 const tailWag = Math.sin(time * 5) * 0.28;
                 petCtx.save();
                 petCtx.translate(50, 35);
                 petCtx.rotate(tailWag);
                 petCtx.fillStyle = petState.bodyColor;
-                petCtx.beginPath();
-                petCtx.arc(24, -8, 20, 0, Math.PI * 2);
-                petCtx.fill();
+                if (species === 'kit') {
+                    // Slim cat tail with a fluffy tip
+                    petCtx.beginPath();
+                    petCtx.ellipse(30, -14, 8, 30, 0.7, 0, Math.PI * 2);
+                    petCtx.fill();
+                    petCtx.beginPath();
+                    petCtx.arc(48, -32, 11, 0, Math.PI * 2);
+                    petCtx.fill();
+                } else {
+                    petCtx.beginPath();
+                    petCtx.arc(24, -8, 20, 0, Math.PI * 2);
+                    petCtx.fill();
+                }
+                if (species === 'drake') {
+                    // Spiky ridge down the tail
+                    petCtx.beginPath();
+                    petCtx.moveTo(6, -20); petCtx.lineTo(15, -34); petCtx.lineTo(24, -21);
+                    petCtx.moveTo(24, -23); petCtx.lineTo(33, -37); petCtx.lineTo(42, -23);
+                    petCtx.closePath();
+                    petCtx.fill();
+                }
                 petCtx.restore();
             }
 
@@ -1024,54 +1244,142 @@
             let bodyRadius = 60;
             if (stage === 2) bodyRadius = 75;
             if (stage >= 3) bodyRadius = 90;
+            if (stage === 5) bodyRadius = 98;
+            if (stage >= 6) bodyRadius = 106;
 
             petCtx.beginPath();
             petCtx.arc(0, 0, bodyRadius, 0, Math.PI * 2);
             petCtx.fill();
 
-            // STAGE 1: Sprout Antenna
-            if (stage === 1) {
-                petCtx.fillStyle = '#4ade80';
-                petCtx.beginPath();
-                petCtx.ellipse(-12, -bodyRadius - 12, 14, 7, -0.4, 0, Math.PI * 2);
-                petCtx.ellipse(12, -bodyRadius - 12, 14, 7, 0.4, 0, Math.PI * 2);
-                petCtx.fill();
-                petCtx.strokeStyle = '#22c55e';
-                petCtx.lineWidth = 4;
-                petCtx.beginPath();
-                petCtx.moveTo(0, -bodyRadius);
-                petCtx.lineTo(0, -bodyRadius - 14);
-                petCtx.stroke();
+            // STAGE 5+: star freckles twinkling across the body
+            if (stage >= 5) {
+                const freckles = [[-34, -38], [28, -44], [-48, 6], [44, 12], [-16, 44], [22, 40], [0, -58]];
+                petCtx.fillStyle = stage >= 6 ? '#fef08a' : '#ffffff';
+                freckles.forEach((f, i) => {
+                    petCtx.globalAlpha = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(time * 3 + i * 1.7));
+                    petCtx.beginPath();
+                    petCtx.arc(f[0] * (bodyRadius / 90), f[1] * (bodyRadius / 90), 3, 0, Math.PI * 2);
+                    petCtx.fill();
+                });
+                petCtx.globalAlpha = 1;
             }
 
-            // STAGE 2+: Floppy Ears
-            if (stage >= 2) {
+            // HEAD CREST — per species (Blob sprouts at S1; Drake wears horns all stages)
+            if (species === 'blob') {
+                if (stage === 1) {
+                    petCtx.fillStyle = '#4ade80';
+                    petCtx.beginPath();
+                    petCtx.ellipse(-12, -bodyRadius - 12, 14, 7, -0.4, 0, Math.PI * 2);
+                    petCtx.ellipse(12, -bodyRadius - 12, 14, 7, 0.4, 0, Math.PI * 2);
+                    petCtx.fill();
+                    petCtx.strokeStyle = '#22c55e';
+                    petCtx.lineWidth = 4;
+                    petCtx.beginPath();
+                    petCtx.moveTo(0, -bodyRadius);
+                    petCtx.lineTo(0, -bodyRadius - 14);
+                    petCtx.stroke();
+                }
+            } else if (species === 'drake') {
+                // Horns: nubs at Lv1 → curved horns from S2 → taller at S3+
+                const hornLen = stage === 1 ? 18 : stage >= 3 ? 46 : 32;
+                [-1, 1].forEach(side => {
+                    petCtx.save();
+                    petCtx.translate(side * bodyRadius * 0.45, -bodyRadius * 0.86);
+                    petCtx.rotate(side * 0.3);
+                    petCtx.fillStyle = '#f1f5f9';
+                    petCtx.beginPath();
+                    petCtx.moveTo(-9, 4);
+                    petCtx.quadraticCurveTo(side * 6, -hornLen * 0.55, side * 12, -hornLen);
+                    petCtx.lineTo(9, 4);
+                    petCtx.closePath();
+                    petCtx.fill();
+                    petCtx.restore();
+                });
+            }
+
+            // EARS — Blob from S2 (classic); Kit/Pup from S1; Drake has horns instead.
+            const earStage = (species === 'kit' || species === 'pup') ? 1 : 2;
+            if (species !== 'drake' && stage >= earStage) {
                 const earTwitch = Math.sin(time * 3) * 0.12;
-                petCtx.fillStyle = petState.bodyColor;
-                
-                // Left Ear
-                petCtx.save();
-                petCtx.translate(-bodyRadius * 0.7, -bodyRadius * 0.7);
-                petCtx.rotate(-0.3 + earTwitch);
-                petCtx.beginPath();
-                petCtx.ellipse(0, 0, 22, 42, -0.2, 0, Math.PI * 2);
-                petCtx.fill();
-                petCtx.restore();
 
-                // Right Ear
-                petCtx.save();
-                petCtx.translate(bodyRadius * 0.7, -bodyRadius * 0.7);
-                petCtx.rotate(0.3 - earTwitch);
-                petCtx.beginPath();
-                petCtx.ellipse(0, 0, 22, 42, 0.2, 0, Math.PI * 2);
-                petCtx.fill();
-                petCtx.restore();
+                if (species === 'kit') {
+                    // Pointy cat ears with pink inners
+                    [-1, 1].forEach(side => {
+                        petCtx.save();
+                        petCtx.translate(side * bodyRadius * 0.62, -bodyRadius * 0.78);
+                        petCtx.rotate(side * 0.12 + (side < 0 ? earTwitch : -earTwitch));
+                        petCtx.fillStyle = petState.bodyColor;
+                        petCtx.beginPath();
+                        petCtx.moveTo(-16, 8);
+                        petCtx.lineTo(0, -46);
+                        petCtx.lineTo(16, 8);
+                        petCtx.closePath();
+                        petCtx.fill();
+                        petCtx.fillStyle = '#f9a8d4';
+                        petCtx.beginPath();
+                        petCtx.moveTo(-8, 4);
+                        petCtx.lineTo(0, -30);
+                        petCtx.lineTo(8, 4);
+                        petCtx.closePath();
+                        petCtx.fill();
+                        petCtx.restore();
+                    });
+                } else if (species === 'pup') {
+                    // Long floppy ears hanging beside the head
+                    [-1, 1].forEach(side => {
+                        petCtx.save();
+                        petCtx.translate(side * bodyRadius * 0.8, -bodyRadius * 0.4);
+                        petCtx.rotate(side * (0.55 + earTwitch * 0.5));
+                        petCtx.fillStyle = petState.bodyColor;
+                        petCtx.beginPath();
+                        petCtx.ellipse(0, 32, 15, 42, side * 0.08, 0, Math.PI * 2);
+                        petCtx.fill();
+                        petCtx.restore();
+                    });
+                } else {
+                    // Blob: classic floppy ellipses (original drawing)
+                    petCtx.fillStyle = petState.bodyColor;
+
+                    // Left Ear
+                    petCtx.save();
+                    petCtx.translate(-bodyRadius * 0.7, -bodyRadius * 0.7);
+                    petCtx.rotate(-0.3 + earTwitch);
+                    petCtx.beginPath();
+                    petCtx.ellipse(0, 0, 22, 42, -0.2, 0, Math.PI * 2);
+                    petCtx.fill();
+                    petCtx.restore();
+
+                    // Right Ear
+                    petCtx.save();
+                    petCtx.translate(bodyRadius * 0.7, -bodyRadius * 0.7);
+                    petCtx.rotate(0.3 - earTwitch);
+                    petCtx.beginPath();
+                    petCtx.ellipse(0, 0, 22, 42, 0.2, 0, Math.PI * 2);
+                    petCtx.fill();
+                    petCtx.restore();
+                }
+
+                // Kit whiskers from S2
+                if (species === 'kit' && stage >= 2) {
+                    petCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+                    petCtx.lineWidth = 2.5;
+                    [-1, 1].forEach(side => {
+                        for (let w = 0; w < 3; w++) {
+                            const wy = 4 + w * 7;
+                            petCtx.beginPath();
+                            petCtx.moveTo(side * (bodyRadius * 0.55), wy);
+                            petCtx.lineTo(side * (bodyRadius * 0.55 + 34), wy - 4 + w * 6);
+                            petCtx.stroke();
+                        }
+                    });
+                }
             }
 
-            // EXPRESSIVE EYES (SCALED UP)
+            // EXPRESSIVE EYES — mood-driven (sleep / sad / tired / hungry / joy / happy)
             const isBlinking = (Math.floor(time * 1.5) % 8 === 0);
+            const formColor = stage >= 4 ? (formsCatalog.find(f => f.id === petState.petForm) || {}).color : null;
 
-            if (petState.isSleeping) {
+            if (mood === 'sleep') {
                 petCtx.strokeStyle = '#334155';
                 petCtx.lineWidth = 5;
                 petCtx.beginPath();
@@ -1079,6 +1387,47 @@
                 petCtx.stroke();
                 petCtx.beginPath();
                 petCtx.arc(24, -8, 14, 0.1, Math.PI - 0.1);
+                petCtx.stroke();
+            } else if (mood === 'joy') {
+                // ^ ^ happy closed eyes — form-tinted from Stage 4
+                petCtx.strokeStyle = formColor || '#334155';
+                petCtx.lineWidth = 5;
+                petCtx.beginPath();
+                petCtx.arc(-24, -4, 13, Math.PI + 0.35, Math.PI * 2 - 0.35);
+                petCtx.stroke();
+                petCtx.beginPath();
+                petCtx.arc(24, -4, 13, Math.PI + 0.35, Math.PI * 2 - 0.35);
+                petCtx.stroke();
+            } else if (mood === 'sad') {
+                // worried brows + small watery pupils
+                petCtx.fillStyle = '#0f172a';
+                petCtx.beginPath();
+                petCtx.arc(-22, -6, 9, 0, Math.PI * 2);
+                petCtx.arc(22, -6, 9, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.fillStyle = '#ffffff';
+                petCtx.beginPath();
+                petCtx.arc(-24, -9, 3, 0, Math.PI * 2);
+                petCtx.arc(20, -9, 3, 0, Math.PI * 2);
+                petCtx.fill();
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.moveTo(-36, -24); petCtx.lineTo(-13, -30);
+                petCtx.moveTo(36, -24); petCtx.lineTo(13, -30);
+                petCtx.stroke();
+            } else if (mood === 'tired') {
+                // half-open lids
+                petCtx.fillStyle = '#0f172a';
+                petCtx.beginPath();
+                petCtx.arc(-24, -4, 12, 0, Math.PI);
+                petCtx.arc(24, -4, 12, 0, Math.PI);
+                petCtx.fill();
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.moveTo(-37, -4); petCtx.lineTo(-11, -4);
+                petCtx.moveTo(37, -4); petCtx.lineTo(11, -4);
                 petCtx.stroke();
             } else if (isBlinking) {
                 petCtx.strokeStyle = '#334155';
@@ -1095,8 +1444,8 @@
                 petCtx.arc(24, -12, 15, 0, Math.PI * 2);
                 petCtx.fill();
 
-                // Eye Highlights
-                petCtx.fillStyle = '#ffffff';
+                // Eye Highlights — form-tinted from Stage 4
+                petCtx.fillStyle = formColor || '#ffffff';
                 petCtx.beginPath();
                 petCtx.arc(-20, -17, 6, 0, Math.PI * 2);
                 petCtx.arc(28, -17, 6, 0, Math.PI * 2);
@@ -1110,13 +1459,41 @@
             petCtx.arc(34, 12, 12, 0, Math.PI * 2);
             petCtx.fill();
 
-            // MOUTH
-            if (!petState.isSleeping) {
+            // MOUTH — mood-driven (Pup shows a tongue when content)
+            if (mood === 'sad') {
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.arc(0, 26, 10, Math.PI + 0.35, Math.PI * 2 - 0.35);   // frown
+                petCtx.stroke();
+            } else if (mood === 'tired') {
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.moveTo(-8, 18); petCtx.lineTo(8, 18);                 // flat line
+                petCtx.stroke();
+            } else if (mood === 'hungry') {
+                petCtx.strokeStyle = '#334155';
+                petCtx.lineWidth = 4;
+                petCtx.beginPath();
+                petCtx.arc(0, 14, 12, 0.25, Math.PI - 0.25);                 // eager smile
+                petCtx.stroke();
+                petCtx.fillStyle = '#fb7185';                                 // tongue out
+                petCtx.beginPath();
+                petCtx.ellipse(0, 27, 7, 9, 0, 0, Math.PI * 2);
+                petCtx.fill();
+            } else if (mood !== 'sleep') {
                 petCtx.strokeStyle = '#334155';
                 petCtx.lineWidth = 4;
                 petCtx.beginPath();
                 petCtx.arc(0, 14, 11, 0.2, Math.PI - 0.2);
                 petCtx.stroke();
+                if (species === 'pup' && mood === 'joy') {
+                    petCtx.fillStyle = '#fb7185';                             // happy pup tongue
+                    petCtx.beginPath();
+                    petCtx.ellipse(0, 25, 7, 9, 0, 0, Math.PI * 2);
+                    petCtx.fill();
+                }
             }
 
             // ACCESSORIES RENDERING
@@ -1205,6 +1582,15 @@
             showToast("Color selected!", "info");
         }
 
+        function selectSetupSpecies(id) {
+            setupSelectedSpecies = id;
+            document.querySelectorAll('.species-setup-btn').forEach(b => {
+                const on = b.dataset.species === id;
+                b.className = 'species-setup-btn flex flex-col items-center space-y-1 py-3 rounded-2xl border-2 hover:scale-105 transition-transform ' +
+                    (on ? 'bg-purple-500/20 border-purple-500/60 shadow-md' : 'bg-white/10 border-transparent');
+            });
+        }
+
         function executeHatching() {
             const nameInput = document.getElementById('setupPetNameInput').value.trim();
             if (!nameInput) {
@@ -1226,6 +1612,13 @@
             petState.hasMess = false;
             petState.equippedHat = "none";
             petState.equippedGlasses = "none";
+            petState.species = setupSelectedSpecies;
+            petState.petForm = "";
+            petState.habitat = "nebula";
+            petState.ownedHabitats = ["nebula"];
+            petState.dailyBonus = { last: "", streak: 0 };
+            petState.stats = { fed: 0, baths: 0, cleans: 0, taps: 0, arcadeRuns: 0, arcadeBest: 0, daysActive: 0, lastDay: "", streakBest: 0 };
+            applyHabitat();
 
             saveGameToStorage();
             document.getElementById('setupScreen').classList.add('hidden');
@@ -1243,6 +1636,34 @@
             document.getElementById('hdrPetLevel').innerText = petState.level;
             document.getElementById('hdrStageTag').innerText = getEvolutionTitle();
             document.getElementById('hdrCoinDisplay').innerText = Math.floor(petState.coins);
+
+            // Daily streak pill (hidden until a streak exists)
+            const streak = (petState.dailyBonus && petState.dailyBonus.streak) || 0;
+            const pill = document.getElementById('hdrStreakPill');
+            if (pill) {
+                pill.classList.toggle('hidden', streak < 1);
+                pill.classList.toggle('flex', streak >= 1);
+                document.getElementById('hdrStreak').innerText = streak;
+            }
+
+            // Evolution dots (glowing = owned, dim = locked) + next-stage hint
+            const stage = getEvolutionStage();
+            const dots = document.getElementById('stageDots');
+            if (dots) {
+                let dotHtml = '';
+                for (let s = 1; s <= 6; s++) {
+                    dotHtml += s <= stage
+                        ? '<span class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 shadow-[0_0_8px_rgba(168,85,247,0.85)]"></span>'
+                        : '<span class="w-2.5 h-2.5 rounded-full bg-slate-300/70 dark:bg-white/10 border border-slate-400/40 dark:border-white/15"></span>';
+                }
+                dots.innerHTML = dotHtml;
+            }
+            const hint = document.getElementById('stageHint');
+            if (hint) {
+                hint.innerText = stage >= 6
+                    ? 'Max evolution reached ✨'
+                    : `Next: ${STAGE_TITLES[stage + 1]} at Lv ${STAGE_LEVELS[stage + 1]}`;
+            }
 
             // EXP Progress
             document.getElementById('expTextVal').innerText = `${Math.floor(petState.xp)} / ${petState.maxXp}`;
@@ -1319,11 +1740,17 @@
 
         function grantXp(amount) {
             const prevStage = getEvolutionStage();
-            petState.xp += amount;
+            // Care XP scales with evolution (+15%/stage) so later levels keep pace…
+            let gain = Math.max(1, Math.round(amount * (1 + (prevStage - 1) * 0.15)));
+            // …and neglect (any vital stat under 20) halves it — a soft nudge, never a punishment.
+            const neglected = Math.min(petState.hunger, petState.happiness, petState.energy, petState.hygiene) < 20;
+            if (neglected) gain = Math.max(1, Math.round(gain * 0.5));
+            petState.xp += gain;
             if (petState.xp >= petState.maxXp) {
                 petState.level++;
                 petState.xp -= petState.maxXp;
-                petState.maxXp = Math.floor(petState.maxXp * 1.25);
+                // Curve retune: ×1.15 (was ×1.25) so L15→25 ≈ the effort of L1→15.
+                petState.maxXp = Math.floor(petState.maxXp * 1.15);
                 playSynthSfx('levelup');
                 showToast(`Level Up! ${petState.petName} reached Level ${petState.level}! 🎉`, "success");
 
@@ -1335,12 +1762,30 @@
         }
 
         function triggerEvolutionModal(stageNum) {
+            // Stage 4 is the one-time form fork — pick first, celebrate after.
+            if (stageNum >= 4 && !petState.petForm) {
+                document.getElementById('formChoiceModal').classList.remove('hidden');
+                return;
+            }
             const modal = document.getElementById('evolutionModal');
             const desc = document.getElementById('evolutionModalDesc');
-            desc.innerText = `${petState.petName} evolved into a ${getEvolutionTitle()}! New attributes unlocked!`;
+            const formName = petState.petForm
+                ? ` — ${formsCatalog.find(f => f.id === petState.petForm)?.name || ''} form`
+                : '';
+            desc.innerText = `${petState.petName} evolved into a ${getEvolutionTitle()}${formName}! New attributes unlocked!`;
             modal.classList.remove('hidden');
             launchConfettiFX();
         }
+
+        // One-time Stage-4 choice — saved forever, then the celebration plays.
+        window.choosePetForm = function (formId) {
+            if (!formsCatalog.some(f => f.id === formId)) return;
+            petState.petForm = formId;
+            document.getElementById('formChoiceModal').classList.add('hidden');
+            saveGameToStorage();
+            playSynthSfx('levelup');
+            triggerEvolutionModal(getEvolutionStage());
+        };
 
         let arcadeCanvas, arcadeCtx;
         let arcadeLoopId = null;
@@ -1349,32 +1794,67 @@
         let arcadeScore = 0;
         let playerBasketX = 240;
         let fallingItems = [];
+        let arcadeMode = 'stars';      // 'stars' (Star Catcher) | 'blitz' (Tap Blitz)
+        let blitzTargets = [];         // { x, y, r, born }
+        let lastBlitzSpawn = 0;
 
-        function startArcadeMinigame() {
+        // Shared arcade boot — each mode wires its own input + header labels.
+        function beginArcade(mode) {
             if (petState.isSleeping) {
                 showToast("Wake up your pet first!", "warning");
                 return;
             }
 
+            arcadeMode = mode;
             arcadeCanvas = document.getElementById('arcadeCanvas');
             arcadeCtx = arcadeCanvas.getContext('2d');
             arcadeScore = 0;
             arcadeTimer = 20;
             fallingItems = [];
+            blitzTargets = [];
+            lastBlitzSpawn = 0;
             playerBasketX = arcadeCanvas.width / 2;
 
             document.getElementById('arcadeScore').innerText = arcadeScore;
             document.getElementById('arcadeTimer').innerText = arcadeTimer;
+            document.getElementById('arcadeTitle').innerText = mode === 'blitz' ? 'Tap Blitz' : 'Star Catcher Arcade';
+            document.getElementById('arcadeScoreLabel').innerText = mode === 'blitz' ? 'Targets Popped' : 'Stars Caught';
+            const icon = document.getElementById('arcadeIcon');
+            if (icon) icon.className = mode === 'blitz'
+                ? 'fa-solid fa-hand-pointer text-pink-400 text-2xl animate-pulse'
+                : 'fa-solid fa-star text-amber-400 text-2xl animate-spin';
             document.getElementById('minigameModal').classList.remove('hidden');
 
-            arcadeCanvas.onmousemove = (e) => {
-                const rect = arcadeCanvas.getBoundingClientRect();
-                playerBasketX = (e.clientX - rect.left) * (arcadeCanvas.width / rect.width);
-            };
-            arcadeCanvas.ontouchmove = (e) => {
-                const rect = arcadeCanvas.getBoundingClientRect();
-                playerBasketX = (e.touches[0].clientX - rect.left) * (arcadeCanvas.width / rect.width);
-            };
+            if (mode === 'blitz') {
+                // Tap-based — static targets pop up anywhere (mobile-friendly).
+                arcadeCanvas.onmousemove = null;
+                arcadeCanvas.ontouchmove = null;
+                arcadeCanvas.onpointerdown = (e) => {
+                    const rect = arcadeCanvas.getBoundingClientRect();
+                    const x = (e.clientX - rect.left) * (arcadeCanvas.width / rect.width);
+                    const y = (e.clientY - rect.top) * (arcadeCanvas.height / rect.height);
+                    for (let i = blitzTargets.length - 1; i >= 0; i--) {
+                        const t = blitzTargets[i];
+                        if (Math.hypot(t.x - x, t.y - y) <= t.r + 10) {
+                            blitzTargets.splice(i, 1);
+                            arcadeScore++;
+                            playSynthSfx('coin');
+                            document.getElementById('arcadeScore').innerText = arcadeScore;
+                            break;
+                        }
+                    }
+                };
+            } else {
+                arcadeCanvas.onpointerdown = null;
+                arcadeCanvas.onmousemove = (e) => {
+                    const rect = arcadeCanvas.getBoundingClientRect();
+                    playerBasketX = (e.clientX - rect.left) * (arcadeCanvas.width / rect.width);
+                };
+                arcadeCanvas.ontouchmove = (e) => {
+                    const rect = arcadeCanvas.getBoundingClientRect();
+                    playerBasketX = (e.touches[0].clientX - rect.left) * (arcadeCanvas.width / rect.width);
+                };
+            }
 
             arcadeTimerInterval = setInterval(() => {
                 arcadeTimer--;
@@ -1385,8 +1865,45 @@
             runArcadeLoop();
         }
 
+        function startArcadeMinigame() { beginArcade('stars'); }
+        function startTapBlitz() { beginArcade('blitz'); }
+
+        // Tap Blitz frame: spawn pulsing targets (max 4 live), fade the stale ones.
+        function runBlitzFrame() {
+            const now = performance.now();
+            if (now - lastBlitzSpawn > 550 && blitzTargets.length < 4) {
+                blitzTargets.push({
+                    x: 40 + Math.random() * (arcadeCanvas.width - 80),
+                    y: 40 + Math.random() * (arcadeCanvas.height - 90),
+                    r: 22 + Math.random() * 8,
+                    born: now
+                });
+                lastBlitzSpawn = now;
+            }
+            for (let i = blitzTargets.length - 1; i >= 0; i--) {
+                const t = blitzTargets[i];
+                const age = now - t.born;
+                if (age > 2600) { blitzTargets.splice(i, 1); continue; }   // missed → fades out
+                const pulse = 1 + Math.sin(age * 0.008) * 0.12;
+                arcadeCtx.fillStyle = 'rgba(244, 114, 182, 0.9)';
+                arcadeCtx.beginPath();
+                arcadeCtx.arc(t.x, t.y, t.r * pulse, 0, Math.PI * 2);
+                arcadeCtx.fill();
+                arcadeCtx.fillStyle = '#ffffff';
+                arcadeCtx.beginPath();
+                arcadeCtx.arc(t.x, t.y, t.r * pulse * 0.42, 0, Math.PI * 2);
+                arcadeCtx.fill();
+            }
+        }
+
         function runArcadeLoop() {
             arcadeCtx.clearRect(0, 0, arcadeCanvas.width, arcadeCanvas.height);
+
+            if (arcadeMode === 'blitz') {
+                runBlitzFrame();
+                arcadeLoopId = requestAnimationFrame(runArcadeLoop);
+                return;
+            }
 
             if (Math.random() < 0.09) {
                 fallingItems.push({
@@ -1438,6 +1955,9 @@
                 const earnedCoins = arcadeScore * 5;
                 petState.coins += earnedCoins;
                 petState.happiness = Math.min(100, petState.happiness + 25);
+                if (!petState.stats) petState.stats = {};
+                petState.stats.arcadeRuns = (petState.stats.arcadeRuns || 0) + 1;
+                petState.stats.arcadeBest = Math.max(petState.stats.arcadeBest || 0, arcadeScore);
                 grantXp(arcadeScore * 12);
                 playSynthSfx('levelup');
                 showToast(`Game Over! Earned ${earnedCoins} coins & EXP! 🌟`, "success");
@@ -1449,6 +1969,8 @@
         function handlePetInteraction(e) {
             if (petState.isSleeping) return;
             playSynthSfx('tap');
+            if (!petState.stats) petState.stats = {};
+            petState.stats.taps = (petState.stats.taps || 0) + 1;
             petState.happiness = Math.min(100, petState.happiness + 5);
             petState.coins += 1;
             grantXp(6);
@@ -1483,6 +2005,8 @@
             playSynthSfx('clean');
             petState.hygiene = 100;
             petState.hasMess = false;
+            if (!petState.stats) petState.stats = {};
+            petState.stats.baths = (petState.stats.baths || 0) + 1;
             grantXp(18);
             showFloatingTextFX("Clean & Fresh! 🧼");
             updateUIState();
@@ -1494,6 +2018,8 @@
             playSynthSfx('clean');
             petState.hasMess = false;
             petState.hygiene = Math.min(100, petState.hygiene + 35);
+            if (!petState.stats) petState.stats = {};
+            petState.stats.cleans = (petState.stats.cleans || 0) + 1;
             grantXp(12);
             updateUIState();
             saveGameToStorage();
@@ -1513,6 +2039,9 @@
                 document.getElementById('shopModal').classList.remove('hidden');
             } else if (id === 'resetModal') {
                 document.getElementById('resetModal').classList.remove('hidden');
+            } else if (id) {
+                // Generic show (arcade picker, etc.)
+                document.getElementById(id).classList.remove('hidden');
             }
         }
 
@@ -1554,7 +2083,27 @@
             petState.inventory[id]--;
             petState.hunger = Math.min(100, petState.hunger + item.hunger);
             petState.happiness = Math.min(100, petState.happiness + item.happiness);
-            grantXp(22);
+
+            // Lifetime record + DAILY CARE BONUS: the first feed each day doubles
+            // its EXP, pays +25 coins and grows the streak (every 7th day +100).
+            if (!petState.stats) petState.stats = {};
+            petState.stats.fed = (petState.stats.fed || 0) + 1;
+            let dailyFirst = false;
+            const today = petDayKey();
+            const db = petState.dailyBonus || (petState.dailyBonus = { last: "", streak: 0 });
+            if (db.last !== today) {
+                const yest = petDayKey(new Date(Date.now() - 86400000));
+                db.streak = (db.last === yest) ? (db.streak || 0) + 1 : 1;
+                db.last = today;
+                petState.stats.streakBest = Math.max(petState.stats.streakBest || 0, db.streak);
+                petState.coins += 25;
+                let streakExtra = '';
+                if (db.streak % 7 === 0) { petState.coins += 100; streakExtra = ' · 7-day bonus +100!'; }
+                showToast(`Daily care bonus: +25 coins 🔥 streak ${db.streak}${streakExtra}`, "success");
+                dailyFirst = true;
+            }
+
+            grantXp(dailyFirst ? 44 : 22);
             playSynthSfx('feed');
             showFloatingTextFX(`+${item.hunger} Hunger 🍎`);
 
@@ -1564,14 +2113,14 @@
         }
 
         function switchShopTab(tab) {
-            const btnF = document.getElementById('tabBtnFood');
-            const btnA = document.getElementById('tabBtnAcc');
-            const btnD = document.getElementById('tabBtnDye');
             const container = document.getElementById('shopContentGrid');
 
-            btnF.className = tab === 'food' ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all";
-            btnA.className = tab === 'accessories' ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all";
-            btnD.className = tab === 'dyes' ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30 transition-all" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-white/10 opacity-70 transition-all";
+            // Data-driven tab styling — works for any number of tabs.
+            document.querySelectorAll('.shop-tab').forEach(b => {
+                const on = b.dataset.tab === tab;
+                b.className = 'shop-tab px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ' +
+                    (on ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/30' : 'bg-white/10 opacity-70 border-transparent');
+            });
 
             let html = '';
 
@@ -1627,6 +2176,61 @@
                         </div>
                     `;
                 });
+            } else if (tab === 'habitats') {
+                habitatsCatalog.forEach(item => {
+                    const owned = (petState.ownedHabitats || []).includes(item.id);
+                    const active = petState.habitat === item.id;
+                    html += `
+                        <div class="flex items-center justify-between p-3.5 bg-white/10 dark:bg-slate-900/80 border border-white/20 rounded-2xl">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl">${item.icon}</span>
+                                <div>
+                                    <h4 class="font-extrabold text-sm">${item.name}</h4>
+                                    <span class="text-xs text-amber-500 font-black">${active ? 'Equipped' : owned ? 'Owned' : '💰 ' + item.cost}</span>
+                                </div>
+                            </div>
+                            <button onclick="buyEquipHabitat('${item.id}')" class="${active ? 'bg-emerald-500' : 'bg-purple-600'} text-white text-xs font-black px-4 py-2 rounded-xl">
+                                ${active ? 'Active' : owned ? 'Equip' : 'Buy'}
+                            </button>
+                        </div>
+                    `;
+                });
+            } else if (tab === 'stats') {
+                const s = petState.stats || {};
+                const counters = [
+                    ['Level', petState.level],
+                    ['Stage', getEvolutionTitle()],
+                    ['Streak', '🔥 ' + (petState.dailyBonus?.streak || 0)],
+                    ['Days Active', s.daysActive || 0],
+                    ['Feeds', s.fed || 0],
+                    ['Baths', s.baths || 0],
+                    ['Cleans', s.cleans || 0],
+                    ['Pet Taps', s.taps || 0],
+                    ['Runs', s.arcadeRuns || 0],
+                    ['Best Score', s.arcadeBest || 0]
+                ];
+                html += `<div class="col-span-full grid grid-cols-2 sm:grid-cols-5 gap-2.5">` +
+                    counters.map(c => `
+                        <div class="bg-white/10 dark:bg-slate-900/80 border border-white/20 rounded-2xl p-3 text-center">
+                            <div class="text-lg font-black text-purple-500 dark:text-purple-300">${c[1]}</div>
+                            <div class="text-[10px] font-black uppercase tracking-wider opacity-70">${c[0]}</div>
+                        </div>`).join('') +
+                    `</div>`;
+                html += achievementsList.map(a => {
+                    const got = a.done();
+                    return `
+                        <div class="flex items-center justify-between p-3.5 ${got ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/10 dark:bg-slate-900/80 border-white/20'} border rounded-2xl">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-2xl ${got ? '' : 'opacity-30 grayscale'}">${a.icon}</span>
+                                <div>
+                                    <h4 class="font-extrabold text-sm ${got ? 'text-emerald-600 dark:text-emerald-300' : ''}">${a.name}</h4>
+                                    <span class="text-xs opacity-70 font-bold">${a.desc}</span>
+                                </div>
+                            </div>
+                            <span class="text-xs font-black ${got ? 'text-emerald-500' : 'text-slate-400'}">${got ? '✓ Earned' : 'Locked'}</span>
+                        </div>
+                    `;
+                }).join('');
             }
 
             container.innerHTML = html;
@@ -1673,6 +2277,25 @@
             switchShopTab('dyes');
             showToast("Applied color dye!", "success");
         }
+
+        // Habitats: buy once, re-equip freely — repaints the room + bokeh instantly.
+        window.buyEquipHabitat = function (id) {
+            const item = habitatsCatalog.find(h => h.id === id);
+            if (!item) return;
+            const owned = (petState.ownedHabitats || []).includes(id);
+            if (!owned) {
+                if (petState.coins < item.cost) { showToast("Not enough coins!", "warning"); return; }
+                petState.coins -= item.cost;
+                petState.ownedHabitats = [...(petState.ownedHabitats || []), id];
+            }
+            petState.habitat = id;
+            applyHabitat();
+            playSynthSfx('clean');
+            saveGameToStorage();
+            updateUIState();
+            switchShopTab('habitats');
+            showToast(`${item.icon} ${item.name} equipped!`, "success");
+        };
 
         function launchConfettiFX() {
             const canvas = document.getElementById('confettiCanvas');
@@ -1745,6 +2368,18 @@
             }, 2600);
         }
 
+        // Once-per-day lifetime counter (Days Active) — guarded by a local day key.
+        function bumpDailyActivity() {
+            if (!petState.petName) return;
+            if (!petState.stats) petState.stats = { fed: 0, baths: 0, cleans: 0, taps: 0, arcadeRuns: 0, arcadeBest: 0, daysActive: 0, lastDay: "", streakBest: 0 };
+            const t = petDayKey();
+            if (petState.stats.lastDay !== t) {
+                petState.stats.lastDay = t;
+                petState.stats.daysActive = (petState.stats.daysActive || 0) + 1;
+                saveGameToStorage();
+            }
+        }
+
         function saveGameToStorage() {
             petState.lastSaved = Date.now();
             localStorage.setItem('pocketPalCelestialSave', JSON.stringify(petState));
@@ -1793,6 +2428,7 @@
             if (hasPet) {
                 updateUIState();
                 startSimulationTick();   // idempotent — covers account switches after boot
+                bumpDailyActivity();
             }
         };
     </script>

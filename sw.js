@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v337';
+const CACHE_NAME = 'hangout-v338';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
