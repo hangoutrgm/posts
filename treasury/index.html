@@ -135,6 +135,8 @@
             <button data-tab="lend" class="tab-btn flex-1 min-w-[92px]"><i class="fa-solid fa-hand-holding-dollar text-[13px]"></i>Lend</button>
             <button data-tab="buysell" class="tab-btn flex-1 min-w-[92px]"><i class="fa-solid fa-store text-[13px]"></i>Buy/Sell</button>
             <button data-tab="savings" class="tab-btn flex-1 min-w-[92px]"><i class="fa-solid fa-piggy-bank text-[13px]"></i>Savings</button>
+            <button data-tab="earnings" class="tab-btn flex-1 min-w-[92px]"><i class="fa-solid fa-trophy text-[13px]"></i>Earnings</button>
+            <button data-tab="hosted" class="tab-btn flex-1 min-w-[92px]"><i class="fa-solid fa-gamepad text-[13px]"></i>Hosted</button>
         </div>
 
         <!-- Treasury-wide Search -->
@@ -484,6 +486,114 @@
             </div>
         </div>
     </section>
+
+    <!-- ═══════════ EARNINGS TAB (RTDB 3 game wins) ═══════════ -->
+    <section id="tab-earnings" class="tab-pane hidden space-y-4">
+        <header class="flex items-center gap-3">
+            <span class="grid place-items-center w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 dark:text-amber-300 border border-amber-500/15"><i class="fa-solid fa-trophy text-sm"></i></span>
+            <div class="min-w-0">
+                <h2 class="text-[15px] font-extrabold tracking-tight text-slate-800 dark:text-white leading-tight">Game Earnings</h2>
+                <p class="text-[11px] text-slate-400 dark:text-slate-500">Cash prizes you won — pending &amp; paid out</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="stat-card" style="--glow:245 158 11">
+                <div class="stat-icon bg-amber-500/10 text-amber-500 dark:bg-amber-400/10 dark:text-amber-300"><i class="fa-solid fa-hourglass-half text-sm"></i></div>
+                <p class="stat-label text-amber-600 dark:text-amber-300/90">Pending</p>
+                <p id="er-pending" class="stat-value text-slate-800 dark:text-white">₱0</p>
+            </div>
+            <div class="stat-card" style="--glow:34 197 94">
+                <div class="stat-icon bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-300"><i class="fa-solid fa-check text-sm"></i></div>
+                <p class="stat-label text-green-600 dark:text-green-300/90">Paid</p>
+                <p id="er-paid" class="stat-value text-slate-800 dark:text-white">₱0</p>
+            </div>
+            <div class="stat-card stat-hero" style="--glow:16 185 129">
+                <div class="stat-icon bg-emerald-400/15 text-emerald-300"><i class="fa-solid fa-coins text-sm"></i></div>
+                <p class="stat-label">Total Earnings</p>
+                <p id="er-total" class="stat-value">₱0</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="tbl min-w-[680px]">
+                    <thead>
+                        <tr>
+                            <th>Game</th>
+                            <th>Host</th>
+                            <th class="text-right">Prize</th>
+                            <th>Status</th>
+                            <th class="hidden md:table-cell">Date</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="earnings-list"></tbody>
+                </table>
+            </div>
+            <div id="earnings-empty" class="hidden">
+                <div class="empty-state">
+                    <span class="empty-icon"><i class="fa-solid fa-trophy"></i></span>
+                    <p class="empty-title">No cash-prize wins yet</p>
+                    <p class="empty-sub">Wins with a ₱ prize appear here automatically.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ HOSTED TAB (RTDB 3 host log) ═══════════ -->
+    <section id="tab-hosted" class="tab-pane hidden space-y-4">
+        <header class="flex items-center gap-3">
+            <span class="grid place-items-center w-9 h-9 rounded-xl bg-violet-500/10 text-violet-500 dark:text-violet-300 border border-violet-500/15"><i class="fa-solid fa-gamepad text-sm"></i></span>
+            <div class="min-w-0">
+                <h2 class="text-[15px] font-extrabold tracking-tight text-slate-800 dark:text-white leading-tight">Hosted Games with Prizes</h2>
+                <p class="text-[11px] text-slate-400 dark:text-slate-500">Games you hosted — prizes given &amp; still pending</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="stat-card" style="--glow:245 158 11">
+                <div class="stat-icon bg-amber-500/10 text-amber-500 dark:bg-amber-400/10 dark:text-amber-300"><i class="fa-solid fa-hourglass-half text-sm"></i></div>
+                <p class="stat-label text-amber-600 dark:text-amber-300/90">Pending</p>
+                <p id="hg-pending" class="stat-value text-slate-800 dark:text-white">₱0</p>
+            </div>
+            <div class="stat-card" style="--glow:34 197 94">
+                <div class="stat-icon bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-300"><i class="fa-solid fa-check text-sm"></i></div>
+                <p class="stat-label text-green-600 dark:text-green-300/90">Paid</p>
+                <p id="hg-paid" class="stat-value text-slate-800 dark:text-white">₱0</p>
+            </div>
+            <div class="stat-card stat-hero" style="--glow:16 185 129">
+                <div class="stat-icon bg-emerald-400/15 text-emerald-300"><i class="fa-solid fa-gift text-sm"></i></div>
+                <p class="stat-label">Total Prizes Given</p>
+                <p id="hg-total" class="stat-value">₱0</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="tbl min-w-[680px]">
+                    <thead>
+                        <tr>
+                            <th>Game</th>
+                            <th>Winner</th>
+                            <th class="text-right">Prize</th>
+                            <th>Status</th>
+                            <th class="hidden md:table-cell">Date</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hosted-list"></tbody>
+                </table>
+            </div>
+            <div id="hosted-empty" class="hidden">
+                <div class="empty-state">
+                    <span class="empty-icon"><i class="fa-solid fa-gamepad"></i></span>
+                    <p class="empty-title">No hosted games with prizes yet</p>
+                    <p class="empty-sub">Games you host with a ₱ prize appear here automatically.</p>
+                </div>
+            </div>
+        </div>
+    </section>
     </main>
 
     <!-- Floating Contacts Button -->
@@ -514,6 +624,6 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] toast-pill"></div>
 
     <script src="../js/users-cache.js?v=6"></script>
-    <script type="module" src="treasury.js?v=17"></script>
+    <script type="module" src="treasury.js?v=19"></script>
 </body>
 </html>

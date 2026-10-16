@@ -3790,9 +3790,13 @@ window.renderRankings = async (resetLimit = true) => {
     
     if(resetLimit) list.innerHTML = '';
     
-    if (window.currentRankingFilter === "Earnings") {
+    if (window.currentRankingFilter === "Game Logs" || window.currentRankingFilter === "Earnings") {
+        // Game Logs = every win (LB + prize badges). Earnings = only wins with a
+        // cash (₱) prize. Both read the same RTDB 3 /earnings/{uid} log written by
+        // js/games.js logEarnings — fresh start in RTDB 3, no legacy reads.
+        const prizeOnly = window.currentRankingFilter === "Earnings";
         if (!window.currentUser) {
-            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">Please log in to view your earnings.</p>`;
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">Please log in to view your ${prizeOnly ? 'earnings' : 'game logs'}.</p>`;
             return;
         }
         
@@ -3801,73 +3805,59 @@ window.renderRankings = async (resetLimit = true) => {
             if(resetLimit) list.innerHTML = '';
             loader.classList.remove('hidden');
             try {
-                const [newSnap, legacySnap] = await Promise.all([
-                    get(ref(db, `earnings/${window.currentUser.uid}`)).catch(() => null),
-                    get(ref(db, `users/${window.currentUser.uid}/earnings`)).catch(() => null)
-                ]);
+                const snap = await get(ref(db3, `earnings/${window.currentUser.uid}`)).catch(() => null);
                 loader.classList.add('hidden');
                 
-                let earningsArray = [];
-                const seenEarningsKeys = new Set();
-                if (newSnap && newSnap.exists()) {
-                    newSnap.forEach(child => {
-                        const val = child.val();
-                        earningsArray.push({ id: child.key, ...val });
-                        if (val && val.postId) seenEarningsKeys.add(`${val.postId}_${val.title}`);
-                        seenEarningsKeys.add(child.key);
-                    });
+                const rows = [];
+                if (snap && snap.exists()) {
+                    snap.forEach(child => rows.push({ id: child.key, ...child.val() }));
                 }
-                if (legacySnap && legacySnap.exists()) {
-                    legacySnap.forEach(child => {
-                        const val = child.val();
-                        const postKey = val && val.postId ? `${val.postId}_${val.title}` : null;
-                        if (!seenEarningsKeys.has(child.key) && (!postKey || !seenEarningsKeys.has(postKey))) {
-                            earningsArray.push({ id: child.key, ...val });
-                            seenEarningsKeys.add(child.key);
-                            if (postKey) seenEarningsKeys.add(postKey);
-                        }
-                    });
-                }
-
-                if (earningsArray.length === 0) {
-                    list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no earnings yet.</p>`;
-                    window._earningsCache = [];
-                    return;
-                }
-                
-                earningsArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                window._earningsCache = earningsArray;
+                rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                window._earningsCache = rows;
             } catch (error) {
                 console.error(error);
                 loader.classList.add('hidden');
-                list.innerHTML = `<p class="text-center text-red-500 text-sm py-4">Error loading earnings.</p>`;
+                list.innerHTML = `<p class="text-center text-red-500 text-sm py-4">Error loading ${prizeOnly ? 'earnings' : 'game logs'}.</p>`;
                 return;
             }
         }
         
         if (resetLimit) list.innerHTML = '';
-        const earningsArray = window._earningsCache;
 
-        // Build totals summary when showing from the beginning
-        if (resetLimit && earningsArray.length > 0) {
+        // ₱ value of a formatted prize string — "PHP 50 + Bonus: PHP 20" → 50.
+        const prizePhp = (p) => { const n = parseFloat(String(p || '').split('+')[0].replace(/[^0-9.]/g, '')); return isNaN(n) ? 0 : n; };
+        const allRows = window._earningsCache;
+        const earningsArray = prizeOnly ? allRows.filter(e => prizePhp(e.prize) > 0) : allRows;
+
+        if (earningsArray.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">${prizeOnly ? 'No wins with cash prizes yet.' : 'No game logs yet.'}</p>`;
+            return;
+        }
+
+        // Summary when showing from the beginning. Game Logs: LB + wins only —
+        // its Total Prize Value column moved to the Earnings tab.
+        if (resetLimit) {
             const totalLb = earningsArray.reduce((sum, e) => sum + (e.lbPoints || 0), 0);
-            const totalPrize = earningsArray.reduce((sum, e) => {
-                const str = (e.prize || '').toString().split(' + Bonus:')[0];
-                const num = parseFloat(str.replace(/[^0-9.]/g, ''));
-                return sum + (isNaN(num) ? 0 : num);
-            }, 0);
+            const totalPrize = earningsArray.reduce((sum, e) => sum + prizePhp(e.prize), 0);
 
             const summaryEl = document.createElement('div');
             summaryEl.className = 'flex items-center justify-around p-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800/50 mb-3';
-            summaryEl.innerHTML = `
+            summaryEl.innerHTML = prizeOnly
+                ? `
                 <div class="text-center">
-                    <div class="text-xl font-black text-yellow-600 dark:text-yellow-400">🏆 ${totalLb}</div>
-                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total LB Points</div>
+                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 PHP ${totalPrize.toLocaleString()}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Value</div>
                 </div>
                 <div class="w-px h-10 bg-yellow-200 dark:bg-yellow-800/50"></div>
                 <div class="text-center">
-                    <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? 'PHP ' + totalPrize.toLocaleString() : (earningsArray.filter(e => e.prize).length + ' reward(s)')}</div>
-                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Value</div>
+                    <div class="text-xl font-black text-blue-600 dark:text-blue-400">${earningsArray.length}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Cash Wins</div>
+                </div>
+            `
+                : `
+                <div class="text-center">
+                    <div class="text-xl font-black text-yellow-600 dark:text-yellow-400">🏆 ${totalLb}</div>
+                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total LB Points</div>
                 </div>
                 <div class="w-px h-10 bg-yellow-200 dark:bg-yellow-800/50"></div>
                 <div class="text-center">
@@ -3938,32 +3928,14 @@ window.renderRankings = async (resetLimit = true) => {
             if (resetLimit) list.innerHTML = '';
             loader.classList.remove('hidden');
             try {
-                const [newSnap, legacySnap] = await Promise.all([
-                    get(ref(db, `hostedGames/${window.currentUser.uid}`)).catch(() => null),
-                    get(ref(db, `users/${window.currentUser.uid}/hostedGames`)).catch(() => null)
-                ]);
+                // RTDB 3 only — fresh start (the old RTDB 1 /hostedGames node and
+                // legacy users/{uid}/hostedGames copies are retired, no migration).
+                const snap = await get(ref(db3, `hostedGames/${window.currentUser.uid}`)).catch(() => null);
                 loader.classList.add('hidden');
 
                 let hostedArray = [];
-                const seenHostedKeys = new Set();
-                if (newSnap && newSnap.exists()) {
-                    newSnap.forEach(child => {
-                        const val = child.val();
-                        hostedArray.push({ id: child.key, ...val });
-                        if (val && val.postId) seenHostedKeys.add(`${val.postId}_${val.title}`);
-                        seenHostedKeys.add(child.key);
-                    });
-                }
-                if (legacySnap && legacySnap.exists()) {
-                    legacySnap.forEach(child => {
-                        const val = child.val();
-                        const postKey = val && val.postId ? `${val.postId}_${val.title}` : null;
-                        if (!seenHostedKeys.has(child.key) && (!postKey || !seenHostedKeys.has(postKey))) {
-                            hostedArray.push({ id: child.key, ...val });
-                            seenHostedKeys.add(child.key);
-                            if (postKey) seenHostedKeys.add(postKey);
-                        }
-                    });
+                if (snap && snap.exists()) {
+                    snap.forEach(child => hostedArray.push({ id: child.key, ...child.val() }));
                 }
 
                 if (hostedArray.length === 0) {
@@ -3999,14 +3971,13 @@ window.renderRankings = async (resetLimit = true) => {
         if (resetLimit) list.innerHTML = '';
         const hostedArray = window._hostedGamesCache;
 
-        // Summary banner
+        // Summary banner — the Pending column is gone (payment status removed).
         if (resetLimit && hostedArray.length > 0) {
             const totalPrize = hostedArray.reduce((sum, e) => {
                 const str = (e.prize || '').toString().split(' + Bonus:')[0];
                 const num = parseFloat(str.replace(/[^0-9.]/g, ''));
                 return sum + (isNaN(num) ? 0 : num);
             }, 0);
-            const pendingCount = hostedArray.filter(e => e.paymentStatus !== 'paid').length;
 
             const summaryEl = document.createElement('div');
             summaryEl.className = 'flex items-center justify-around p-3 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800/50 mb-3';
@@ -4019,11 +3990,6 @@ window.renderRankings = async (resetLimit = true) => {
                 <div class="text-center">
                     <div class="text-xl font-black text-green-600 dark:text-green-400">🎁 ${totalPrize > 0 ? 'PHP ' + totalPrize.toLocaleString() : (hostedArray.filter(e => e.prize).length + ' prize(s)')}</div>
                     <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Total Prize Given</div>
-                </div>
-                <div class="w-px h-10 bg-indigo-200 dark:bg-indigo-800/50"></div>
-                <div class="text-center">
-                    <div class="text-xl font-black text-orange-500 dark:text-orange-400">⏳ ${pendingCount}</div>
-                    <div class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold mt-0.5">Pending</div>
                 </div>
             `;
             list.appendChild(summaryEl);
@@ -4039,14 +4005,6 @@ window.renderRankings = async (resetLimit = true) => {
             const ts = e.timestamp?.toMillis ? e.timestamp.toMillis() : e.timestamp;
             const date = new Date(ts).toLocaleDateString();
             const badgesHtml = window.formatLogPrizeBadges(e.prize, e.lbPoints);
-            const isPaid = e.paymentStatus === 'paid';
-            const payBtn = `<button
-                id="pay-btn-${e.id}"
-                onclick="window.markHostedGamePaid('${e.id}', this)"
-                class="text-[10px] font-bold px-2 py-0.5 rounded ml-auto shrink-0 ${isPaid ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-800/50 transition cursor-pointer'}"
-                ${isPaid ? 'disabled' : ''}>
-                ${isPaid ? '✅ Paid' : '⏳ Pending'}
-            </button>`;
 
             el.innerHTML = `
                 <div class="flex justify-between items-start mb-1">
@@ -4056,11 +4014,8 @@ window.renderRankings = async (resetLimit = true) => {
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
                     🏆 Winner: <span class="font-semibold text-gray-700 dark:text-gray-300">${escapeHtml(e.winnerName || 'Unknown')}</span>
                 </div>
-                <div class="flex items-center justify-between gap-2">
-                    <div class="flex flex-wrap items-center gap-1">
-                        ${badgesHtml}
-                    </div>
-                    ${payBtn}
+                <div class="flex flex-wrap items-center gap-1">
+                    ${badgesHtml}
                 </div>
                 ${e.postId ? `<button onclick="window.goToPost('${e.postId}'); document.getElementById('ranking-modal').classList.add('hidden');" class="text-[10px] text-blue-500 hover:underline mt-1 self-start">View Game</button>` : ''}
             `;
@@ -4384,27 +4339,4 @@ window.shiftLbPeriodView = (delta) => {
     window.lbPeriodKey = window.shiftLbPeriod(baseScope, cur, delta);
     window.renderRankings(true);
     window.updateLbPeriodBar();
-};
-
-window.markHostedGamePaid = async (entryId, btn) => {
-    if (!window.currentUser) return;
-    try {
-        btn.disabled = true;
-        btn.textContent = 'Saving...';
-        await Promise.all([
-            update(ref(db, `hostedGames/${window.currentUser.uid}/${entryId}`), { paymentStatus: 'paid' }).catch(() => {}),
-            update(ref(db, `users/${window.currentUser.uid}/hostedGames/${entryId}`), { paymentStatus: 'paid' }).catch(() => {})
-        ]);
-        // Update local cache so re-renders stay consistent
-        if (window._hostedGamesCache) {
-            const entry = window._hostedGamesCache.find(e => e.id === entryId);
-            if (entry) entry.paymentStatus = 'paid';
-        }
-        btn.textContent = '✅ Paid';
-        btn.className = btn.className.replace(/bg-orange-\S+ text-orange-\S+/g, 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default');
-    } catch(err) {
-        console.error('Error marking paid:', err);
-        btn.disabled = false;
-        btn.textContent = '⏳ Pending';
-    }
 };

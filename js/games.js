@@ -1,4 +1,4 @@
-import { db, db2, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
+import { db, db2, db3, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
 import { ref, update, set, push, get, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayUnion, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -264,7 +264,8 @@ window.logEarnings = (uid, postId, title, prize, lbPoints) => {
         lbPoints: lbPoints || 0,
         timestamp: Date.now()
     };
-    push(ref(db, `earnings/${uid}`), payload).catch(e => console.warn('earnings write error:', e));
+    // Game win log — RTDB 3 (fresh start; the old RTDB 1 /earnings node is retired).
+    push(ref(db3, `earnings/${uid}`), payload).catch(e => console.warn('earnings write error:', e));
 
     // Credit the daily, weekly & monthly period counters (all-time totals live on users/{uid}/lbPoints).
     window.creditLbPeriods(uid, lbPoints);
@@ -278,10 +279,11 @@ window.logHostedGame = (hostUid, postId, title, prize, winnerUid, winnerName) =>
         prize: prize || '',
         winnerUid: winnerUid || '',
         winnerName: winnerName || '',
-        paymentStatus: 'pending',
         timestamp: Date.now()
     };
-    push(ref(db, `hostedGames/${hostUid}`), payload).catch(e => console.warn('hostedGames write error:', e));
+    // Host log — RTDB 3 (fresh start; the old RTDB 1 /hostedGames node is retired
+    // and the Pending/Paid payment status was removed).
+    push(ref(db3, `hostedGames/${hostUid}`), payload).catch(e => console.warn('hostedGames write error:', e));
 };
 
 window.formatPrizeForLog = (prize, bonus) => {

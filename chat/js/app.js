@@ -296,7 +296,7 @@ const THEME_META_COLORS = {
 };
 
 function applyTheme(theme) {
-  if (!VALID_THEMES.includes(theme)) theme = 'dark';
+  if (!VALID_THEMES.includes(theme)) theme = 'light';
   const isDark = DARK_THEMES.has(theme);
   document.documentElement.classList.toggle('dark', isDark);
   document.documentElement.setAttribute('data-theme', theme);
@@ -317,7 +317,9 @@ function applyTheme(theme) {
   if (menu) menu.querySelectorAll('.theme-option').forEach((btn) => btn.classList.toggle('active', btn.dataset.theme === theme));
 }
 const savedTheme = localStorage.getItem('hangout-chat-theme');
-applyTheme(VALID_THEMES.includes(savedTheme) ? savedTheme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+// Light is the DEFAULT for first-timers (no OS-preference check — same contract
+// as the rest of the site); any theme picked before is restored.
+applyTheme(VALID_THEMES.includes(savedTheme) ? savedTheme : 'light');
 
 function showAppModal(options = {}) {
   return new Promise((resolve) => {

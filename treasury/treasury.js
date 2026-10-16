@@ -1,7 +1,10 @@
 // treasury.js
-import { app, auth, db } from "../js/firebase-config.js";
+import { app, auth, db, db3, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js";
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, push, update, remove, set, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+// Same pinned URL as firebase-config.js → the module is shared, not re-evaluated.
+// Used to resolve an earnings row's game post (authorId = the host who pays the prize).
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
 const $ = (id) => document.getElementById(id);
@@ -13,6 +16,8 @@ const state = {
     buysell: {},
     savings: {},
     savingsExpenses: {},
+    earnings: {},
+    hostedGames: {},
     revealGcash: false,
     rewardFilter: 'all',
     search: '',
@@ -158,7 +163,11 @@ function switchTreasury(uid) {
         onValue(ref(db, tPath('lend')), (s) => { state.lend = s.val() || {}; renderLend(); }),
         onValue(ref(db, tPath('buysell')), (s) => { state.buysell = s.val() || {}; renderBuysell(); }),
         onValue(ref(db, tPath('savings')), (s) => { state.savings = s.val() || {}; renderSavings(); }),
-        onValue(ref(db, tPath('savingsExpenses')), (s) => { state.savingsExpenses = s.val() || {}; renderSavings(); })
+        onValue(ref(db, tPath('savingsExpenses')), (s) => { state.savingsExpenses = s.val() || {}; renderSavings(); }),
+        // Game logs live in RTDB 3 (the same nodes the Rankings modal reads);
+        // only the Pending/Paid flag is ever written from here.
+        onValue(ref(db3, `earnings/${state.viewingUid}`), (s) => { state.earnings = s.val() || {}; renderEarnings(); }),
+        onValue(ref(db3, `hostedGames/${state.viewingUid}`), (s) => { state.hostedGames = s.val() || {}; renderHosted(); })
     ];
     // Contacts follow the account on screen: mine normally, the sponsor's while managing theirs
     if (state.contactDetacher) state.contactDetacher();
@@ -220,6 +229,7 @@ async function loadUsers() {
         }
         renderSponsorChips();
         updateViewBanner();
+        renderEarnings();   // host names resolve through state.users — repaint once it lands
     } catch (e) { /* non-fatal */ }
 }
 
@@ -328,7 +338,7 @@ function initTreasury() {
     const searchInput = $('treasury-search');
     if (searchInput) searchInput.addEventListener('input', (e) => {
         state.search = qM(e.target.value.trim());
-        renderRewards(); renderKeep(); renderLend(); renderBuysell(); renderSavings();
+        renderRewards(); renderKeep(); renderLend(); renderBuysell(); renderSavings(); renderEarnings(); renderHosted();
     });
     $('modal-close').addEventListener('click', closeModal);
     $('modal-cancel').addEventListener('click', closeModal);
@@ -353,6 +363,8 @@ function switchTab(name) {
     $('tab-lend').classList.toggle('hidden', name !== 'lend');
     $('tab-buysell').classList.toggle('hidden', name !== 'buysell');
     $('tab-savings').classList.toggle('hidden', name !== 'savings');
+    $('tab-earnings').classList.toggle('hidden', name !== 'earnings');
+    $('tab-hosted').classList.toggle('hidden', name !== 'hosted');
 }
 
 // ── Modal helpers & form field builders ──
@@ -983,3 +995,139 @@ function renderBuysell() {
     });
     tbody.innerHTML = html;
 }
+
+// ── Game Earnings / Hosted Games (RTDB 3 sync) ──
+// Read-only game logs shared with the Rankings modal (js/games.js logEarnings /
+// logHostedGame write them). Only cash-prize rows are shown here, and the only
+// field written from this app is the payment flag { paid, paidAt } on the same
+// record — a single source of truth, so Treasury and the Rankings modal can
+// never disagree. A missing flag simply reads as Pending (no migration needed).
+const prizePhp = (p) => { const n = parseFloat(String(p || '').split('+')[0].replace(/[^0-9.]/g, '')); return isNaN(n) ? 0 : n; };
+const PAY_BADGE = {
+    pending: 'bg-amber-500/10 text-amber-600 dark:text-amber-300 ring-1 ring-inset ring-amber-500/25',
+    paid: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/25'
+};
+
+// ── Earnings: host resolution ──
+// An earnings record doesn't store the host, but its postId points at the game
+// post whose authorId IS the host. Resolve lazily through the 3 post shards
+// (same fallback order as js/helpers.js) and cache per postId for the session;
+// '' means the post is gone. One lookup per postId, ever.
+const hostByPost = {};
+const hostLookups = new Set();
+async function fetchPostHost(postId) {
+    for (const fs of [fsdb, fsdb2, fsdb3]) {
+        try {
+            const snap = await getDoc(doc(fs, 'community_posts', postId));
+            if (snap.exists()) return snap.data()?.authorId || '';
+        } catch (_) { /* try the next shard */ }
+    }
+    return '';
+}
+function resolvePendingHosts() {
+    const pending = [];
+    Object.keys(state.earnings).forEach(id => {
+        const postId = state.earnings[id]?.postId;
+        if (!postId || hostByPost[postId] !== undefined || hostLookups.has(postId)) return;
+        hostLookups.add(postId);
+        pending.push(fetchPostHost(postId).then(uid => {
+            hostByPost[postId] = uid || '';
+            return postId;
+        }));
+    });
+    // Repaint once per batch so resolved names replace the '…' placeholders.
+    if (pending.length) Promise.allSettled(pending).then(() => renderEarnings());
+}
+// Host for one row: uid + whether its lookup is still in flight.
+function earningHost(e) {
+    const uid = e.hostUid || (e.postId ? hostByPost[e.postId] : '') || '';
+    return { uid, loading: Boolean(e.postId) && hostByPost[e.postId] === undefined };
+}
+
+function renderEarnings() {
+    const tbody = $('earnings-list');
+    if (!tbody) return;
+    // Same filter as the Rankings modal's Earnings tab: only wins with a cash (₱) prize.
+    const rows = Object.keys(state.earnings).map(id => ({ id, ...state.earnings[id] }))
+        .filter(e => prizePhp(e.prize) > 0)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    let pending = 0, paid = 0;
+    rows.forEach(e => { if (e.paid === true) paid += prizePhp(e.prize); else pending += prizePhp(e.prize); });
+    $('er-pending').textContent = money(pending);
+    $('er-paid').textContent = money(paid);
+    $('er-total').textContent = money(pending + paid);
+
+    const filtered = rows.filter(e => {
+        const h = earningHost(e);
+        return matchesSearch(e.title, e.prize, h.uid ? (state.users[h.uid]?.name || h.uid) : '');
+    });
+    $('earnings-empty').classList.toggle('hidden', filtered.length > 0);
+    let html = '';
+    filtered.forEach(e => {
+        const isPaid = e.paid === true;
+        const h = earningHost(e);
+        const hostName = h.uid ? (state.users[h.uid]?.name || '') : '';
+        const hostCell = h.uid
+            ? `<div class="flex items-center gap-2.5">${avatar(hostName || h.uid)}<span class="block max-w-[110px] sm:max-w-[150px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(hostName || h.uid)}">${escapeHtml(hostName || 'Unknown')}</span></div>`
+            : `<span class="text-[11px] text-slate-400 dark:text-slate-500">${h.loading ? '…' : '—'}</span>`;
+        html += `<tr class="${isPaid ? 'opacity-60' : ''}">
+            <td><span class="block max-w-[150px] sm:max-w-[220px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span></td>
+            <td>${hostCell}</td>
+            <td class="whitespace-nowrap text-right font-extrabold tnum text-emerald-500 dark:text-emerald-400">${escapeHtml(e.prize || '—')}</td>
+            <td><span class="badge ${isPaid ? PAY_BADGE.paid : PAY_BADGE.pending}"><span class="badge-dot"></span>${isPaid ? 'Paid' : 'Pending'}</span></td>
+            <td class="hidden md:table-cell text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">${fmtDate(e.timestamp)}</td>
+            <td class="text-right"><div class="flex items-center justify-end gap-1.5">
+                <button onclick="window.toggleEarningPaid('${e.id}')" title="${isPaid ? 'Mark as Pending' : 'Mark as Paid'}" class="act-btn ${isPaid ? 'act-reopen' : 'act-ok'}"><i class="fa-solid ${isPaid ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button>
+            </div></td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+    resolvePendingHosts();   // fetch missing game hosts once per postId, then repaint
+}
+
+function renderHosted() {
+    const tbody = $('hosted-list');
+    if (!tbody) return;
+    // Same filter as the Rankings modal's Host Log tab: only games with a cash (₱) prize.
+    const rows = Object.keys(state.hostedGames).map(id => ({ id, ...state.hostedGames[id] }))
+        .filter(e => prizePhp(e.prize) > 0)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    let pending = 0, paid = 0;
+    rows.forEach(e => { if (e.paid === true) paid += prizePhp(e.prize); else pending += prizePhp(e.prize); });
+    $('hg-pending').textContent = money(pending);
+    $('hg-paid').textContent = money(paid);
+    $('hg-total').textContent = money(pending + paid);
+
+    const filtered = rows.filter(e => matchesSearch(e.title, e.prize, e.winnerName));
+    $('hosted-empty').classList.toggle('hidden', filtered.length > 0);
+    let html = '';
+    filtered.forEach(e => {
+        const isPaid = e.paid === true;
+        html += `<tr class="${isPaid ? 'opacity-60' : ''}">
+            <td><span class="block max-w-[150px] sm:max-w-[200px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span></td>
+            <td><div class="flex items-center gap-2.5">${avatar(e.winnerName)}<span class="block max-w-[110px] sm:max-w-[150px] truncate text-[13px] font-bold text-slate-800 dark:text-white" title="${escapeHtml(e.winnerName)}">${escapeHtml(e.winnerName || 'Unknown')}</span></div></td>
+            <td class="whitespace-nowrap text-right font-extrabold tnum text-emerald-500 dark:text-emerald-400">${escapeHtml(e.prize || '—')}</td>
+            <td><span class="badge ${isPaid ? PAY_BADGE.paid : PAY_BADGE.pending}"><span class="badge-dot"></span>${isPaid ? 'Paid' : 'Pending'}</span></td>
+            <td class="hidden md:table-cell text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">${fmtDate(e.timestamp)}</td>
+            <td class="text-right"><div class="flex items-center justify-end gap-1.5">
+                <button onclick="window.toggleHostedPaid('${e.id}')" title="${isPaid ? 'Mark as Pending' : 'Mark as Paid'}" class="act-btn ${isPaid ? 'act-reopen' : 'act-ok'}"><i class="fa-solid ${isPaid ? 'fa-rotate-left' : 'fa-check'} text-[10px]"></i></button>
+            </div></td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+// Pending/Paid toggle — writes onto the SAME RTDB 3 record both apps read.
+// paidAt: null deletes the key when flipping back to Pending.
+async function toggleGamePaid(node, id) {
+    if (isBannedUser()) return toast('Your account is banned — Treasury is read-only.');
+    const rec = (node === 'earnings' ? state.earnings : state.hostedGames)[id];
+    if (!rec) return;
+    const paid = rec.paid !== true;
+    try {
+        await update(ref(db3, `${node}/${state.viewingUid}/${id}`), { paid, paidAt: paid ? Date.now() : null });
+        toast(paid ? 'Marked as paid.' : 'Marked as pending.');
+    } catch (e) { toast('Could not update: ' + e.message); }
+}
+window.toggleEarningPaid = (id) => toggleGamePaid('earnings', id);
+window.toggleHostedPaid = (id) => toggleGamePaid('hostedGames', id);
