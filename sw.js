@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v340';
+const CACHE_NAME = 'hangout-v346';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
@@ -49,26 +49,27 @@ const PRECACHE_ASSETS = [
   './arena/arena.js?v=25',
   './arena/bracket-engine.js',
   './chat/css/styles.css?v=54',
-  './js/renderers.js?v=103',
-  './js/helpers.js?v=76',
+  './js/renderers.js?v=107',
+  './js/helpers.js?v=77',
   './js/games.js?v=67',
-  './js/main.js?v=117',
+  './js/main.js?v=122',
   './js/myday.js?v=29',
-  './js/quest.js?v=4',
+  './js/quest.js?v=7',
+  './js/weekly-quest.js?v=4',
   './js/help.js?v=2',
   './js/voice-recorder.js?v=3',
-  './chat/js/app.js?v=113',
+  './chat/js/app.js?v=114',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.
   './chat/mini-chat.js?v=10',
   './music/mini-player.js?v=5',
   // Standalone Music SPA (/music) — keep these ?v= in sync with music/index.html
   './music/index.html',
   './music/music.css?v=6',
-  './music/music-app.js?v=12',
+  './music/music-app.js?v=13',
   './music/youtube-player.js?v=7',
   // Standalone Pet SPA (/pet) — account gate + RTDB 3 cloud saves
   './pet/index.html',
-  './pet/pet.js?v=3',
+  './pet/pet.js?v=4',
   './js/users-cache.js?v=6',
   './config/emoji_riddles.json',
   './config/flags.json',

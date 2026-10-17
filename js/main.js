@@ -1,5 +1,5 @@
 // main.js
-import { app, auth, db, db2, db3, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { app, auth, db, db2, db3, fsdb, fsdb2, fsdb3, databaseURL3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, push, onValue, get, set, update, remove, increment, runTransaction, onDisconnect, serverTimestamp, query as dbQuery, limitToLast, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, where, serverTimestamp as fsServerTimestamp, startAfter, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -7,10 +7,10 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 
 // Local imports MUST carry the same ?v= as index.html's <script> tags. A query string
 // makes a distinct module URL, so an unversioned "./helpers.js" here would be fetched and
-// evaluated a second time alongside index.html's "js/helpers.js?v=66" (same for
-// renderers.js, ~257 KB). Keep these versions in lockstep with index.html and sw.js.
-import "./helpers.js?v=76";
-import "./renderers.js?v=103";
+// evaluated a second time alongside index.html's "js/helpers.js?v=77" (same for
+// renderers.js, ~325 KB). Keep these versions in lockstep with index.html and sw.js.
+import "./helpers.js?v=77";
+import "./renderers.js?v=107";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;
@@ -2153,6 +2153,11 @@ window.react = (postId, postAuthorId, type) => {
         // transaction dedupes per post, so react/unreact toggling can never
         // farm the counter. (Metric key is 'reacts' — plural, like QUEST_METRICS.)
         if (window.questTrack) window.questTrack('reacts', postId);
+        // Weekly Quest — reaction RECEIVED by the post author (deduped per post+reactor,
+        // so react/unreact toggling can never inflate the author's counter).
+        if (window.weeklyQuestTrack && postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
+            window.weeklyQuestTrack('reactsReceived', postAuthorId, `p:${postId}:${window.currentUser.uid}`);
+        }
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
         const likePoints = window.siteSettings.starsPerLike ?? 1;
         if(postAuthorId !== window.currentUser.uid && postAuthorId !== "undefined") {
@@ -2200,6 +2205,8 @@ window.reactComment = (postId, commentId, commentAuthorId, type) => {
         if(commentAuthorId !== window.currentUser.uid && commentAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${commentAuthorId}`), { points: increment(likePoints) });
+            // Weekly Quest — comment reaction RECEIVED by the comment author.
+            if (window.weeklyQuestTrack) window.weeklyQuestTrack('reactsReceived', commentAuthorId, `c:${postId}:${commentId}:${window.currentUser.uid}`);
             push(ref(db2, `notifications/${commentAuthorId}`), { 
                 type: 'react_comment', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
@@ -2243,6 +2250,8 @@ window.reactReply = (postId, commentId, replyId, replyAuthorId, type) => {
         if(replyAuthorId !== window.currentUser.uid && replyAuthorId !== "undefined") {
             const likePoints = window.siteSettings.starsPerLike ?? 1;
             update(ref(db, `users/${replyAuthorId}`), { points: increment(likePoints) });
+            // Weekly Quest — reply reaction RECEIVED by the reply author.
+            if (window.weeklyQuestTrack) window.weeklyQuestTrack('reactsReceived', replyAuthorId, `r:${postId}:${commentId}:${replyId}:${window.currentUser.uid}`);
             push(ref(db2, `notifications/${replyAuthorId}`), { 
                 type: 'react_reply', sourceUid: window.currentUser.uid, postId: postId, reactType: type, timestamp: Date.now(), read: false 
             });
@@ -2829,6 +2838,10 @@ window.claimRecruitReward = async (recruitUid) => {
             return;
         }
 
+        // Weekly Quest — one VALID recruit claimed (this transaction already
+        // re-verified validity + cooldown, so each recruit counts at most once).
+        if (window.weeklyQuestTrack) window.weeklyQuestTrack('recruits', uid);
+
         // Credit ALL four buckets: overall (users/{uid}/lbPoints) + the daily /
         // weekly / monthly period counters via the shared helper in js/games.js.
         if (cfg.lb > 0) {
@@ -2837,7 +2850,7 @@ window.claimRecruitReward = async (recruitUid) => {
         }
 
         // ₱ prize (admin-funded): earnings row for the recruiter + one in the
-        // admin's payout ledger. Fire-and-forget; helper lives in js/quest.js.
+        // admin's HOST LOG (Treasury → Hosted). Fire-and-forget; helper lives in js/quest.js.
         const moneyLogged = cfg.prize > 0;
         if (moneyLogged && window.logMoneyRewardClaim) {
             window.logMoneyRewardClaim(uid, window.globalUsersCache?.[uid]?.name || 'Member', 'Recruit Reward', cfg.prize);

@@ -144,6 +144,12 @@ window.siteSettings = {
         lbReward: 50,      // LB points paid on claim (all-time + daily/weekly/monthly)
         moneyReward: 0     // ₱ shown next to the reward (DISPLAY-ONLY; 0 = hidden)
     },
+    weeklyQuests: {        // /config → Weekly Quest (progress lives in RTDB 3 /weekly_quests)
+        enabled: true,
+        reqReactsReceived: 50, reqChatWins: 50, reqRecruits: 2, reqPetLevels: 10, reqSongsAdded: 10,
+        lbReward: 5000,    // LB points paid on claim (all-time + daily/weekly/monthly)
+        moneyReward: 5     // ₱ shown next to the reward (DISPLAY-ONLY; 0 = hidden)
+    },
     imageUploadLimit: 10,
     videoUploadLimit: 3,
     videoSizeLimitMB: 20,

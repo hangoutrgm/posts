@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One-off: move admin payout rows → Host Log</title>
+    <link rel="stylesheet" href="../css/tailwind.min.css?v=20">
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 min-h-screen flex items-start justify-center p-6">
+    <div class="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+        <h1 class="text-lg font-bold text-slate-800 dark:text-white mb-1">One-off · move admin payout rows → Host Log</h1>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+            One-time cleanup. Before the fix, <code>logMoneyRewardClaim</code> wrote the ADMIN's "I owe ₱X"
+            rows into <code>earnings/{admin}</code> (the admin's <i>Earnings</i> tab). Now they belong in
+            <code>hostedGames/{admin}</code> (<b>Rankings → Host Log</b> + <b>Treasury → Hosted</b>). This tool
+            moves the old ones over. It only touches rows carrying a <code>forUid</code> (the old payout-ledger
+            marker) — the admin's own game wins and every claimer's Earnings rows are left untouched. Safe to
+            re-run. <b>Delete this file after running it.</b>
+        </p>
+
+        <div id="gate" class="text-xs text-amber-600 dark:text-amber-400 mb-4">Checking sign-in…</div>
+
+        <div id="tools" class="hidden">
+            <div class="flex gap-2 mb-4">
+                <button id="scan-btn" class="px-4 py-2 rounded-lg text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white hover:bg-slate-300 dark:hover:bg-slate-600 transition">1 · Scan</button>
+                <button id="migrate-btn" disabled class="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-500 transition">2 · Move to Host Log</button>
+            </div>
+            <div id="summary" class="text-xs text-slate-600 dark:text-slate-300 mb-2"></div>
+            <div id="result" class="text-xs mb-2"></div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="text-slate-400">
+                        <tr><th class="py-1 pr-3">Reward</th><th class="py-1 pr-3">Payee</th><th class="py-1 pr-3">₱</th><th class="py-1">Date</th></tr>
+                    </thead>
+                    <tbody id="rows" class="text-slate-700 dark:text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script type="module">
+        import { auth, db3 } from '../js/firebase-config.js';
+        import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
+        import { ref, get, set, remove } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+
+        // The account that funds the rewards (same constant as js/quest.js).
+        const ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
+        const $ = (id) => document.getElementById(id);
+        let found = []; // { key, label, name, prize, timestamp, forUid }
+
+        // Gate the buttons on the admin account (db3 rules are open, but this keeps
+        // the tool from being run by a random visitor).
+        onAuthStateChanged(auth, (u) => {
+            const ok = u && u.uid === ADMIN_UID;
+            $('gate').textContent = ok ? 'Signed in as the site admin — ready.' : 'Sign in with the ADMIN account to run this.';
+            $('gate').className = ok ? 'text-xs text-green-600 dark:text-green-400 mb-4' : 'text-xs text-amber-600 dark:text-amber-400 mb-4';
+            $('tools').classList.toggle('hidden', !ok);
+        });
+
+        const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const dateStr = (ms) => ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+        $('scan-btn').addEventListener('click', async () => {
+            $('summary').textContent = 'Scanning…';
+            $('rows').innerHTML = '';
+            $('result').innerHTML = '';
+            $('migrate-btn').disabled = true;
+            found = [];
+            try {
+                const snap = await get(ref(db3, `earnings/${ADMIN_UID}`));
+                if (snap.exists()) {
+                    snap.forEach((child) => {
+                        const r = child.val() || {};
+                        // forUid is only ever written by the OLD payout-ledger push —
+                        // logEarnings / logHostedGame never set it, so it's a safe marker.
+                        if (r && typeof r.forUid === 'string' && r.forUid) {
+                            const t = r.title || '';
+                            const sep = t.indexOf(' — '); // old title was "Label — Name"
+                            found.push({
+                                key: child.key,
+                                label: sep >= 0 ? t.slice(0, sep) : t,
+                                name: sep >= 0 ? t.slice(sep + 3) : '',
+                                prize: r.prize || '',
+                                timestamp: r.timestamp || 0,
+                                forUid: r.forUid
+                            });
+                        }
+                    });
+                }
+                $('summary').textContent = found.length
+                    ? `Found ${found.length} payout row(s) to move. Review below, then click Move.`
+                    : 'Nothing to move — no payout-ledger rows left in your Earnings (already migrated, or none).';
+                $('migrate-btn').disabled = found.length === 0;
+                $('rows').innerHTML = found.map((r) => `
+                    <tr class="border-t border-slate-100 dark:border-slate-700">
+                        <td class="py-1.5 pr-3 font-bold">${esc(r.label)}</td>
+                        <td class="py-1.5 pr-3">${esc(r.name || '—')}</td>
+                        <td class="py-1.5 pr-3 text-emerald-600 dark:text-emerald-400 font-bold">${esc(r.prize)}</td>
+                        <td class="py-1.5 text-slate-400">${dateStr(r.timestamp)}</td>
+                    </tr>`).join('');
+            } catch (e) {
+                $('summary').textContent = 'Scan failed: ' + e.message;
+            }
+        });
+
+        $('migrate-btn').addEventListener('click', async () => {
+            if (!found.length) return;
+            if (!confirm(`Move ${found.length} payout row(s) from your Earnings to your Host Log?\n\nThis deletes them from earnings and recreates them in hostedGames (shaped like a normal host-log entry).`)) return;
+            $('migrate-btn').disabled = true;
+            let moved = 0;
+            const errors = [];
+            for (const r of found) {
+                try {
+                    // Reuse the SAME key so the move is 1:1 (and idempotent on re-run).
+                    await set(ref(db3, `hostedGames/${ADMIN_UID}/${r.key}`), {
+                        postId: '',
+                        title: r.label,
+                        prize: r.prize,
+                        winnerUid: r.forUid,        // who the admin owes
+                        winnerName: r.name || 'Member',
+                        timestamp: r.timestamp || Date.now()
+                    });
+                    await remove(ref(db3, `earnings/${ADMIN_UID}/${r.key}`));
+                    moved++;
+                } catch (e) { errors.push(`${r.label}: ${e.message}`); }
+            }
+            $('result').innerHTML = `<span class="font-bold ${errors.length ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}">Moved ${moved}/${found.length} row(s)${errors.length ? ` · ${errors.length} error(s): ${esc(errors.join('; '))}` : ' ✓'}</span>`;
+            if (moved) $('summary').textContent = 'Done. Re-scanning should now find 0. You can delete this file.';
+        });
+    </script>
+</body>
+</html>

@@ -1753,6 +1753,9 @@
                 petState.maxXp = Math.floor(petState.maxXp * 1.15);
                 playSynthSfx('levelup');
                 showToast(`Level Up! ${petState.petName} reached Level ${petState.level}! 🎉`, "success");
+                // Weekly Quest — one pet level-up for the signed-in player
+                // (bridge lives in pet/pet.js; no-ops when signed out).
+                if (window.PetCloud && window.PetCloud.weeklyQuest) window.PetCloud.weeklyQuest('petLevels');
 
                 const newStage = getEvolutionStage();
                 if (newStage > prevStage) {
@@ -2441,6 +2444,6 @@
             });
         }
     </script>
-    <script type="module" src="pet.js?v=3"></script>
+    <script type="module" src="pet.js?v=4"></script>
 </body>
 </html>

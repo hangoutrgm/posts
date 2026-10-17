@@ -142,6 +142,30 @@ window.questTrack = (metric, targetId) => {
 // ── Modal helpers ───────────────────────────────────────────────────────────
 let _questUnsub = null;
 
+// ── Quest modal cache (localStorage, instant paint) ─────────────────────────
+// Same pattern as the Rankings modal cache: paint instantly from localStorage
+// — the pane never waits on the network — then let the refresh path (the live
+// listener for Today/Weekly, a background revalidate for History) update it.
+// The cache buys paint speed only, never freshness. Keys carry the uid AND
+// the day/week, so a shared device never bleeds one account's progress into
+// another and yesterday's numbers can never paint on a new day. Exposed on
+// window for js/weekly-quest.js (same convention as logMoneyRewardClaim).
+// Every failure is swallowed: a nicety, never a blocker.
+const questCacheKey = (kind, id) => `hangout-quest:${kind}${id ? ':' + id : ''}`;
+
+window.questCacheRead = (kind, id) => {
+    try {
+        const c = JSON.parse(localStorage.getItem(questCacheKey(kind, id)) || 'null');
+        // A cached EMPTY record (no activity yet) is a real hit.
+        return (c && c.data && typeof c.data === 'object') ? c.data : null;
+    } catch (e) { return null; }
+};
+
+window.questCacheWrite = (kind, id, data) => {
+    try { localStorage.setItem(questCacheKey(kind, id), JSON.stringify({ data })); }
+    catch (e) { /* quota exceeded — drop it, the pane still works */ }
+};
+
 const questDaySnapshot = (snap) => {
     const v = snap && snap.exists() ? snap.val() || {} : {};
     return { p: v.p || {}, claimedAt: Number(v.claimedAt) || 0 };
@@ -157,18 +181,29 @@ window.updateQuestDot = async () => {
     const dot = document.getElementById('quest-menu-dot');
     if (!dot) return;
     const uid = questUid();
+    if (!uid) { dot.classList.add('hidden'); return; }
+    let show = false;
     const cfg = window.questConfig();
-    if (!uid || !cfg.enabled) { dot.classList.add('hidden'); return; }
-    try {
-        const snap = await get(ref(db3, `quests/${questDayKey()}/${uid}`));
-        const s = questDaySnapshot(snap);
-        const show = !s.claimedAt && questAllDone(cfg, s.p);
-        dot.classList.toggle('hidden', !show);
-    } catch (_) { /* best-effort */ }
+    if (cfg.enabled) {
+        try {
+            const snap = await get(ref(db3, `quests/${questDayKey()}/${uid}`));
+            const s = questDaySnapshot(snap);
+            show = !s.claimedAt && questAllDone(cfg, s.p);
+        } catch (_) { /* best-effort */ }
+    }
+    // The shared Quest dot also lights up for a claimable WEEKLY reward —
+    // js/weekly-quest.js loads after this module and exposes the check.
+    if (!show && window.weeklyQuestIsReady) {
+        try { show = await window.weeklyQuestIsReady(); } catch (_) { /* best-effort */ }
+    }
+    dot.classList.toggle('hidden', !show);
 };
-const paintQuestModal = (snap) => {
+// s = normalized { p, claimedAt } (questDaySnapshot output or the copy from
+// the localStorage cache) — null paints the empty state. Callers normalize:
+// the live listener wraps its snap, the instant paint passes the cached copy.
+const paintQuestModal = (sIn) => {
     const cfg = window.questConfig();
-    const s = questDaySnapshot(snap);
+    const s = sIn || { p: {}, claimedAt: 0 };
     const day = questDayKey();
 
     const dateEl = document.getElementById('quest-date-label');
@@ -235,7 +270,9 @@ const paintQuestModal = (snap) => {
         }
     }
 
-    window.updateQuestDot();
+    // The account-menu dot is deliberately NOT refreshed here: the menu (its
+    // only home) is closed on every one of these paints, and each refresh
+    // costs 1–2 reads — closeQuestModal + the nav-avatar hook keep it fresh.
 };
 window.userMenuQuest = () => {
     window.closeUserMenu && window.closeUserMenu();
@@ -247,12 +284,21 @@ window.userMenuQuest = () => {
     // Live progress while the modal is open; unsubscribed on close (bandwidth discipline).
     if (_questUnsub) { _questUnsub(); _questUnsub = null; }
     window.setQuestTab('today'); // always open on Today; History reloads per visit
-    paintQuestModal(null); // instant paint from defaults, then the snapshot lands
-    _questUnsub = onValue(ref(db3, `quests/${questDayKey()}/${uid}`), paintQuestModal, (e) => console.warn('quest listener error:', e));
+    // 1) Instant paint from the localStorage cache — never wait on the network.
+    // 2) The listener below IS the revalidation ("update every open"): it fires
+    //    immediately on attach with the current value, repaints, rewrites cache.
+    const day = questDayKey();
+    paintQuestModal(window.questCacheRead('today', `${uid}:${day}`));
+    _questUnsub = onValue(ref(db3, `quests/${day}/${uid}`), (snap) => {
+        const s = questDaySnapshot(snap);
+        window.questCacheWrite('today', `${uid}:${day}`, s);
+        paintQuestModal(s);
+    }, (e) => console.warn('quest listener error:', e));
 };
 
 window.closeQuestModal = () => {
     if (_questUnsub) { _questUnsub(); _questUnsub = null; }
+    window.unmountWeeklyQuestPane && window.unmountWeeklyQuestPane();
     const modal = document.getElementById('quest-modal');
     if (modal) modal.classList.add('hidden');
     window.updateQuestDot();
@@ -262,8 +308,8 @@ window.closeQuestModal = () => {
 window._questTab = 'today';
 
 window.setQuestTab = (tab) => {
-    window._questTab = (tab === 'history') ? 'history' : 'today';
-    ['today', 'history'].forEach((t) => {
+    window._questTab = (tab === 'history') ? 'history' : (tab === 'weekly') ? 'weekly' : 'today';
+    ['today', 'history', 'weekly'].forEach((t) => {
         const btn = document.getElementById('quest-tab-' + t);
         if (btn) {
             const on = (t === window._questTab);
@@ -274,6 +320,10 @@ window.setQuestTab = (tab) => {
         const pane = document.getElementById('quest-' + t + '-pane');
         if (pane) pane.classList.toggle('hidden', t !== window._questTab);
     });
+    // The Weekly pane is owned by js/weekly-quest.js — mount its live listener
+    // when shown, drop it when hidden (same bandwidth discipline as History).
+    if (window._questTab === 'weekly') { window.mountWeeklyQuestPane && window.mountWeeklyQuestPane(); }
+    else { window.unmountWeeklyQuestPane && window.unmountWeeklyQuestPane(); }
     if (window._questTab === 'history') window.loadQuestHistory();
 };
 
@@ -281,31 +331,24 @@ window.setQuestTab = (tab) => {
 // One targeted get() per day key, fired only when the tab is opened — never a
 // whole-table read (bandwidth discipline).
 const QUEST_HISTORY_DAYS = 7;
+let _histRefreshInFlight = false;
 
 window.loadQuestHistory = async () => {
     const uid = questUid();
     const list = document.getElementById('quest-history-list');
     if (!uid || !list) return;
-    list.innerHTML = `<p class="text-[11px] text-gray-400 dark:text-gray-500 text-center py-6"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Loading…</p>`;
     const lines = activeQuestLines(window.questConfig());
     const keys = [];
     for (let i = 1; i <= QUEST_HISTORY_DAYS; i++) {
         const d = new Date(); d.setDate(d.getDate() - i);
         keys.push(questDayKey(d));
     }
-    let snaps;
-    try {
-        snaps = await Promise.all(keys.map((k) => get(ref(db3, `quests/${k}/${uid}`))));
-    } catch (e) {
-        console.warn('quest history load failed:', e);
-        list.innerHTML = `<p class="text-[11px] text-red-400 dark:text-red-400 text-center py-6">Could not load history — try again.</p>`;
-        return;
-    }
+
+    // Pure render: same entries → same HTML, so a repaint costs no reads.
     // Status per day: claimedAt wins; otherwise completion is checked against
     // the CURRENT admin requirements (past days don't store the reqs that were
     // live back then — a later requirement bump can flip an old unclaimed day).
-    list.innerHTML = keys.map((key, i) => {
-        const s = questDaySnapshot(snaps[i]);
+    const renderRows = (entries) => entries.map(({ k: key, s }) => {
         const hasActivity = Object.keys(s.p).length > 0;
         const met = lines.filter((m) => Number(s.p[m.key] || 0) >= m.req).length;
         const allDone = lines.length > 0 && met === lines.length;
@@ -343,33 +386,71 @@ window.loadQuestHistory = async () => {
             <span class="text-[9px] font-black px-2 py-0.5 rounded-full border whitespace-nowrap ${pillCls}">${pill}</span>
         </div>`;
     }).join('') + `<p class="text-[9px] text-gray-400 dark:text-gray-500 text-center pt-1">Keeps the last ${QUEST_HISTORY_DAYS} days. Past completion is checked against today's requirements.</p>`;
+
+    // 1) Paint straight from the localStorage cache — keyed by uid + TODAY so
+    //    the 7-day window can never leak across midnight. Never wait on network.
+    const cacheId = `${uid}:${questDayKey()}`;
+    const cached = window.questCacheRead('hist', cacheId);
+    const painted = (Array.isArray(cached) && cached.length) ? cached : null;
+    if (painted) {
+        list.innerHTML = renderRows(painted);
+    } else {
+        // Cold load only: spinner + blank list.
+        list.innerHTML = `<p class="text-[11px] text-gray-400 dark:text-gray-500 text-center py-6"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Loading…</p>`;
+    }
+
+    // 2) Revalidate on EVERY visit (silent, deduped) and repaint only when the
+    //    rows actually changed — a failed read keeps whatever was painted.
+    if (_histRefreshInFlight) return;
+    _histRefreshInFlight = true;
+    try {
+        const snaps = await Promise.all(keys.map((k) => get(ref(db3, `quests/${k}/${uid}`))));
+        const fresh = keys.map((k, i) => ({ k, s: questDaySnapshot(snaps[i]) }));
+        window.questCacheWrite('hist', cacheId, fresh);
+        if (JSON.stringify(fresh) !== JSON.stringify(painted)) list.innerHTML = renderRows(fresh);
+    } catch (e) {
+        console.warn('quest history load failed:', e);
+        if (!painted) list.innerHTML = `<p class="text-[11px] text-red-400 dark:text-red-400 text-center py-6">Could not load history — try again.</p>`;
+    } finally {
+        _histRefreshInFlight = false;
+    }
 };
 
-// ── Money-reward earnings log ───────────────────────────────────────────────
-// Shared with the recruit claim in js/main.js (loaded after this module).
+// ── Money-reward log (claimer earnings + admin host log) ────────────────────
+// Shared by the Daily/Weekly Quest claims (js/quest.js, js/weekly-quest.js)
+// and the recruit claim (js/main.js).
 // ₱ rewards are never auto-paid — the site admin funds them — so each claim
-// writes ONE RTDB 3 /earnings record for the claimer (shown in Rankings →
-// Earnings and Treasury → Earnings) and ONE into the ADMIN's /earnings as his
-// payout ledger: he marks it Paid in Treasury once the money is sent.
-// hostUid = admin, so the Treasury Host column answers "who gives the prize".
-// Nothing is written at ₱ 0, and no duplicate when the admin claims for himself.
+// writes TWO RTDB 3 records, mirroring how a normal game prize is logged:
+//   • ONE /earnings row for the CLAIMER (Rankings → Earnings + Treasury →
+//     Earnings) — "you are owed ₱X".
+//   • ONE /hostedGames row for the ADMIN (Rankings → Host Log + Treasury →
+//     Hosted) — "you owe ₱X to <claimant>", shaped like logHostedGame so both
+//     host views render it and the Treasury Pending/Paid toggle applies.
+// Nothing is written at ₱ 0, and no duplicate when the admin claims for
+// himself (his own host-log copy is skipped).
 const MONEY_REWARD_ADMIN_UID = 'IrcAY3gUELNjiRUhMkr7muxNIpm2';
 window.logMoneyRewardClaim = (claimUid, claimerName, sourceLabel, php) => {
     if (!(php > 0) || !claimUid) return;
-    const base = {
+    // Claimer side — "owed TO me" (₱ only; the LB payout is credited by the claim flow).
+    push(ref(db3, `earnings/${claimUid}`), {
+        title: sourceLabel,
         prize: 'PHP ' + php,           // same "PHP N" shape as formatPrizeForLog
-        lbPoints: 0,                    // ₱ only — the LB payout is credited by the claim flow
-        timestamp: Date.now(),
-        hostUid: MONEY_REWARD_ADMIN_UID // who will give the prize
-    };
-    push(ref(db3, `earnings/${claimUid}`), { ...base, title: sourceLabel })
-        .catch(e => console.warn('money reward earnings write error:', e));
+        lbPoints: 0,
+        hostUid: MONEY_REWARD_ADMIN_UID, // who will give the prize
+        timestamp: Date.now()
+    }).catch(e => console.warn('money reward earnings write error:', e));
+    // Admin side — his HOST LOG (owed BY him), NOT his earnings. Matches the
+    // logHostedGame shape so Rankings → Host Log and Treasury → Hosted render
+    // it, and the Treasury Paid toggle applies. winnerUid/winnerName = payee.
     if (claimUid !== MONEY_REWARD_ADMIN_UID) {
-        push(ref(db3, `earnings/${MONEY_REWARD_ADMIN_UID}`), {
-            ...base,
-            title: `${sourceLabel} — ${claimerName || 'Member'}`,
-            forUid: claimUid            // who the admin has to pay
-        }).catch(e => console.warn('money reward earnings (admin) write error:', e));
+        push(ref(db3, `hostedGames/${MONEY_REWARD_ADMIN_UID}`), {
+            postId: '',
+            title: sourceLabel,
+            prize: 'PHP ' + php,
+            winnerUid: claimUid,        // who the admin has to pay
+            winnerName: claimerName || 'Member',
+            timestamp: Date.now()
+        }).catch(e => console.warn('money reward (admin host log) write error:', e));
     }
 };
 
@@ -415,7 +496,7 @@ window.claimDailyQuest = async () => {
             if (window.creditLbPeriods) window.creditLbPeriods(uid, cfg.lbReward);
         }
         // ₱ reward (admin-funded): one earnings row for the claimer + one in the
-        // admin's payout ledger. Fire-and-forget, same as js/games.js logEarnings.
+        // admin's HOST LOG (Treasury → Hosted). Fire-and-forget, same as js/games.js logEarnings.
         const moneyLogged = cfg.moneyReward > 0;
         if (moneyLogged) {
             window.logMoneyRewardClaim(uid, window.globalUsersCache?.[uid]?.name || 'Member', 'Daily Quest Reward', cfg.moneyReward);

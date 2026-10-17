@@ -1,4 +1,4 @@
-import { db, db2, db3, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
+import { db, db2, db3, fsdb, fsdb2, fsdb3, databaseURL3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource, getSourceByFirestore } from "./firebase-config.js";
 import { ref, update, set, push, remove, increment, get, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -3668,7 +3668,8 @@ window.promptCustomReaction = (postId, authorId, commentId = null, commentAuthor
 
 window.openRankingModal = () => {
     document.getElementById('ranking-modal').classList.remove('hidden');
-    // Clear caches so data is fresh on every open
+    // Drop the in-memory copies so each open re-seeds from the localStorage
+    // cache and revalidates in the background (see the cache helpers below).
     window._earningsCache = null;
     window._hostedGamesCache = null;
     window._recruitLbCache = null;
@@ -3678,46 +3679,101 @@ window.openRankingModal = () => {
 
 window._recruitLbCache = null;
 
+// ── Rankings modal cache (localStorage, instant paint) ─────────────────────
+// Every tab paints straight from its cache — the modal never waits on the
+// network — then revalidates against the DB on every open / tab switch in the
+// background, repainting only when the data actually changed (README §10).
+// The cache buys paint speed only, never freshness. Per-account data is
+// uid-scoped so a shared device never bleeds one account's rows into another.
+// Every failure is swallowed: the cache is a nicety, never a blocker.
+const rankCacheKey = (kind, id) => `hangout-rank:${kind}${id ? ':' + id : ''}`;
+
+function rankCacheRead(kind, id) {
+    try {
+        const c = JSON.parse(localStorage.getItem(rankCacheKey(kind, id)) || 'null');
+        // 'data' must be present: a cached EMPTY result ([] / null) is a real hit.
+        return (c && ('data' in c)) ? c : null;
+    } catch (e) { return null; }
+}
+
+function rankCacheWrite(kind, id, data) {
+    try { localStorage.setItem(rankCacheKey(kind, id), JSON.stringify({ data })); }
+    catch (e) { /* quota exceeded — drop it, the tab still works */ }
+}
+
+// Dedupes background revalidations so a rapid open/close can't stack reads.
+const _rankRefreshInFlight = new Set();
+function rankRefresh(key, job) {
+    if (_rankRefreshInFlight.has(key)) return;
+    _rankRefreshInFlight.add(key);
+    Promise.resolve()
+        .then(job)
+        .catch(e => console.warn('[rankings] background refresh failed:', e))
+        .finally(() => _rankRefreshInFlight.delete(key));
+}
+
 // ── Recruits ranking (Rankings & Earnings modal → "Recruits" tab) ────────
 // Top recruiters by VALID recruits. One read of the whole /recruits tree in
-// RTDB 3, cached for the open modal and cleared on every tab switch — the same
-// convention as _earningsCache / _hostedGamesCache.
+// RTDB 3 — painted from the localStorage cache and revalidated on every open
+// (see the cache helpers above).
+async function fetchRecruitsRankingRows() {
+    const snap = await get(ref(db3, 'recruits'));
+    const tree = (snap && snap.exists()) ? snap.val() : {};
+    const tally = {};
+    Object.entries(tree || {}).forEach(([recruiterUid, kids]) => {
+        if (!kids || typeof kids !== 'object') return;
+        let valid = 0, claimed = 0;
+        Object.values(kids).forEach(r => {
+            if (!r || typeof r !== 'object' || r.valid !== true) return;
+            valid++;
+            if (r.claimedAt) claimed++;
+        });
+        if (valid > 0) tally[recruiterUid] = { uid: recruiterUid, valid, claimed };
+    });
+    // Inactive recruiters are hidden from public rankings (same rule as
+    // Leaderboards / Stars) — their data is kept, they just aren't listed.
+    return Object.values(tally)
+        .map(r => {
+            const u = window.globalUsersCache[r.uid] || {};
+            return { ...r, name: u.name, pic: u.pic, inactive: u.isInactive === true };
+        })
+        .filter(r => r.name && !r.inactive)
+        .sort((a, b) => (b.valid - a.valid) || (b.claimed - a.claimed) || String(a.name).localeCompare(String(b.name)));
+}
+
 async function renderRecruitsRanking(list, resetLimit) {
     const loader = document.getElementById('ranking-loader');
     const cfg = window.recruitRewardConfig ? window.recruitRewardConfig() : { lb: 10, prize: 50 };
 
+    // 1) Paint straight from the localStorage cache — never wait on the network.
     if (resetLimit || !window._recruitLbCache) {
+        const c = rankCacheRead('recruits', null);
+        if (c && Array.isArray(c.data)) window._recruitLbCache = c.data;
+    }
+
+    if (!Array.isArray(window._recruitLbCache)) {
+        // Cold load only: spinner + blank list.
         if (resetLimit) list.innerHTML = '';
         if (loader) loader.classList.remove('hidden');
-        let tallyRows = [];
         try {
-            const snap = await get(ref(db3, 'recruits'));
-            const tree = (snap && snap.exists()) ? snap.val() : {};
-            const tally = {};
-            Object.entries(tree || {}).forEach(([recruiterUid, kids]) => {
-                if (!kids || typeof kids !== 'object') return;
-                let valid = 0, claimed = 0;
-                Object.values(kids).forEach(r => {
-                    if (!r || typeof r !== 'object' || r.valid !== true) return;
-                    valid++;
-                    if (r.claimedAt) claimed++;
-                });
-                if (valid > 0) tally[recruiterUid] = { uid: recruiterUid, valid, claimed };
-            });
-            // Inactive recruiters are hidden from public rankings (same rule as
-            // Leaderboards / Stars) — their data is kept, they just aren't listed.
-            tallyRows = Object.values(tally)
-                .map(r => {
-                    const u = window.globalUsersCache[r.uid] || {};
-                    return { ...r, name: u.name, pic: u.pic, inactive: u.isInactive === true };
-                })
-                .filter(r => r.name && !r.inactive)
-                .sort((a, b) => (b.valid - a.valid) || (b.claimed - a.claimed) || String(a.name).localeCompare(String(b.name)));
+            const tallyRows = await fetchRecruitsRankingRows();
+            window._recruitLbCache = tallyRows;
+            rankCacheWrite('recruits', null, tallyRows);
         } catch (e) {
             console.warn('Recruits ranking load failed:', e);
         }
         if (loader) loader.classList.add('hidden');
-        window._recruitLbCache = tallyRows;
+    } else if (resetLimit) {
+        // The cached rows paint below; refresh silently in the background and
+        // repaint only when something actually changed.
+        rankRefresh('recruits', async () => {
+            const next = await fetchRecruitsRankingRows();
+            rankCacheWrite('recruits', null, next);
+            if (JSON.stringify(next) !== JSON.stringify(window._recruitLbCache)) {
+                window._recruitLbCache = next;
+                if (window.currentRankingFilter === 'Recruits') window.renderRankings(true);
+            }
+        });
     }
 
     const rows = window._recruitLbCache || [];
@@ -3779,6 +3835,38 @@ async function renderRecruitsRanking(list, resetLimit) {
     }
 }
 
+// Game Logs / Earnings reader — BOTH the cold load and the background refresh
+// go through it. Uses fetch() with cache: 'no-store' directly instead of the
+// Firebase SDK get(): the SDK used to return a stale partial result (1 row)
+// even though the RTDB REST API has all 20+ entries.
+async function fetchEarningsRows(uid) {
+    const res = await fetch(`${databaseURL3}/earnings/${uid}.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`earnings read failed (HTTP ${res.status})`);
+    const data = await res.json();
+    const rows = [];
+    if (data && typeof data === 'object') {
+        Object.keys(data).forEach(key => rows.push({ id: key, ...data[key] }));
+    }
+    rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    return rows;
+}
+
+// Host Log reader — shared by the cold load and the background refresh.
+// RTDB 3 only — fresh start (the old RTDB 1 /hostedGames node and legacy
+// users/{uid}/hostedGames copies are retired, no migration). Returns the RAW
+// rows newest-first; the cash-prize filter stays in the render path so a
+// cached empty result keeps both empty states. A read failure rejects (never
+// caches) so it can't wipe or poison a good cache.
+async function fetchHostedRows(uid) {
+    const snap = await get(ref(db3, `hostedGames/${uid}`));
+    const rows = [];
+    if (snap && snap.exists()) {
+        snap.forEach(child => rows.push({ id: child.key, ...child.val() }));
+    }
+    rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    return rows;
+}
+
 window.renderRankings = async (resetLimit = true) => {
     const list = document.getElementById('ranking-list');
     const loader = document.getElementById('ranking-loader');
@@ -3800,20 +3888,38 @@ window.renderRankings = async (resetLimit = true) => {
             return;
         }
         
-        // Use a cached version to prevent refetching during lazy loading if we already have it
+        const uid = window.currentUser.uid;
+
+        // 1) Paint straight from the localStorage cache (uid-scoped) — the tab
+        //    never waits on the network.
         if (resetLimit || !window._earningsCache) {
+            const c = rankCacheRead('earnings', uid);
+            if (c && Array.isArray(c.data)) window._earningsCache = c.data;
+        }
+
+        if (resetLimit && Array.isArray(window._earningsCache)) {
+            // The cached rows paint below; refresh silently in the background
+            // and repaint only when something actually changed.
+            rankRefresh('earnings:' + uid, async () => {
+                const rows = await fetchEarningsRows(uid);
+                rankCacheWrite('earnings', uid, rows);
+                if (JSON.stringify(rows) !== JSON.stringify(window._earningsCache)) {
+                    window._earningsCache = rows;
+                    if (window.currentRankingFilter === 'Game Logs' || window.currentRankingFilter === 'Earnings') window.renderRankings(true);
+                }
+            });
+        }
+
+        // 2) Cold load (no cache at all): spinner + network, exactly as before.
+        if (!Array.isArray(window._earningsCache)) {
             if(resetLimit) list.innerHTML = '';
             loader.classList.remove('hidden');
             try {
-                const snap = await get(ref(db3, `earnings/${window.currentUser.uid}`)).catch(() => null);
-                loader.classList.add('hidden');
-                
-                const rows = [];
-                if (snap && snap.exists()) {
-                    snap.forEach(child => rows.push({ id: child.key, ...child.val() }));
-                }
-                rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                const rows = await fetchEarningsRows(uid);
                 window._earningsCache = rows;
+                rankCacheWrite('earnings', uid, rows);
+                loader.classList.add('hidden');
+                console.debug('[renderRankings] GameLogs/Earnings read: uid=', uid, 'rowsFetched=', rows.length);
             } catch (error) {
                 console.error(error);
                 loader.classList.add('hidden');
@@ -3828,6 +3934,7 @@ window.renderRankings = async (resetLimit = true) => {
         const prizePhp = (p) => { const n = parseFloat(String(p || '').split('+')[0].replace(/[^0-9.]/g, '')); return isNaN(n) ? 0 : n; };
         const allRows = window._earningsCache;
         const earningsArray = prizeOnly ? allRows.filter(e => prizePhp(e.prize) > 0) : allRows;
+        console.debug('[renderRankings] GameLogs/Earnings filter: prizeOnly=', prizeOnly, 'allRows=', allRows ? allRows.length : 0, 'earningsArray=', earningsArray.length);
 
         if (earningsArray.length === 0) {
             list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">${prizeOnly ? 'No wins with cash prizes yet.' : 'No game logs yet.'}</p>`;
@@ -3871,6 +3978,7 @@ window.renderRankings = async (resetLimit = true) => {
         // The Top-10 rewards ladder deliberately does NOT appear here — it lives
         // only in Leaderboard → Rewards, so Earnings stays purely "what I won".
         const toRender = earningsArray.slice(resetLimit ? 0 : window.rankingRenderLimit - 20, window.rankingRenderLimit);
+        console.debug('[renderRankings] GameLogs/Earnings render: resetLimit=', resetLimit, 'rankingRenderLimit=', window.rankingRenderLimit, 'toRender=', toRender.length, 'of', earningsArray.length);
         const fragment = document.createDocumentFragment();
         
         toRender.forEach(e => {
@@ -3924,52 +4032,65 @@ window.renderRankings = async (resetLimit = true) => {
             return;
         }
 
+        const uid = window.currentUser.uid;
+
+        // 1) Paint straight from the localStorage cache (uid-scoped) — the tab
+        //    never waits on the network.
         if (resetLimit || !window._hostedGamesCache) {
+            const c = rankCacheRead('hosted', uid);
+            if (c && Array.isArray(c.data)) window._hostedGamesCache = c.data;
+        }
+
+        if (resetLimit && Array.isArray(window._hostedGamesCache)) {
+            // The cached rows paint below; refresh silently in the background
+            // and repaint only when something actually changed.
+            rankRefresh('hosted:' + uid, async () => {
+                const rows = await fetchHostedRows(uid);
+                rankCacheWrite('hosted', uid, rows);
+                if (JSON.stringify(rows) !== JSON.stringify(window._hostedGamesCache)) {
+                    window._hostedGamesCache = rows;
+                    if (window.currentRankingFilter === 'Host Log') window.renderRankings(true);
+                }
+            });
+        }
+
+        // 2) Cold load (no cache at all): spinner + network, exactly as before.
+        if (!Array.isArray(window._hostedGamesCache)) {
             if (resetLimit) list.innerHTML = '';
             loader.classList.remove('hidden');
             try {
-                // RTDB 3 only — fresh start (the old RTDB 1 /hostedGames node and
-                // legacy users/{uid}/hostedGames copies are retired, no migration).
-                const snap = await get(ref(db3, `hostedGames/${window.currentUser.uid}`)).catch(() => null);
-                loader.classList.add('hidden');
-
-                let hostedArray = [];
-                if (snap && snap.exists()) {
-                    snap.forEach(child => hostedArray.push({ id: child.key, ...child.val() }));
-                }
-
-                if (hostedArray.length === 0) {
-                    list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no hosted games yet.</p>`;
-                    window._hostedGamesCache = [];
-                    return;
-                }
-
-                hostedArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-                // Filter to only show games with a monetary prize (PHP amount > 0)
-                const prizedGames = hostedArray.filter(e => {
-                    const prizeStr = (e.prize || '').toString().split('+')[0].trim();
-                    const num = parseFloat(prizeStr.replace(/[^0-9.]/g, ''));
-                    return !isNaN(num) && num > 0;
-                });
-
-                if (prizedGames.length === 0) {
-                    list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">No games with monetary prizes yet.</p>`;
-                    window._hostedGamesCache = [];
-                    return;
-                }
-
-                window._hostedGamesCache = prizedGames;
+                const rows = await fetchHostedRows(uid);
+                window._hostedGamesCache = rows;
+                rankCacheWrite('hosted', uid, rows);
             } catch (error) {
                 console.error(error);
                 loader.classList.add('hidden');
                 list.innerHTML = `<p class="text-center text-red-500 text-sm py-4">Error loading host log.</p>`;
                 return;
             }
+            loader.classList.add('hidden');
         }
 
         if (resetLimit) list.innerHTML = '';
-        const hostedArray = window._hostedGamesCache;
+        const rawRows = window._hostedGamesCache;
+
+        if (rawRows.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">You have no hosted games yet.</p>`;
+            return;
+        }
+
+        // Filter to only show games with a monetary prize (PHP amount > 0) —
+        // runs at render time so a cached empty result keeps both empty states.
+        const hostedArray = rawRows.filter(e => {
+            const prizeStr = (e.prize || '').toString().split('+')[0].trim();
+            const num = parseFloat(prizeStr.replace(/[^0-9.]/g, ''));
+            return !isNaN(num) && num > 0;
+        });
+
+        if (hostedArray.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">No games with monetary prizes yet.</p>`;
+            return;
+        }
 
         // Summary banner — the Pending column is gone (payment status removed).
         if (resetLimit && hostedArray.length > 0) {
@@ -4051,16 +4172,44 @@ window.renderRankings = async (resetLimit = true) => {
         
         if (window.currentRankingFilter === "Leaderboards") {
             const scope = window.lbScope || 'overall';
-            if (scope === 'rewards') { await renderRankingRewards(list); return; }
+            if (scope === 'rewards') { await renderRankingRewards(list, resetLimit); return; }
             let lbMap = null;
             if (scope !== 'overall') {
                 const period = window.lbPeriodKey || window.lbPeriodKeyFor(scope);
+                const periodKey = `${scope}:${period}`;
                 // Daily totals live in RTDB 2 (/lbDaily); weekly & monthly stay in the main RTDB.
                 const periodRef = scope === 'daily'
                     ? ref(db2, `lbDaily/${period}`)
                     : ref(db, `lb${scope === 'weekly' ? 'Weekly' : 'Monthly'}/${period}`);
-                const snap = await get(periodRef).catch(() => null);
-                if (snap && snap.exists()) lbMap = snap.val();
+                const fetchLbMap = async () => {
+                    const snap = await get(periodRef).catch(() => null);
+                    return (snap && snap.exists()) ? snap.val() : null;
+                };
+
+                // 1) Paint straight from the localStorage cache — never wait on the network.
+                const cached = rankCacheRead('lb', periodKey);
+                if (cached) lbMap = cached.data || null;
+
+                if (!cached) {
+                    // Cold — same as before (await, no spinner).
+                    lbMap = await fetchLbMap();
+                    rankCacheWrite('lb', periodKey, lbMap);
+                } else if (resetLimit) {
+                    // Paint the cached map below, refresh silently in the
+                    // background and repaint only when the standings actually
+                    // changed (still on this exact view).
+                    const painted = lbMap;
+                    rankRefresh('lb:' + periodKey, async () => {
+                        const next = await fetchLbMap();
+                        rankCacheWrite('lb', periodKey, next);
+                        if (JSON.stringify(next) !== JSON.stringify(painted)
+                            && window.currentRankingFilter === 'Leaderboards'
+                            && (window.lbScope || 'overall') === scope
+                            && (window.lbPeriodKey || window.lbPeriodKeyFor(scope)) === period) {
+                            window.renderRankings(true);
+                        }
+                    });
+                }
             }
             const emptyPeriod = scope !== 'overall' && !lbMap;
             usersArray.forEach(u => {
@@ -4141,22 +4290,30 @@ window.renderRankings = async (resetLimit = true) => {
     requestAnimationFrame(() => list.style.minHeight = '');
 };
 
-// ── Top-10 rewards ladder (shared by the Rewards tab AND the Earnings tab) ──
-// Reads the admin-set prizes (settings/leaderboardRewards), the per-rank weekly
-// LB points required to take each prize (settings/leaderboardRewardMins) and the
-// given week's leaderboard, then renders ALL 10 ranks. Every prized rank
-// auto-fills with the best player who has reached that rank's minimum, so a
-// player visibly climbs from a lower rank to a higher one as their points grow.
-// Returns null when no prizes are configured at all.
-async function buildRewardsLadderHtml(weekKey, title) {
+// Reader for the ladder's three inputs (settings/leaderboardRewards,
+// settings/leaderboardRewardMins and the given week's lbWeekly bucket) —
+// shared by the cold load and the background revalidation; the paint itself
+// comes from the localStorage cache (see renderRankingRewards below).
+async function fetchRewardsLadderData(weekKey) {
     const [rewardsSnap, minsSnap, weeklySnap] = await Promise.all([
         get(ref(db, 'settings/leaderboardRewards')).catch(() => null),
         get(ref(db, 'settings/leaderboardRewardMins')).catch(() => null),
         get(ref(db, `lbWeekly/${weekKey}`)).catch(() => null)
     ]);
-    const rewards = (rewardsSnap && rewardsSnap.exists()) ? (rewardsSnap.val() || {}) : {};
-    const mins = (minsSnap && minsSnap.exists()) ? (minsSnap.val() || {}) : {};
-    const weekly = (weeklySnap && weeklySnap.exists()) ? (weeklySnap.val() || {}) : {};
+    return {
+        rewards: (rewardsSnap && rewardsSnap.exists()) ? (rewardsSnap.val() || {}) : {},
+        mins: (minsSnap && minsSnap.exists()) ? (minsSnap.val() || {}) : {},
+        weekly: (weeklySnap && weeklySnap.exists()) ? (weeklySnap.val() || {}) : {}
+    };
+}
+
+// ── Top-10 rewards ladder (shared by the Rewards tab AND the Earnings tab) ──
+// Renders ALL 10 ranks from the fetched inputs. Every prized rank auto-fills
+// with the best player who has reached that rank's minimum, so a player
+// visibly climbs from a lower rank to a higher one as their points grow.
+// Returns null when no prizes are configured at all.
+function buildRewardsLadderHtml(data, title) {
+    const { rewards, mins, weekly } = data;
 
     // Ranks 1–10 with a non-empty prize (empty tail = "stop rewarding there")
     const configured = [];
@@ -4260,20 +4417,47 @@ async function buildRewardsLadderHtml(weekKey, title) {
 // rank, each slot auto-filled with whoever has already reached that rank's floor.
 // The week comes from the period bar (shared with the Weekly tab) and falls back
 // to the current ISO week when no week has been picked yet.
-async function renderRankingRewards(list) {
+async function renderRankingRewards(list, resetLimit) {
     const loader = document.getElementById('ranking-loader');
-    if (loader) loader.classList.remove('hidden');
 
     const weekKey = window.lbPeriodKey || window.lbPeriodKeyFor('weekly');
     const isThisWeek = weekKey === window.lbPeriodKeyFor('weekly');
     const weekLabel = window.lbPeriodLabel('weekly', weekKey);
     const title = isThisWeek ? "This week's Top 10" : `${escapeHtml(weekLabel)} · Top 10`;
 
-    const html = await buildRewardsLadderHtml(weekKey, title);
-    if (loader) loader.classList.add('hidden');
+    const paint = (data) => {
+        list.innerHTML = buildRewardsLadderHtml(data, title)
+            || `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🎁 No leaderboard rewards are configured yet.</p>`;
+        list.style.minHeight = '';
+    };
 
-    list.innerHTML = html || `<p class="text-center text-gray-500 dark:text-gray-400 text-xs py-6">🎁 No leaderboard rewards are configured yet.</p>`;
-    list.style.minHeight = '';
+    // 1) Paint straight from the localStorage cache — never wait on the network.
+    const cached = rankCacheRead('rewards', weekKey);
+    const data = (cached && cached.data && typeof cached.data === 'object') ? cached.data : null;
+
+    if (data) {
+        paint(data);
+        // Refresh silently in the background on every open and repaint only
+        // when something actually changed (still on this exact week's view).
+        if (resetLimit) rankRefresh('rewards:' + weekKey, async () => {
+            const next = await fetchRewardsLadderData(weekKey);
+            rankCacheWrite('rewards', weekKey, next);
+            if (JSON.stringify(next) !== JSON.stringify(data)
+                && window.currentRankingFilter === 'Leaderboards'
+                && (window.lbScope || 'overall') === 'rewards'
+                && (window.lbPeriodKey || window.lbPeriodKeyFor('weekly')) === weekKey) {
+                window.renderRankings(true);
+            }
+        });
+        return;
+    }
+
+    // 2) Cold — same as before (loader + await).
+    if (loader) loader.classList.remove('hidden');
+    const fresh = await fetchRewardsLadderData(weekKey);
+    if (loader) loader.classList.add('hidden');
+    rankCacheWrite('rewards', weekKey, fresh);
+    paint(fresh);
 }
 
 // ============================================================

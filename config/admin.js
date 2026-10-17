@@ -3,8 +3,8 @@ import { app, auth, db, db3, fsdb, fsdb2, fsdb3 } from "../js/firebase-config.js
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { ref, onValue, set, update, push, get, remove, query, limitToLast, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, getCountFromServer, doc, query as fsQuery, orderBy, limit, getDocs, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import "../js/globals.js?v=10";
-import "../js/helpers.js?v=76";
+import "../js/globals.js?v=11";
+import "../js/helpers.js?v=77";
 
 const loadingScreen = document.getElementById('loading-screen');
 const adminContent = document.getElementById('admin-content');
@@ -327,6 +327,16 @@ function initAdminDashboard() {
             document.getElementById('set-questReqChat').value = qset.reqChat ?? '';
             document.getElementById('set-questLbReward').value = qset.lbReward ?? '';
             document.getElementById('set-questMoneyReward').value = qset.moneyReward ?? '';
+            // Weekly Quest — one nested settings object (/settings/weeklyQuests).
+            const wqset = settings.weeklyQuests || {};
+            document.getElementById('set-weeklyQuestsEnabled').value = wqset.enabled === false ? '0' : '1';
+            document.getElementById('set-weeklyQuestReqReactsReceived').value = wqset.reqReactsReceived ?? '';
+            document.getElementById('set-weeklyQuestReqChatWins').value = wqset.reqChatWins ?? '';
+            document.getElementById('set-weeklyQuestReqRecruits').value = wqset.reqRecruits ?? '';
+            document.getElementById('set-weeklyQuestReqPetLevels').value = wqset.reqPetLevels ?? '';
+            document.getElementById('set-weeklyQuestReqSongsAdded').value = wqset.reqSongsAdded ?? '';
+            document.getElementById('set-weeklyQuestLbReward').value = wqset.lbReward ?? '';
+            document.getElementById('set-weeklyQuestMoneyReward').value = wqset.moneyReward ?? '';
             document.getElementById('set-lbBoostMultiplier').value = settings.lbBoostMultiplier ?? '';
             document.getElementById('set-lbBoostStart').value = settings.lbBoostStart ?? '';
             document.getElementById('set-lbBoostEnd').value = settings.lbBoostEnd ?? '';
@@ -392,6 +402,14 @@ function initAdminDashboard() {
             document.getElementById('set-questReqChat').value = '';
             document.getElementById('set-questLbReward').value = '';
             document.getElementById('set-questMoneyReward').value = '';
+            document.getElementById('set-weeklyQuestsEnabled').value = '1';
+            document.getElementById('set-weeklyQuestReqReactsReceived').value = '';
+            document.getElementById('set-weeklyQuestReqChatWins').value = '';
+            document.getElementById('set-weeklyQuestReqRecruits').value = '';
+            document.getElementById('set-weeklyQuestReqPetLevels').value = '';
+            document.getElementById('set-weeklyQuestReqSongsAdded').value = '';
+            document.getElementById('set-weeklyQuestLbReward').value = '';
+            document.getElementById('set-weeklyQuestMoneyReward').value = '';
             for (let i = 1; i <= 10; i++) {
                 const el = document.getElementById('set-rankReward' + i);
                 if (el) el.value = '';
@@ -440,6 +458,16 @@ function initAdminDashboard() {
         document.getElementById('set-questReqChat').placeholder = qd.reqChat ?? 30;
         document.getElementById('set-questLbReward').placeholder = qd.lbReward ?? 50;
         document.getElementById('set-questMoneyReward').placeholder = qd.moneyReward ?? 0;
+        // Weekly Quest placeholders mirror the client defaults in js/helpers.js.
+        const wqd = window.siteSettings.weeklyQuests || {};
+        document.getElementById('set-weeklyQuestsEnabled').placeholder = wqd.enabled === false ? '0' : '1';
+        document.getElementById('set-weeklyQuestReqReactsReceived').placeholder = wqd.reqReactsReceived ?? 50;
+        document.getElementById('set-weeklyQuestReqChatWins').placeholder = wqd.reqChatWins ?? 50;
+        document.getElementById('set-weeklyQuestReqRecruits').placeholder = wqd.reqRecruits ?? 2;
+        document.getElementById('set-weeklyQuestReqPetLevels').placeholder = wqd.reqPetLevels ?? 10;
+        document.getElementById('set-weeklyQuestReqSongsAdded').placeholder = wqd.reqSongsAdded ?? 10;
+        document.getElementById('set-weeklyQuestLbReward').placeholder = wqd.lbReward ?? 5000;
+        document.getElementById('set-weeklyQuestMoneyReward').placeholder = wqd.moneyReward ?? 5;
         document.getElementById('set-lbBoostMultiplier').placeholder = window.siteSettings.lbBoostMultiplier ?? '1';
         document.getElementById('set-lbBoostStart').placeholder = window.siteSettings.lbBoostStart ?? '22:00';
         document.getElementById('set-lbBoostEnd').placeholder = window.siteSettings.lbBoostEnd ?? '00:00';
@@ -513,6 +541,18 @@ function initAdminDashboard() {
                 reqChat: parseInt(document.getElementById('set-questReqChat').value) || 0,
                 lbReward: parseInt(document.getElementById('set-questLbReward').value) || 0,
                 moneyReward: parseInt(document.getElementById('set-questMoneyReward').value) || 0,
+            },
+            // Weekly Quest — one nested object under /settings/weeklyQuests. A requirement
+            // of 0 hides that quest line; moneyReward is ₱ display-only (hidden at 0).
+            weeklyQuests: {
+                enabled: document.getElementById('set-weeklyQuestsEnabled').value === '1',
+                reqReactsReceived: parseInt(document.getElementById('set-weeklyQuestReqReactsReceived').value) || 0,
+                reqChatWins: parseInt(document.getElementById('set-weeklyQuestReqChatWins').value) || 0,
+                reqRecruits: parseInt(document.getElementById('set-weeklyQuestReqRecruits').value) || 0,
+                reqPetLevels: parseInt(document.getElementById('set-weeklyQuestReqPetLevels').value) || 0,
+                reqSongsAdded: parseInt(document.getElementById('set-weeklyQuestReqSongsAdded').value) || 0,
+                lbReward: parseInt(document.getElementById('set-weeklyQuestLbReward').value) || 0,
+                moneyReward: parseInt(document.getElementById('set-weeklyQuestMoneyReward').value) || 0,
             },
         };
 

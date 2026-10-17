@@ -31,7 +31,7 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <!-- Prefetch chat page resources for faster navigation -->
     <link rel="prefetch" href="chat/index.html">
-    <link rel="prefetch" href="chat/js/app.js?v=113">
+    <link rel="prefetch" href="chat/js/app.js?v=114">
     <script>
         // Light theme is the DEFAULT for first-timers; dark only when chosen before.
         if (localStorage.theme === 'dark') document.documentElement.classList.add('dark');
@@ -630,22 +630,24 @@
         </div>
     </div>
 
-    <!-- Daily Quest — today's checklist + claimable LB reward (RTDB 3 /quests).
-         Progress counters, react dedupe and claimedAt live per user per day;
-         requirements/rewards come from /config → settings/quests. Logic in js/quest.js. -->
+    <!-- Quest — Daily + Weekly checklists with claimable rewards (RTDB 3 /quests and
+         /weekly_quests). Progress counters, react dedupe and claimedAt live per user per
+         day/week; requirements/rewards come from /config → settings/quests + weeklyQuests.
+         Logic in js/quest.js (Today · History) and js/weekly-quest.js (Weekly). -->
     <div id="quest-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
         <div class="bg-white dark:bg-slate-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative border border-gray-200 dark:border-slate-700 max-h-[85vh] flex flex-col">
             <button onclick="window.closeQuestModal()" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
 
             <div class="flex items-center justify-between mb-1 shrink-0">
-                <h2 class="text-lg font-bold dark:text-white flex items-center"><i class="fa-solid fa-scroll mr-2 text-amber-500"></i> Daily Quest</h2>
+                <h2 class="text-lg font-bold dark:text-white flex items-center"><i class="fa-solid fa-scroll mr-2 text-amber-500"></i> Quest</h2>
             </div>
-            <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2 shrink-0">Complete today's checklist, then claim your reward. <span id="quest-date-label" class="font-semibold text-gray-500 dark:text-gray-400"></span> — resets at midnight.</p>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2 shrink-0">Complete the checklists, then claim your rewards. <span id="quest-date-label" class="font-semibold text-gray-500 dark:text-gray-400"></span></p>
 
-            <!-- Today / History tabs (History = the last 7 days, RTDB 3 /quests). -->
+            <!-- Today / History / Weekly tabs. -->
             <div id="quest-tabs" class="flex items-center gap-1.5 mb-2 shrink-0">
                 <button id="quest-tab-today" onclick="window.setQuestTab('today')" class="px-3 py-1 rounded-full text-[11px] font-bold bg-blue-600 text-white border border-transparent transition">Today</button>
                 <button id="quest-tab-history" onclick="window.setQuestTab('history')" class="px-3 py-1 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 border border-gray-200 dark:border-slate-700 transition">History</button>
+                <button id="quest-tab-weekly" onclick="window.setQuestTab('weekly')" class="px-3 py-1 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700 dark:bg-slate-900 dark:text-gray-300 border border-gray-200 dark:border-slate-700 transition">Weekly</button>
             </div>
 
             <div id="quest-today-pane" class="flex-1 flex flex-col min-h-0">
@@ -666,6 +668,24 @@
             <div id="quest-history-pane" class="hidden overflow-y-auto flex-1 scrollbar-hide text-left min-h-[120px]">
                 <div id="quest-history-list" class="space-y-1.5"></div>
             </div>
+
+            <!-- Weekly pane — this week's checklist + claimable reward (RTDB 3 /weekly_quests).
+                 Requirements/rewards come from /config → settings/weeklyQuests. Logic in
+                 js/weekly-quest.js (mounted by setQuestTab('weekly')). -->
+            <div id="quest-weekly-pane" class="hidden flex-1 flex flex-col min-h-0">
+                <!-- Reward banner — ₱ money is display-only and hidden when 0 (/config → Weekly Quest). -->
+                <div class="flex items-center justify-between px-2.5 py-2 rounded-lg border border-yellow-200 dark:border-yellow-800/50 bg-yellow-50/60 dark:bg-yellow-900/10 mb-2 shrink-0">
+                    <span class="text-[10px] font-bold text-yellow-700 dark:text-yellow-300"><i class="fa-solid fa-gift mr-1"></i>Reward</span>
+                    <span class="flex items-center gap-1.5 text-[10px] font-black whitespace-nowrap">
+                        <span class="text-yellow-600 dark:text-yellow-400">🏆 <span id="weekly-quest-info-lb">—</span> LB</span>
+                        <span id="weekly-quest-info-money-wrap" class="hidden text-green-600 dark:text-green-400">₱<span id="weekly-quest-info-money">—</span></span>
+                    </span>
+                </div>
+                <p class="text-[11px] text-gray-400 dark:text-gray-500 mb-2 shrink-0"><span id="weekly-quest-date-label" class="font-semibold text-gray-500 dark:text-gray-400"></span> — resets every Monday.</p>
+
+                <div id="weekly-quest-list" class="overflow-y-auto flex-1 space-y-1.5 scrollbar-hide text-left min-h-[120px]"></div>
+                <button id="weekly-quest-claim-btn" onclick="window.claimWeeklyQuest()" disabled class="mt-3 shrink-0 w-full py-2 rounded-lg text-xs font-black bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-slate-600 cursor-not-allowed transition">Complete all quests to claim</button>
+            </div><!-- /quest-weekly-pane -->
         </div>
     </div>
 
@@ -1690,14 +1710,15 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
-    <script type="module" src="js/renderers.js?v=103"></script>
-    <script type="module" src="js/helpers.js?v=76"></script>
+    <script type="module" src="js/renderers.js?v=107"></script>
+    <script type="module" src="js/helpers.js?v=77"></script>
     <script type="module" src="js/games.js?v=67"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=29"></script>
-    <script type="module" src="js/quest.js?v=4"></script>
+    <script type="module" src="js/quest.js?v=7"></script>
+    <script type="module" src="js/weekly-quest.js?v=4"></script>
     <script type="module" src="js/help.js?v=2"></script>
-    <script type="module" src="js/main.js?v=117"></script>
+    <script type="module" src="js/main.js?v=122"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.

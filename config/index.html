@@ -273,6 +273,51 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- Weekly Quest — per-week checklist requirements + rewards. Progress
+                                 lives in RTDB 3 /weekly_quests; a requirement of 0 hides that line. -->
+                            <div class="pt-2 mt-1 border-t border-slate-100 dark:border-slate-700/50">
+                                <p class="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-2 ml-0.5"><i class="fa-solid fa-calendar-week mr-1 text-indigo-500"></i>Weekly Quest</p>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Quest Status</label>
+                                        <select id="set-weeklyQuestsEnabled" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                            <option value="1">Enabled</option>
+                                            <option value="0">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">LB Reward (on claim)</label>
+                                        <input type="number" id="set-weeklyQuestLbReward" min="0" placeholder="5000" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Reactions Received</label>
+                                        <input type="number" id="set-weeklyQuestReqReactsReceived" min="0" placeholder="50" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Chat Games Won</label>
+                                        <input type="number" id="set-weeklyQuestReqChatWins" min="0" placeholder="50" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Valid Recruits</label>
+                                        <input type="number" id="set-weeklyQuestReqRecruits" min="0" placeholder="2" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Pet Level-Ups</label>
+                                        <input type="number" id="set-weeklyQuestReqPetLevels" min="0" placeholder="10" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Req: Songs Added</label>
+                                        <input type="number" id="set-weeklyQuestReqSongsAdded" min="0" placeholder="10" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 ml-0.5">Money Prize (₱, visual)</label>
+                                        <input type="number" id="set-weeklyQuestMoneyReward" min="0" placeholder="5" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs outline-none transition">
+                                    </div>
+                                    <div class="col-span-2">
+                                        <p class="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 ml-0.5">A requirement of 0 hides that quest line. "Chat Games Won" only counts wins that actually paid an LB reward. "Valid Recruits" counts each recruit-reward claim (so it respects the claim cooldown). The ₱ Money Prize is visual only for now (never paid out) and is hidden from members when set to 0.</p>
+                                    </div>
+                                </div>
+                            </div>
                             <!-- Cooldown -->
                             <div class="grid grid-cols-2 gap-3 pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
                                 <div class="col-span-2">
@@ -624,6 +669,6 @@
         </div>
     </main>
 
-    <script type="module" src="admin.js?v=41"></script>
+    <script type="module" src="admin.js?v=42"></script>
 </body>
 </html>

@@ -22,7 +22,7 @@ import {
     GoogleAuthProvider,
     signInWithPopup
 } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { ref, get, set, update, remove } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
+import { ref, get, set, update, remove, increment } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 
 const SYNC_INTERVAL_MS = 15000;   // at most one RTDB write per 15s (the game saves every 2.5s)
 const savePath = (ownerUid) => `pets/${ownerUid}`;
@@ -100,7 +100,26 @@ window.PetCloud = {
     },
 
     // Reset is owner-only: a co-parent must leave instead of nuking the pet.
-    canReset: () => !!uid && petOwnerUid === uid
+    canReset: () => !!uid && petOwnerUid === uid,
+
+    // Weekly Quest — a pet level-up earned by the SIGNED-IN player (pet/index.html
+    // grantXp calls this on every level++). Credited to `uid` (the player), not
+    // petOwnerUid, so a co-parent's own play counts toward their own quest.
+    // Inline write (never import js/weekly-quest.js) so firebase-config.js is
+    // never evaluated twice. ISO-week key matches js/games.js lbWeekKey.
+    weeklyQuest: (metric) => {
+        if (!uid || !metric) return;
+        const d = new Date();
+        const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const day = date.getDay() === 0 ? 6 : date.getDay() - 1;
+        const thursday = new Date(date);
+        thursday.setDate(date.getDate() - day + 3);
+        const jan1 = new Date(thursday.getFullYear(), 0, 1, 12);
+        const week = Math.ceil((((thursday - jan1) / 86400000) + jan1.getDay() + 1) / 7);
+        const wk = `${thursday.getFullYear()}-W${String(week).padStart(2, '0')}`;
+        update(ref(db3, `weekly_quests/${wk}/${uid}/p`), { [metric]: increment(1) })
+            .catch((e) => console.warn('[pet] weekly quest track error:', e));
+    }
 };
 
 // Flush pending progress when the tab is hidden; when a LINKED (co-parent)

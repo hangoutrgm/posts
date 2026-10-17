@@ -73,6 +73,7 @@ export const fsdb3 = initializeFirestore(app3, {
 // never signed in), so the client writes the owner uid into the path itself —
 // same "open with client-side guards" convention as db2.
 export const db3 = getDatabase(app3);
+export const databaseURL3 = firebaseConfig3.databaseURL;
 
 // Map to track which Firestore database holds a specific post (1, 2, or 3)
 window._postDbMap = window._postDbMap || new Map();

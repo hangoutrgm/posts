@@ -3,7 +3,7 @@
 // ============================================================
 import { ref, push, get, set, update, runTransaction, increment } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
-import { db, db2 } from '../../js/firebase-config.js?v=3';
+import { db, db2, db3 } from '../../js/firebase-config.js?v=3';
 import { GAME_META, pick, shuffle } from './helpers.js?v=6';
 import {
   mathRound, countEmojiRound, jumbledRound, triviaRound, ROUNDS_PER_GAME,
@@ -238,6 +238,11 @@ async function maybeAwardLb(mid) {
     }
     if (gm.lbWinnerUid && gm.lbRewardPts > 0) {
       creditLb(gm.lbWinnerUid, gm.lbRewardPts);
+      // Weekly Quest — a VALID chat-game win (only when LB was actually awarded).
+      // Inline write (never import js/weekly-quest.js) so firebase-config.js is
+      // never evaluated twice. lbWeekKey matches js/games.js → same week bucket.
+      update(ref(db3, `weekly_quests/${lbWeekKey(new Date())}/${gm.lbWinnerUid}/p`), { chatWins: increment(1) })
+        .catch((e) => console.warn('[ChatGames] weekly quest chat-win track error:', e));
       _toast(`🏆 +${gm.lbRewardPts} LB points!`);
     }
     if (gm.hostId && gm.lbHostPts > 0) {

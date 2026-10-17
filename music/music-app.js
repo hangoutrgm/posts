@@ -21,7 +21,9 @@ import {
   push,
   set,
   remove,
-  get
+  get,
+  update,
+  increment
 } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
 import { YouTubeAudioPlayer } from './youtube-player.js?v=7';
 
@@ -33,6 +35,18 @@ const LAST_KEY = 'hangout_music_last';
 const LAST_MAX_QUEUE = 100;
 
 const $ = (id) => document.getElementById(id);
+
+// ISO year-week key (Mon–Sun) for Weekly Quest writes — byte-identical to
+// window.lbWeekKey (js/games.js) so every app lands on the same week bucket.
+const weeklyQuestWeekKey = (d = new Date()) => {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = date.getDay() === 0 ? 6 : date.getDay() - 1; // Mon=0 .. Sun=6
+  const thursday = new Date(date);
+  thursday.setDate(date.getDate() - day + 3);
+  const jan1 = new Date(thursday.getFullYear(), 0, 1, 12);
+  const week = Math.ceil((((thursday - jan1) / 86400000) + jan1.getDay() + 1) / 7);
+  return `${thursday.getFullYear()}-W${String(week).padStart(2, '0')}`;
+};
 
 const state = {
   user: null,
@@ -548,6 +562,15 @@ async function addToLibrary(track) {
       addedByUid: state.user.uid,
       addedAt: Date.now()
     });
+    // Weekly Quest — one NEW community-library song added (the duplicate guard
+    // above already rejected anything already in the library). Inline write
+    // (never import js/weekly-quest.js) so firebase-config.js is never
+    // evaluated twice. weekKey matches js/games.js lbWeekKey → same bucket.
+    const wk = weeklyQuestWeekKey();
+    if (wk) {
+      update(ref(db3, `weekly_quests/${wk}/${state.user.uid}/p`), { songsAdded: increment(1) })
+        .catch((e) => console.warn('[music] weekly quest song track error:', e));
+    }
     toast('Added to the community library');
   } catch (err) {
     console.warn('[music] add failed:', err);
