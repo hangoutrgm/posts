@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v338';
+const CACHE_NAME = 'hangout-v339';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
@@ -51,13 +51,13 @@ const PRECACHE_ASSETS = [
   './chat/css/styles.css?v=54',
   './js/renderers.js?v=102',
   './js/helpers.js?v=76',
-  './js/games.js?v=66',
-  './js/main.js?v=115',
+  './js/games.js?v=67',
+  './js/main.js?v=116',
   './js/myday.js?v=29',
   './js/quest.js?v=4',
   './js/help.js?v=2',
   './js/voice-recorder.js?v=3',
-  './chat/js/app.js?v=112',
+  './chat/js/app.js?v=113',
   // Lazy mini widgets — pre-cached so their first tap costs zero network.
   './chat/mini-chat.js?v=10',
   './music/mini-player.js?v=5',

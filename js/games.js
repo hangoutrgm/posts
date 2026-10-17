@@ -1,5 +1,5 @@
 import { db, db2, db3, fsdb, fsdb2, fsdb3, getPostDocRef, getFirestoreForPost, getRoundRobinFsdb, getFirestoreBySource } from "./firebase-config.js";
-import { ref, update, set, push, get, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+import { ref, update, set, push, get, increment, runTransaction, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 import { collection, doc, addDoc, getDoc, updateDoc, deleteDoc, deleteField, arrayUnion, serverTimestamp as fsServerTimestamp, runTransaction as fsRunTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 // Local "today" date string (YYYY-MM-DD) — used for the daily game-post limits (resets at 12:00 AM local time)
@@ -186,24 +186,55 @@ window.creditLbPeriods = (uid, pts) => {
 // /flaggedGroups: { g0: { at, uids: [...] } }. Games read that.
 // Toggle: /config → Site Control → settings.zeroLbForFlaggedPair.
 // ============================================================
-window._flaggedGroupOf = window._flaggedGroupOf || {}; // uid -> gid
+// uid -> [gid, ...]. A member may legitimately sit in SEVERAL groups (home WiFi +
+// a shared mobile/CGNAT IP + another account's hotspot), so every group id is kept.
+// Collapsing to ONE gid per uid made inFlaggedPair() miss real pairs — the same flaw
+// js/main.js's recruit checks call out — letting same-IP matches keep full LB rewards.
+window._flaggedGroupOf = window._flaggedGroupOf || {};
+const flaggedGroupsMapFrom = (snap) => {
+    const map = {};
+    try {
+        if (snap && snap.exists()) {
+            Object.entries(snap.val() || {}).forEach(([gid, g]) => {
+                const raw = g && g.uids;
+                const uids = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+                if (uids.length < 2) return; // a group needs at least 2 accounts to be a pair
+                uids.forEach(uid => {
+                    if (!uid) return;
+                    if (!Array.isArray(map[uid])) map[uid] = [];
+                    if (!map[uid].includes(gid)) map[uid].push(gid);
+                });
+            });
+        }
+    } catch (_) { /* return whatever was built */ }
+    return map;
+};
 window.refreshFlaggedGroups = async () => {
     try {
         const snap = await get(ref(db, 'flaggedGroups'));
-        const map = {};
-        if (snap.exists()) {
-            Object.entries(snap.val()).forEach(([gid, g]) => {
-                const uids = Array.isArray(g?.uids) ? g.uids : [];
-                if (uids.length > 1) uids.forEach(uid => { map[uid] = gid; });
-            });
-        }
-        window._flaggedGroupOf = map;
+        window._flaggedGroupOf = flaggedGroupsMapFrom(snap);
     } catch (e) { /* best-effort: keep last known groups */ }
+};
+// Live mirror sync — attach ONCE after login. /flaggedGroups is a tiny (~1KB) node
+// the admin's /config page rewrites rarely, so a live listener costs ~nothing and
+// closes the gap where a group the admin JUST mirrored stayed invisible to this
+// client for up to 10 minutes (the poll in js/main.js stays as a fallback).
+let _flaggedListenerAttached = false;
+window.startFlaggedGroupsListener = () => {
+    if (_flaggedListenerAttached) return;
+    _flaggedListenerAttached = true;
+    try {
+        onValue(ref(db, 'flaggedGroups'),
+            (snap) => { window._flaggedGroupOf = flaggedGroupsMapFrom(snap); },
+            () => { _flaggedListenerAttached = false; }); // read denied (logged out) — allow a later retry
+    } catch (_) { _flaggedListenerAttached = false; }
 };
 window.inFlaggedPair = (uidA, uidB) => {
     if (!uidA || !uidB || uidA === uidB) return false;
     const gA = window._flaggedGroupOf[uidA];
-    return Boolean(gA && gA === window._flaggedGroupOf[uidB]);
+    const gB = window._flaggedGroupOf[uidB];
+    if (!Array.isArray(gA) || !Array.isArray(gB)) return false;
+    return gA.some(g => gB.includes(g)); // shared group = same-IP pair
 };
 window.flaggedLbShieldOn = () => Number(window.siteSettings?.zeroLbForFlaggedPair) === 1;
 // Winner LB scorer — returns 0 (and notifies) when host+winner share a flagged group.

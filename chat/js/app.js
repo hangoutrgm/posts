@@ -1,7 +1,7 @@
 import { auth, db, db2, db3, cloudinaryConfig } from '../../js/firebase-config.js?v=3';
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, updateProfile, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 import { endBefore, get, limitToLast, limitToFirst, onDisconnect, onValue, orderByKey, push, query, ref, remove, runTransaction, set, update, increment, onChildAdded, onChildChanged, onChildRemoved, goOnline, goOffline } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js';
-import '../games/index.js?v=35';
+import '../games/index.js?v=36';
 
 // Chat-games context: name lookup, active thread, toasts, settings, lb-rewards checker
 if (window.ChatGames) {

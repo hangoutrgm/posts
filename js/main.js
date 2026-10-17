@@ -3412,6 +3412,9 @@ onAuthStateChanged(auth, (user) => {
         // Same-IP LB shield: load the admin-mirrored flagged groups (uids only) so
         // game awards can zero LB for host+winner same-IP pairs.
         window.refreshFlaggedGroups && window.refreshFlaggedGroups();
+        // ...and keep it live: a group the admin just mirrored reaches this client
+        // in ~1s instead of waiting for the 10-min poll above.
+        window.startFlaggedGroupsListener && window.startFlaggedGroupsListener();
         
         document.getElementById('open-login-btn').classList.add('hidden');
         document.getElementById('user-info').classList.remove('hidden');

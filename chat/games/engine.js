@@ -81,7 +81,7 @@ const creditLb = (uid, pts) => {
 // The admin's /config page mirrors flagged IP groups (uids ONLY, no IPs) into
 // the public /flaggedGroups node. When a chat-game host & winner are in the same
 // flagged group, the game awards 0 LB (soft guard — nobody is blocked/banned).
-let _flaggedGroupOf = {};       // uid -> gid
+let _flaggedGroupOf = {};       // uid -> [gid, ...] (a uid may sit in several groups)
 let _shieldRefreshAt = 0;
 const flaggedShieldOn = () => Number(_getSettings().zeroLbForFlaggedPair) === 1;
 const refreshFlaggedGroups = async () => {
@@ -93,8 +93,16 @@ const refreshFlaggedGroups = async () => {
     const map = {};
     if (snap.exists()) {
       Object.entries(snap.val()).forEach(([gid, g]) => {
-        const uids = Array.isArray(g?.uids) ? g.uids : [];
-        if (uids.length > 1) uids.forEach(uid => { map[uid] = gid; });
+        // Keep EVERY group a uid belongs to (single-gid mapping missed real pairs —
+        // same fix as js/games.js): a uid on several shared IPs still matches.
+        const raw = g && g.uids;
+        const uids = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+        if (uids.length < 2) return;
+        uids.forEach(uid => {
+          if (!uid) return;
+          if (!Array.isArray(map[uid])) map[uid] = [];
+          if (!map[uid].includes(gid)) map[uid].push(gid);
+        });
       });
     }
     _flaggedGroupOf = map;
@@ -103,7 +111,9 @@ const refreshFlaggedGroups = async () => {
 const inFlaggedPair = (uidA, uidB) => {
   if (!uidA || !uidB || uidA === uidB) return false;
   const gA = _flaggedGroupOf[uidA];
-  return Boolean(gA && gA === _flaggedGroupOf[uidB]);
+  const gB = _flaggedGroupOf[uidB];
+  if (!Array.isArray(gA) || !Array.isArray(gB)) return false;
+  return gA.some(g => gB.includes(g));
 };
 // LB game-night boost — /config → settings (same knob as Hangout Posts games):
 // lbBoostMultiplier (1 = off) applies between lbBoostStart and lbBoostEnd
