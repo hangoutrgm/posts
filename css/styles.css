@@ -16,6 +16,21 @@ body {
     border-left: 2px solid rgba(156, 163, 175, 0.2); 
 }
 
+/* ── Scroll performance ──────────────────────────────────────────────────
+   Feed/profile post cards: the feed keeps every rendered post in the DOM
+   (infinite scroll), so a long session holds hundreds of cards "live".
+   `content-visibility: auto` lets the browser skip style/layout/paint for
+   cards far off-screen — the biggest win for deep-feed scrolling.
+   `contain-intrinsic-size: auto <guess>` supplies the height while a card
+   is skipped; the `auto` keyword keeps the LAST rendered height once a card
+   has been on-screen, so the scrollbar never jumps. Set on `.post-card` by
+   js/renderers.js (generatePostHTML). Browsers without support (old Safari)
+   simply ignore it. Never put this on a scrolling ancestor or a modal. */
+.post-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+}
+
 /* ── Create Post: Type Chooser (small modal list) ── */
 .create-type-btn {
     display: flex;

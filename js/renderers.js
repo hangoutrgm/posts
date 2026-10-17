@@ -1817,7 +1817,7 @@ window.generatePostHTML = function(post, prefix, filterContext) {
 
     const postEl = document.createElement('div');
     postEl.id = `post-${prefix}-${post.id}`;
-    postEl.className = `bg-white dark:bg-slate-800 rounded-xl p-3 shadow-sm border ${effectivelyPinned ? 'border-l-4 border-l-green-500 border-y-0 border-r-0' : 'border-gray-100 dark:border-slate-700'} relative mb-3`;
+    postEl.className = `post-card bg-white dark:bg-slate-800 rounded-xl p-3 shadow-sm border ${effectivelyPinned ? 'border-l-4 border-l-green-500 border-y-0 border-r-0' : 'border-gray-100 dark:border-slate-700'} relative mb-3`;
     
     let adminControls = '';
     // My Day posts (Reels tab) are not community_posts docs, so pin / lock / visibility /

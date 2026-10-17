@@ -38,14 +38,17 @@
         else document.documentElement.classList.remove('dark');
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=29">
+    <link rel="stylesheet" href="css/styles.css?v=30">
     <link rel="stylesheet" href="css/tailwind.min.css?v=20">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
 </head>
 <body class="min-h-screen bg-gray-100 text-gray-900 dark:bg-[#0b1120] dark:text-[#f8fafc] transition-colors duration-300">
 
-    <nav class="sticky top-0 z-50 px-3 py-2 flex justify-between items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-slate-800">
+    <!-- Sticky nav: keep it free of backdrop-filter/blur — a blurred sticky bar re-runs
+         the blur on EVERY scroll frame and is the main source of jank on mobile. The
+         near-opaque backgrounds keep the frosted look (same rule as arena/arena.css). -->
+    <nav class="sticky top-0 z-50 px-3 py-2 flex justify-between items-center bg-white dark:bg-slate-900 shadow-sm border-b border-gray-200 dark:border-slate-800">
         <div class="flex items-center space-x-2 truncate cursor-pointer" onclick="window.closeProfile(); window.clearIsolatedPost();">
             <i class="fa-solid fa-gamepad text-blue-500 text-lg"></i>
             <h1 class="text-base md:text-lg font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600 truncate">Hangout RPW</h1>
@@ -1687,14 +1690,14 @@
     <div id="toast" class="hidden fixed bottom-6 inset-x-0 mx-auto w-max max-w-[92vw] z-[200] bg-gray-900 dark:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-gray-700/60"></div>
 
     <script src="js/users-cache.js?v=6"></script>
-    <script type="module" src="js/renderers.js?v=102"></script>
+    <script type="module" src="js/renderers.js?v=103"></script>
     <script type="module" src="js/helpers.js?v=76"></script>
     <script type="module" src="js/games.js?v=67"></script>
     <script type="module" src="js/voice-recorder.js?v=3"></script>
     <script type="module" src="js/myday.js?v=29"></script>
     <script type="module" src="js/quest.js?v=4"></script>
     <script type="module" src="js/help.js?v=2"></script>
-    <script type="module" src="js/main.js?v=116"></script>
+    <script type="module" src="js/main.js?v=117"></script>
     <script>
         // Mini music player is lazy-loaded: the module (and the shared YouTube
         // audio engine) only downloads the first time the floating button is used.

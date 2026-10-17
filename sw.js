@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hangout-v339';
+const CACHE_NAME = 'hangout-v340';
 const MEDIA_CACHE_NAME = 'hangout-cloudinary-v2';
 const MAX_MEDIA_ITEMS = 250;
 // Third-party static assets (Tailwind CDN, Font Awesome, Google Fonts, the
@@ -42,17 +42,17 @@ const PRECACHE_ASSETS = [
   './index.html',
   './chat/index.html',
   './css/tailwind.min.css?v=20',
-  './css/styles.css?v=29',
+  './css/styles.css?v=30',
   // Arena SPA (/arena) — tournament hub, lobby bridge, brackets
   './arena/index.html',
   './arena/arena.css?v=17',
   './arena/arena.js?v=25',
   './arena/bracket-engine.js',
   './chat/css/styles.css?v=54',
-  './js/renderers.js?v=102',
+  './js/renderers.js?v=103',
   './js/helpers.js?v=76',
   './js/games.js?v=67',
-  './js/main.js?v=116',
+  './js/main.js?v=117',
   './js/myday.js?v=29',
   './js/quest.js?v=4',
   './js/help.js?v=2',
