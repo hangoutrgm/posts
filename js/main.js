@@ -10,7 +10,7 @@ window._getDocsFS = getDocs; // expose for loadMorePosts cursor pagination
 // evaluated a second time alongside index.html's "js/helpers.js?v=77" (same for
 // renderers.js, ~325 KB). Keep these versions in lockstep with index.html and sw.js.
 import "./helpers.js?v=77";
-import "./renderers.js?v=107";
+import "./renderers.js?v=108";
 
 let presenceInterval = null;
 let serverTimeOffset = 0;

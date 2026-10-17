@@ -3852,16 +3852,21 @@ async function fetchEarningsRows(uid) {
 }
 
 // Host Log reader — shared by the cold load and the background refresh.
-// RTDB 3 only — fresh start (the old RTDB 1 /hostedGames node and legacy
+// SAME FIX AS GAME LOGS / EARNINGS: read through the RTDB REST API with
+// fetch(cache: 'no-store') instead of the Firebase SDK get(), which returned
+// a stale partial result while the REST API had every entry. RTDB 3 only —
+// fresh start (the old RTDB 1 /hostedGames node and legacy
 // users/{uid}/hostedGames copies are retired, no migration). Returns the RAW
 // rows newest-first; the cash-prize filter stays in the render path so a
 // cached empty result keeps both empty states. A read failure rejects (never
 // caches) so it can't wipe or poison a good cache.
 async function fetchHostedRows(uid) {
-    const snap = await get(ref(db3, `hostedGames/${uid}`));
+    const res = await fetch(`${databaseURL3}/hostedGames/${uid}.json`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`hostedGames read failed (HTTP ${res.status})`);
+    const data = await res.json();
     const rows = [];
-    if (snap && snap.exists()) {
-        snap.forEach(child => rows.push({ id: child.key, ...child.val() }));
+    if (data && typeof data === 'object') {
+        Object.keys(data).forEach(key => rows.push({ id: key, ...data[key] }));
     }
     rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     return rows;
